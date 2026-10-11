@@ -2,11 +2,11 @@
     "name":  "@workspace/ai",
     "version":  "1.0.0",
     "description":  "Centralized AI Intelligence, Multi-Provider Kernel, Mem0 Memory, and LangChain Domain for 180 Workspace",
-    "main":  "dist/index.js",
-    "types":  "dist/index.d.ts",
+    "main":  "src/index.ts",
+    "types":  "src/index.ts",
     "scripts":  {
-                    "build":  "tsc",
-                    "dev":  "tsc -w",
+                    "build":  "echo '@workspace/ai ready for tsx runtime'",
+                    "dev":  "echo '@workspace/ai ready'",
                     "test":  "node tests/run-100-tests.js"
                 },
     "dependencies":  {
@@ -34,9 +34,9 @@
                             "typescript":  "^5.0.0"
                         },
     "exports":  {
-                    ".":  "./dist/index.js",
-                    "./agent-runs":  "./dist/agent-runs/index.js",
-                    "./content/autopilot":  "./dist/content/autopilot/index.js",
-                    "./content/craft":  "./dist/content/craft/index.js"
+                    ".":  "./src/index.ts",
+                    "./agent-runs":  "./src/agent-runs/index.ts",
+                    "./content/autopilot":  "./src/content/autopilot/index.ts",
+                    "./content/craft":  "./src/content/craft/index.ts"
                 }
 }

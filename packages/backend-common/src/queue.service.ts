@@ -8,17 +8,22 @@ try {
     Worker = bull.Worker;
 } catch {
     Queue = class FallbackQueue {
-        constructor(name, opts) {
+        name: any;
+        opts: any;
+        constructor(name: any, opts?: any) {
             this.name = name;
             this.opts = opts;
         }
-        async add(name, data, opts) {
+        async add(name: any, data: any, opts?: any) {
             return { id: 'mock-' + Date.now(), name, data };
         }
         async close() {}
     };
     Worker = class FallbackWorker {
-        constructor(name, processor, opts) {
+        name: any;
+        processor: any;
+        opts: any;
+        constructor(name: any, processor: any, opts?: any) {
             this.name = name;
             this.processor = processor;
             this.opts = opts;
