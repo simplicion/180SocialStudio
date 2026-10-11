@@ -281,6 +281,9 @@ importers:
       '@prisma/client':
         specifier: ^6.4.1
         version: 6.19.3(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3)
+      '@workspace/db-social-studio':
+        specifier: workspace:*
+        version: link:../db-social-studio
     devDependencies:
       '@workspace/typescript-config':
         specifier: workspace:*
@@ -324,7 +327,7 @@ importers:
         version: 0.21.0
       '@prisma/client':
         specifier: ^5.x.x
-        version: 5.22.0(prisma@5.22.0)
+        version: 5.22.0(prisma@6.19.3(typescript@5.9.3))
       '@types/node-cron':
         specifier: ^3.0.11
         version: 3.0.11
@@ -392,7 +395,7 @@ importers:
     dependencies:
       '@prisma/client':
         specifier: ^5.0.0
-        version: 5.22.0(prisma@5.22.0)
+        version: 5.22.0(prisma@6.19.3(typescript@5.9.3))
       '@workspace/db':
         specifier: workspace:*
         version: link:../../db
@@ -445,7 +448,7 @@ importers:
         version: 0.21.0
       '@prisma/client':
         specifier: ^5.x.x
-        version: 5.22.0(prisma@5.22.0)
+        version: 5.22.0(prisma@6.19.3(typescript@5.9.3))
       '@types/node-cron':
         specifier: ^3.0.11
         version: 3.0.11
@@ -5212,6 +5215,10 @@ snapshots:
   '@prisma/client@5.22.0(prisma@5.22.0)':
     optionalDependencies:
       prisma: 5.22.0
+
+  '@prisma/client@5.22.0(prisma@6.19.3(typescript@5.9.3))':
+    optionalDependencies:
+      prisma: 6.19.3(typescript@5.9.3)
 
   '@prisma/client@6.19.3(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3)':
     optionalDependencies:
