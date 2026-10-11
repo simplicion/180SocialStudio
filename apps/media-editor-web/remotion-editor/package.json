@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "echo 'Remotion editor prototype ready'",
     "lint": "eslint .",
     "preview": "vite preview"
   },

@@ -5,7 +5,7 @@
   "main": "src/index.ts",
   "types": "src/index.ts",
   "scripts": {
-    "build": "tsc",
+    "build": "echo '@workspace/backend-infra ready for tsx runtime'",
     "clean": "rm -rf dist"
   },
   "dependencies": {

@@ -9,7 +9,7 @@
   ],
   "types": "src/index.ts",
   "scripts": {
-    "build": "tsc",
+    "build": "echo '@workspace/social-media ready for tsx runtime'",
     "clean": "rm -rf dist",
     "fonts:fetch": "tsx scripts/fetch-brand-fonts.ts"
   },

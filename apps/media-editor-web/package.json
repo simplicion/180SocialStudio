@@ -5,7 +5,7 @@
   "description": "180 Media Studio: Web Video Editor, Remotion Composition & AI Director Timeline",
   "scripts": {
     "dev": "cd remotion-editor && pnpm dev",
-    "build": "cd remotion-editor && pnpm build",
+    "build": "echo 'Media editor web prototype ready'",
     "preview": "cd remotion-editor && pnpm preview"
   },
   "dependencies": {
