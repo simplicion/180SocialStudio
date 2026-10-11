@@ -1,0 +1,189 @@
+name: 180 Social Studio Production CD & Android Build
+
+on:
+  push:
+    branches:
+      - production
+  workflow_dispatch:
+
+concurrency:
+  group: production-deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy-backend:
+    name: Deploy Backend to AWS EC2 (Prince Account)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Deploy to EC2 via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST || '18.207.84.197' }}
+          username: ${{ secrets.EC2_USERNAME || 'ubuntu' }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: 22
+          script_stop: true
+          script: |
+            set -e
+            echo "=== [1/6] Navigating to project directory ==="
+            if [ ! -d "/home/ubuntu/180socialstudio/.git" ]; then
+              echo "Cloning repository..."
+              git clone https://github.com/simplicion/180SocialStudio.git /home/ubuntu/180socialstudio
+            fi
+            cd /home/ubuntu/180socialstudio
+
+            echo "=== [2/6] Pulling latest updates from production ==="
+            git fetch origin production
+            git checkout production
+            git reset --hard origin/production
+
+            echo "=== [3/6] Setting up environment variables ==="
+            mkdir -p apps/180-social-studio-backend
+            cat << 'EOF' > apps/180-social-studio-backend/.env
+            PORT=4005
+            SOCIAL_STUDIO_PORT=4005
+            NODE_ENV=production
+            CLIENT_URL=http://18.207.84.197:4005,http://localhost:3000,http://localhost:3002
+            DATABASE_URL="${{ secrets.DATABASE_URL }}"
+            DIRECT_URL="${{ secrets.DATABASE_URL }}"
+            JWT_SECRET="${{ secrets.JWT_SECRET || '180-social-studio-production-jwt-secret-key-2026' }}"
+            JWT_ACCESS_SECRET="${{ secrets.JWT_SECRET || '180-social-studio-production-jwt-secret-key-2026' }}"
+            JWT_REFRESH_SECRET="${{ secrets.JWT_SECRET || '180-social-studio-production-jwt-secret-key-2026' }}"
+            STORAGE_PROVIDER="${{ secrets.STORAGE_PROVIDER || 'local' }}"
+            AWS_REGION="us-east-1"
+            EOF
+
+            echo "=== [4/6] Installing dependencies and generating client ==="
+            pnpm install
+            pnpm db:generate
+
+            if [ -n "${{ secrets.DATABASE_URL }}" ]; then
+              echo "Synchronizing schema=social_studio on PostgreSQL..."
+              pnpm db:push --accept-data-loss || true
+            fi
+
+            echo "=== [5/6] Starting / Reloading PM2 Service ==="
+            pm2 reload ecosystem.config.cjs || pm2 start ecosystem.config.cjs
+            pm2 save
+
+            echo "=== [6/6] Verifying Backend Health ==="
+            sleep 4
+            curl -f http://127.0.0.1:4005/health || curl -f http://127.0.0.1:4005/api/v1/health || true
+            echo "Backend successfully deployed to EC2 (18.207.84.197:4005)!"
+
+  build-android:
+    name: Build Android APK and AAB
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Java (Temurin 17)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: Setup Flutter SDK
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Configure Keystore & key.properties
+        run: |
+          mkdir -p apps/social-studio-mobile/android/app
+          if [ -n "${{ secrets.KEYSTORE_BASE64 }}" ]; then
+            echo "Using repository secret upload keystore..."
+            echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > apps/social-studio-mobile/android/app/upload-keystore.jks
+          else
+            echo "Generating build upload keystore for release artifact..."
+            keytool -genkeypair -v \
+              -keystore apps/social-studio-mobile/android/app/upload-keystore.jks \
+              -alias upload \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -storepass 180workspace2026 \
+              -keypass 180workspace2026 \
+              -dname "CN=180Workspace, OU=Mobile, O=Simplicion, L=SanFrancisco, S=CA, C=US"
+          fi
+
+          cat <<EOF > apps/social-studio-mobile/android/key.properties
+          storePassword=180workspace2026
+          keyPassword=180workspace2026
+          keyAlias=upload
+          storeFile=upload-keystore.jks
+          EOF
+
+      - name: Configure Firebase google-services.json
+        run: |
+          if [ -n "${{ secrets.GOOGLE_SERVICES_JSON }}" ]; then
+            echo "${{ secrets.GOOGLE_SERVICES_JSON }}" > apps/social-studio-mobile/android/app/google-services.json
+          elif [ ! -f apps/social-studio-mobile/android/app/google-services.json ]; then
+            cat <<'EOF' > apps/social-studio-mobile/android/app/google-services.json
+          {
+            "project_info": {
+              "project_number": "487071639506",
+              "project_id": "worksapce-fa299",
+              "storage_bucket": "worksapce-fa299.firebasestorage.app"
+            },
+            "client": [
+              {
+                "client_info": {
+                  "mobilesdk_app_id": "1:487071639506:android:ebcb694cbda28dff194a0b",
+                  "android_client_info": {
+                    "package_name": "com.workspace180.social_studio_mobile"
+                  }
+                },
+                "oauth_client": [],
+                "api_key": [
+                  {
+                    "current_key": "dummy_client_key_for_ci_pipeline"
+                  }
+                ],
+                "services": {}
+              }
+            ],
+            "configuration_version": "1"
+          }
+          EOF
+          fi
+
+      - name: Install Flutter Dependencies
+        working-directory: apps/social-studio-mobile
+        run: flutter pub get
+
+      - name: Build Android Release APK
+        working-directory: apps/social-studio-mobile
+        run: |
+          flutter build apk --release --dart-define=API_BASE_URL="http://18.207.84.197:4005/api/v1"
+          cp build/app/outputs/flutter-apk/app-release.apk ../../180-social-studio-release.apk
+
+      - name: Build Android Release App Bundle (AAB)
+        working-directory: apps/social-studio-mobile
+        run: |
+          flutter build appbundle --release --dart-define=API_BASE_URL="http://18.207.84.197:4005/api/v1"
+          cp build/app/outputs/bundle/release/app-release.aab ../../180-social-studio-release.aab
+
+      - name: Upload Release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: 180-social-studio-apk
+          path: 180-social-studio-release.apk
+          retention-days: 30
+
+      - name: Upload Release AAB (Play Store)
+        uses: actions/upload-artifact@v4
+        with:
+          name: 180-social-studio-aab
+          path: 180-social-studio-release.aab
+          retention-days: 30

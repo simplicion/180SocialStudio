@@ -1,3 +1,7 @@
+if (!process.env.DATABASE_URL) {
+  process.env.DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/180_social_studio_db";
+}
+
 import { runTest as test01 } from "./01-edge-rational-time-drift.test";
 import { runTest as test02 } from "./02-edge-non-idr-smart-cut.test";
 import { runTest as test03 } from "./03-edge-subtitle-collision-overflow.test";

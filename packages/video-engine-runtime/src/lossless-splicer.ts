@@ -198,7 +198,7 @@ export class LosslessSplicer {
       fs.copyFileSync(segmentPaths[0], mergedRawVideo);
     } else if (segmentPaths.length > 1) {
       const concatListPath = path.join(tempDir, "concat_list.txt");
-      const listContent = segmentPaths.map((p) => `file '${p.replace(/\\/g, "/")}'`).join("\n");
+      const listContent = segmentPaths.map((p) => `file '${path.basename(p)}'`).join("\n");
       fs.writeFileSync(concatListPath, listContent);
 
       await new Promise<void>((resolve, reject) => {

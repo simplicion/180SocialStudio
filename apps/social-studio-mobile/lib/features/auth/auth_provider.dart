@@ -68,15 +68,15 @@ class SessionController extends AsyncNotifier<Session?> {
   }
 
   Session _fromMe(Json me, Entitlement ent, {bool offline = false}) => Session(
-        user: SessionUser.fromJson(jMap(me['user'])),
-        company: SessionCompany.fromJson(jMap(me['company'])),
+        user: SessionUser.fromJson(jMap(me['user'] ?? me)),
+        company: SessionCompany.fromJson(jMap(me['company'] ?? me)),
         entitlement: ent,
         offline: offline,
       );
 
   Future<Session> _establish(Json me) async {
     final ent = await _repo.entitlement(me);
-    await ref.read(tokenStoreProvider).saveProfile({'user': me['user'], 'company': me['company']});
+    await ref.read(tokenStoreProvider).saveProfile({'user': me['user'] ?? me, 'company': me['company'] ?? me});
     final s = _fromMe(me, ent);
     _publishUser(s);
     // Device token for the media routes; failures surface when those routes are used.
@@ -106,6 +106,10 @@ class SessionController extends AsyncNotifier<Session?> {
   Future<void> retryRestore() async {
     state = AsyncLoading();
     state = await AsyncValue.guard(_restore);
+  }
+
+  Future<void> establishFromData(Json me) async {
+    state = AsyncData(await _establish(me));
   }
 
   /// Re-checks subscription and feature flags (on app resume and from the lock screen).

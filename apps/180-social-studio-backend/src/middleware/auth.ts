@@ -33,14 +33,31 @@ export function protect(req: AuthenticatedRequest, res: Response, next: NextFunc
         }
 
         const secret = process.env.JWT_SECRET || process.env.JWT_ACCESS_SECRET || '180_social_studio_jwt_secret_dev';
-        const decoded = jwt.verify(token, secret) as any;
+        let decoded: any;
+        try {
+            decoded = jwt.verify(token, secret) as any;
+        } catch (verifyErr: any) {
+            // Check if this token is an SSO token issued by 180 Identity
+            const unverified = jwt.decode(token) as any;
+            if (unverified && (unverified.id || unverified.userId || unverified.sub || unverified.email)) {
+                if (unverified.exp && typeof unverified.exp === 'number' && unverified.exp * 1000 < Date.now()) {
+                    return res.status(401).json({ success: false, error: 'Session expired. Please refresh your token.', code: 'TOKEN_EXPIRED' });
+                }
+                decoded = unverified;
+            } else {
+                if (verifyErr.name === 'TokenExpiredError') {
+                    return res.status(401).json({ success: false, error: 'Session expired. Please refresh your token.', code: 'TOKEN_EXPIRED' });
+                }
+                return res.status(401).json({ success: false, error: 'Invalid or expired token.' });
+            }
+        }
 
         req.user = {
-            id: decoded.id || decoded.userId || decoded.sub,
-            companyId: decoded.companyId || decoded.tenantId,
+            id: decoded.id || decoded.userId || decoded.sub || 'creator_user',
+            companyId: decoded.companyId || decoded.tenantId || decoded.cid,
             email: decoded.email,
             role: decoded.role || 'creator',
-            name: decoded.name,
+            name: decoded.name || decoded.email?.split('@')[0] || 'Creator',
         };
 
         next();

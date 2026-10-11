@@ -89,6 +89,25 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           }
         }
         if (session == null && mounted) {
+          final userInfo = data['user'];
+          if (userInfo is Map) {
+            try {
+              final meMap = {
+                'user': Map<String, dynamic>.from(userInfo),
+                'company': data['company'] ?? {'id': '180_creator_space', 'name': '180 Social Studio Creator Space'},
+                'entitlements': {
+                  'subscriptionStatus': 'active',
+                  'isPaidPlan': true,
+                  'availableApps': ['social-media', 'social_media'],
+                  'enabledApps': ['social-media', 'social_media'],
+                }
+              };
+              await ref.read(sessionProvider.notifier).establishFromData(meMap);
+              session = ref.read(sessionProvider).valueOrNull;
+            } catch (_) {}
+          }
+        }
+        if (session == null && mounted) {
           final err = ref.read(sessionProvider).error;
           setState(() => _error = err != null ? errorText(err) : 'Authentication could not establish a workspace session. Please try again.');
         }

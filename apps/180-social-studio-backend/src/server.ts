@@ -124,6 +124,8 @@ app.post('/api/v1/social-media/billing/webhook', socialBillingWebhookHandler);
 // ─── Creator Authentication & Identity ─────────────────────────────────────────
 app.use('/api/auth', authRoutes);
 app.use('/auth', authRoutes);
+app.use('/api/oauth', authRoutes);
+app.use('/oauth', authRoutes);
 
 // ─── Media Storage & File Uploads ─────────────────────────────────────────────
 app.use('/api/files', filesRoutes);
