@@ -66,45 +66,31 @@ class AppConfig {
     return 'workspace180://oauth/callback';
   }
 
-  /// 180 Identity Provider Configurations
+  /// 180 Identity Provider Configurations (Live Production 180 Core API)
   static String get identityServerUrl {
     const fromEnv = String.fromEnvironment('IDENTITY_SERVER_URL');
     if (fromEnv.isNotEmpty) return fromEnv;
-    if (kIsWeb) {
-      final host = Uri.base.host;
-      if (host == 'localhost' || host == '127.0.0.1') {
-        return 'http://$host:4003';
-      }
-    }
-    if (kDebugMode) {
-      return 'http://$_localHost:4003';
-    }
-    return 'https://services.180workspace.com';
+    return 'https://api.180core.cloud';
   }
 
-  /// 180 Profile / Identity Web Auth UI Server (Universal 180 Profile login)
+  /// 180 Profile / Identity Web Auth UI Server (Live Global Cloudflare Edge OIDC/SSO)
   static String get identityAuthUrl {
     const fromEnv = String.fromEnvironment('IDENTITY_AUTH_URL');
     if (fromEnv.isNotEmpty) return fromEnv;
-    if (kIsWeb) {
-      final host = Uri.base.host;
-      if (host == 'localhost' || host == '127.0.0.1') {
-        return 'http://$host:3009';
-      }
-    }
-    if (kDebugMode) {
-      return 'http://$_localHost:3009';
-    }
-    return 'https://profile.180workspace.com';
+    return 'https://profile.180core.cloud';
   }
 
-  static const String identityClientId = '180_client_266753c1171df1e2c4a391483fd2e02e';
+  /// Registered 180 Social Studio Mobile Client ID
+  static const String identityClientId = '180-social-studio-mobile';
   static String get identityRedirectUri {
     const fromEnv = String.fromEnvironment('IDENTITY_REDIRECT_URI');
     if (fromEnv.isNotEmpty) return fromEnv;
     if (kIsWeb) {
       final base = Uri.base.origin;
-      return base.isNotEmpty ? '$base/#/oauth-callback' : 'https://social.180workspace.com/#/oauth-callback';
+      if (base.contains(':3007')) {
+        return 'http://localhost:3007/oauth-callback';
+      }
+      return 'workspace180://oauth/callback';
     }
     return 'workspace180://oauth/callback';
   }

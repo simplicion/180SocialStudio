@@ -355,10 +355,18 @@ class OneEightySsoService {
 
       Map<String, dynamic> userInfo = {'id': 'authenticated'};
       try {
-        final profileRes = await _dio.get(
-          '${AppConfig.identityServerUrl}/api/oauth/userinfo',
-          options: Options(headers: {'Authorization': 'Bearer $directToken'}),
-        );
+        Response profileRes;
+        try {
+          profileRes = await _dio.get(
+            '${AppConfig.identityServerUrl}/api/v1/auth/userinfo',
+            options: Options(headers: {'Authorization': 'Bearer $directToken'}),
+          );
+        } catch (_) {
+          profileRes = await _dio.get(
+            '${AppConfig.identityServerUrl}/api/oauth/userinfo',
+            options: Options(headers: {'Authorization': 'Bearer $directToken'}),
+          );
+        }
         if (profileRes.statusCode == 200 && profileRes.data is Map) {
           userInfo = Map<String, dynamic>.from(profileRes.data['user'] ?? profileRes.data);
         }
@@ -386,12 +394,12 @@ class OneEightySsoService {
 
     // Candidate token endpoints across identity provider domain and primary API domain
     final candidateEndpoints = [
+      '${AppConfig.identityServerUrl}/api/v1/auth/token',
+      'https://api.180core.cloud/api/v1/auth/token',
       '${AppConfig.identityServerUrl}/api/oauth/token',
       '${AppConfig.identityServerUrl}/oauth/token',
       'https://services.180workspace.com/api/oauth/token',
-      'https://services.180workspace.com/oauth/token',
       '${AppConfig.apiBaseUrl}/api/oauth/token',
-      '${AppConfig.apiBaseUrl}/oauth/token',
       '${AppConfig.apiBaseUrl}/api/v1/identity/oauth/token',
     ];
 
@@ -429,8 +437,8 @@ class OneEightySsoService {
       throw lastError ?? Exception('Failed to exchange authorization code for tokens.');
     }
 
-    final data = response.data as Map<String, dynamic>;
-    final accessToken = data['access_token'] as String;
+    final data = Map<String, dynamic>.from(response.data as Map);
+    final accessToken = (data['access_token'] ?? data['token']) as String;
     final refreshToken = data['refresh_token'] as String?;
     final idToken = data['id_token'] as String?;
 
@@ -441,6 +449,29 @@ class OneEightySsoService {
     }
     if (idToken != null) {
       await _storage.write(key: _kIdToken, value: idToken);
+    }
+
+    // Populate user profile if missing from token exchange
+    if (!data.containsKey('user') || data['user'] == null) {
+      try {
+        Response userRes;
+        try {
+          userRes = await _dio.get(
+            '${AppConfig.identityServerUrl}/api/v1/auth/userinfo',
+            options: Options(headers: {'Authorization': 'Bearer $accessToken'}),
+          );
+        } catch (_) {
+          userRes = await _dio.get(
+            '${AppConfig.identityServerUrl}/api/oauth/userinfo',
+            options: Options(headers: {'Authorization': 'Bearer $accessToken'}),
+          );
+        }
+        if (userRes.statusCode == 200 && userRes.data is Map) {
+          data['user'] = Map<String, dynamic>.from(userRes.data['user'] ?? userRes.data);
+        }
+      } catch (e) {
+        debugPrint('[OneEightySsoService] Userinfo fetch notice: $e');
+      }
     }
 
     // Cleanup ephemeral PKCE keys

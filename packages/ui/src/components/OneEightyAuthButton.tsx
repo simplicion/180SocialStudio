@@ -37,9 +37,9 @@ export const OneEightyAuthButton: React.FC<OneEightyAuthButtonProps> = ({
     if (authBase) return authBase;
     if (typeof window !== 'undefined') {
       const isInternalDev = (window as any).__180_INTERNAL_DEV__ === true || (window as any).__180_ENV__ === 'development';
-      return isInternalDev ? 'http://localhost:3009/auth/login' : 'https://profile.180workspace.com/auth/login';
+      return isInternalDev ? 'http://localhost:3009/auth/login' : 'https://profile.180core.cloud/auth/login';
     }
-    return 'https://profile.180workspace.com/auth/login';
+    return 'https://profile.180core.cloud/auth/login';
   };
 
   useEffect(() => {
