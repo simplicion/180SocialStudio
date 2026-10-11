@@ -49,19 +49,24 @@ jobs:
 
             echo "=== [3/6] Setting up environment variables ==="
             mkdir -p apps/180-social-studio-backend
-            cat << 'INNER_EOF' > apps/180-social-studio-backend/.env
-            PORT=4005
-            SOCIAL_STUDIO_PORT=4005
-            NODE_ENV=production
-            CLIENT_URL=http://18.207.84.197:4005,http://localhost:3000,http://localhost:3002
-            DATABASE_URL="${DATABASE_URL}"
-            DIRECT_URL="${DATABASE_URL}"
-            JWT_SECRET="${JWT_SECRET}"
-            JWT_ACCESS_SECRET="${JWT_SECRET}"
-            JWT_REFRESH_SECRET="${JWT_SECRET}"
-            STORAGE_PROVIDER="${STORAGE_PROVIDER}"
-            AWS_REGION="us-east-1"
-            INNER_EOF
+            if [ ! -f "apps/180-social-studio-backend/.env" ]; then
+              echo "Creating initial .env template from deploy secrets..."
+              cat << INNER_EOF > apps/180-social-studio-backend/.env
+PORT=4005
+SOCIAL_STUDIO_PORT=4005
+NODE_ENV=production
+CLIENT_URL=http://18.207.84.197:4005,http://localhost:3000,http://localhost:3002
+DATABASE_URL="${DATABASE_URL}"
+DIRECT_URL="${DATABASE_URL}"
+JWT_SECRET="${JWT_SECRET}"
+JWT_ACCESS_SECRET="${JWT_SECRET}"
+JWT_REFRESH_SECRET="${JWT_SECRET}"
+STORAGE_PROVIDER="${STORAGE_PROVIDER}"
+AWS_REGION="us-east-1"
+INNER_EOF
+            else
+              echo "Existing .env found on server, preserving production configuration."
+            fi
 
             echo "=== [4/6] Installing dependencies and generating client ==="
             pnpm install
