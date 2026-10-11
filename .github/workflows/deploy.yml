@@ -185,13 +185,13 @@ jobs:
       - name: Build Android Release APK
         working-directory: apps/social-studio-mobile
         run: |
-          flutter build apk --release --dart-define=API_BASE_URL="http://18.207.84.197:4005/api/v1"
+          flutter build apk --release --dart-define=API_BASE_URL="http://18.207.84.197:4005"
           cp build/app/outputs/flutter-apk/app-release.apk ../../180-social-studio-release.apk
 
       - name: Build Android Release App Bundle (AAB)
         working-directory: apps/social-studio-mobile
         run: |
-          flutter build appbundle --release --dart-define=API_BASE_URL="http://18.207.84.197:4005/api/v1"
+          flutter build appbundle --release --dart-define=API_BASE_URL="http://18.207.84.197:4005"
           cp build/app/outputs/bundle/release/app-release.aab ../../180-social-studio-release.aab
 
       - name: Upload Release APK
