@@ -1,0 +1,22 @@
+{
+  "name": "@workspace/db",
+  "version": "1.0.0",
+  "description": "Dedicated Prisma Client and Database Schema for 180 Social Studio",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "prisma:generate": "prisma generate",
+    "prisma:push": "prisma db push",
+    "prisma:migrate": "prisma migrate dev",
+    "build": "prisma generate"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.4.1",
+    "@workspace/db-social-studio": "workspace:*"
+  },
+  "devDependencies": {
+    "@workspace/typescript-config": "workspace:*",
+    "prisma": "^6.4.1",
+    "typescript": "^5.7.3"
+  }
+}

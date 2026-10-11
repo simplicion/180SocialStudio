@@ -1,0 +1,14 @@
+[package]
+name = "engine-render"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+engine-timeline = { path = "../engine-timeline" }
+engine-core = { path = "../engine-core" }
+engine-media = { path = "../engine-media" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+log.workspace = true

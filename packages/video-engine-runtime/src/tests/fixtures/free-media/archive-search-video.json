@@ -1,0 +1,55 @@
+{
+ "responseHeader": {
+  "status": 0,
+  "QTime": 288,
+  "params": {
+   "query": "title:(ocean waves) AND mediatype:movies AND (licenseurl:*publicdomain* OR licenseurl:*creativecommons*)",
+   "qin": "title:(ocean waves) AND mediatype:movies AND (licenseurl:*publicdomain* OR licenseurl:*creativecommons*)",
+   "fields": "identifier,title,creator,licenseurl,mediatype",
+   "wt": "json",
+   "rows": 5,
+   "start": 0
+  }
+ },
+ "response": {
+  "numFound": 14,
+  "start": 0,
+  "docs": [
+   {
+    "creator": "https://www.flickr.com/photos/marada/",
+    "identifier": "Flickr-29695154087",
+    "licenseurl": "https://creativecommons.org/licenses/by-nd/2.0/",
+    "mediatype": "movies",
+    "title": "Ocean Waves - Ocean City Maryland"
+   },
+   {
+    "creator": "Peaceful Peach",
+    "identifier": "sunset-ocean-waves",
+    "licenseurl": "http://creativecommons.org/publicdomain/zero/1.0/",
+    "mediatype": "movies",
+    "title": "Sunset Ocean Waves"
+   },
+   {
+    "creator": "https://www.flickr.com/photos/marada/",
+    "identifier": "Flickr-29643993937",
+    "licenseurl": "https://creativecommons.org/licenses/by-nd/2.0/",
+    "mediatype": "movies",
+    "title": "Intense Waves - Ocean City Maryland"
+   },
+   {
+    "creator": "Martin Chung",
+    "identifier": "Flickr-32119772064",
+    "licenseurl": "https://creativecommons.org/licenses/by-nc-nd/2.0/",
+    "mediatype": "movies",
+    "title": "2 Jan - At the #beach again. #2017 #sun #surf #sea #ocean #saltwater #perth #outside #waves #summer #summertime #sand"
+   },
+   {
+    "creator": "Neil R",
+    "identifier": "Flickr-4202965779",
+    "licenseurl": "https://creativecommons.org/licenses/by-nc/2.0/",
+    "mediatype": "movies",
+    "title": "Ocean Waves"
+   }
+  ]
+ }
+}

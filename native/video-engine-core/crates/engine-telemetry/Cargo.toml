@@ -1,0 +1,9 @@
+[package]
+name = "engine-telemetry"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+engine-timeline = { path = "../engine-timeline" }

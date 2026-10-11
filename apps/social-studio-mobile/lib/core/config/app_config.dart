@@ -1,0 +1,127 @@
+import 'package:flutter/foundation.dart'
+    show defaultTargetPlatform, TargetPlatform, kDebugMode, kIsWeb;
+
+/// Build-time configuration. Nothing in here is a secret.
+///
+/// Override per build with `--dart-define`, e.g.
+/// `flutter run --dart-define=API_BASE_URL=http://localhost:4005`.
+class AppConfig {
+  AppConfig._();
+
+  static String get _localHost {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      return '10.0.2.2';
+    }
+    return 'localhost';
+  }
+
+  /// Origin of the 180 Workspace backend (no trailing slash, no `/api`).
+  static String get apiBaseUrl {
+    const fromEnv = String.fromEnvironment('API_BASE_URL');
+    if (fromEnv.isNotEmpty) return fromEnv;
+    if (kIsWeb) {
+      final host = Uri.base.host;
+      if (host == 'localhost' || host == '127.0.0.1') {
+        return 'http://$host:4005';
+      }
+    }
+    if (kDebugMode) {
+      return 'http://$_localHost:4005';
+    }
+    return 'https://api.180workspace.com';
+  }
+
+  /// Origin of the web app. Used to build shareable links such as `/review/<token>`.
+  static String get webAppUrl {
+    const fromEnv = String.fromEnvironment('WEB_APP_URL');
+    if (fromEnv.isNotEmpty) return fromEnv;
+    if (kIsWeb) {
+      final host = Uri.base.host;
+      if (host == 'localhost' || host == '127.0.0.1') {
+        return 'http://$host:3002';
+      }
+    }
+    if (kDebugMode) {
+      return 'http://$_localHost:3002';
+    }
+    return 'https://app.180workspace.com';
+  }
+
+  /// Google OAuth *web* client id used as `serverClientId` so the native SDK mints an ID token
+  /// the backend accepts. A public identifier, not a secret.
+  static const String googleServerClientId = String.fromEnvironment(
+    'GOOGLE_SERVER_CLIENT_ID',
+    defaultValue: '',
+  );
+
+  /// Custom scheme the OS hands back to the app after a browser OAuth hop.
+  static const String deepLinkScheme = 'workspace180';
+  static String get oauthRedirectUri {
+    const fromEnv = String.fromEnvironment('OAUTH_REDIRECT_URI');
+    if (fromEnv.isNotEmpty) return fromEnv;
+    if (kIsWeb) {
+      final base = Uri.base.origin;
+      return base.isNotEmpty ? '$base/#/oauth-callback' : 'https://social.180workspace.com/#/oauth-callback';
+    }
+    return 'workspace180://oauth/callback';
+  }
+
+  /// 180 Identity Provider Configurations
+  static String get identityServerUrl {
+    const fromEnv = String.fromEnvironment('IDENTITY_SERVER_URL');
+    if (fromEnv.isNotEmpty) return fromEnv;
+    if (kIsWeb) {
+      final host = Uri.base.host;
+      if (host == 'localhost' || host == '127.0.0.1') {
+        return 'http://$host:4003';
+      }
+    }
+    if (kDebugMode) {
+      return 'http://$_localHost:4003';
+    }
+    return 'https://services.180workspace.com';
+  }
+
+  /// 180 Profile / Identity Web Auth UI Server (Universal 180 Profile login)
+  static String get identityAuthUrl {
+    const fromEnv = String.fromEnvironment('IDENTITY_AUTH_URL');
+    if (fromEnv.isNotEmpty) return fromEnv;
+    if (kIsWeb) {
+      final host = Uri.base.host;
+      if (host == 'localhost' || host == '127.0.0.1') {
+        return 'http://$host:3009';
+      }
+    }
+    if (kDebugMode) {
+      return 'http://$_localHost:3009';
+    }
+    return 'https://profile.180workspace.com';
+  }
+
+  static const String identityClientId = '180_client_266753c1171df1e2c4a391483fd2e02e';
+  static String get identityRedirectUri {
+    const fromEnv = String.fromEnvironment('IDENTITY_REDIRECT_URI');
+    if (fromEnv.isNotEmpty) return fromEnv;
+    if (kIsWeb) {
+      final base = Uri.base.origin;
+      return base.isNotEmpty ? '$base/#/oauth-callback' : 'https://social.180workspace.com/#/oauth-callback';
+    }
+    return 'workspace180://oauth/callback';
+  }
+
+  /// Kebab-case app id used by billing, feature flags and `moduleGuard`.
+  static const String socialAppId = 'social-media';
+
+  /// Timeouts. LLM-backed endpoints are slow; uploads are slower.
+  static const Duration connectTimeout = Duration(seconds: 15);
+  static const Duration defaultReceiveTimeout = Duration(seconds: 30);
+  static const Duration aiReceiveTimeout = Duration(seconds: 120);
+  static const Duration calendarGenerationTimeout = Duration(seconds: 180);
+  static const Duration uploadTimeout = Duration(minutes: 10);
+
+  static String absoluteWebUrl(String pathOrUrl) {
+    if (pathOrUrl.startsWith('http://') || pathOrUrl.startsWith('https://')) return pathOrUrl;
+    final p = pathOrUrl.startsWith('/') ? pathOrUrl : '/$pathOrUrl';
+    return '$webAppUrl$p';
+  }
+}

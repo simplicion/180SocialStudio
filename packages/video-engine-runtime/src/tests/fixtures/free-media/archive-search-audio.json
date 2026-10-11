@@ -1,0 +1,48 @@
+{
+ "responseHeader": {
+  "status": 0,
+  "QTime": 294,
+  "params": {
+   "query": "(((text:calm OR text:calm OR text__reviews:calm)(text:piano OR text:piano OR text__reviews:piano)) OR (text:&quot;calm piano&quot; OR text:&quot;calm piano&quot; OR text__reviews:&quot;calm piano&quot;)) AND mediatype:audio AND (licenseurl:*publicdomain* OR licenseurl:*creativecommons*) AND NOT licenseurl:*nc* AND NOT licenseurl:*nd*",
+   "qin": "(calm piano) AND mediatype:audio AND (licenseurl:*publicdomain* OR licenseurl:*creativecommons*) AND NOT licenseurl:*nc* AND NOT licenseurl:*nd*",
+   "fields": "identifier,title,creator,licenseurl,mediatype",
+   "wt": "json",
+   "rows": 4,
+   "start": 0
+  }
+ },
+ "response": {
+  "numFound": 340,
+  "start": 0,
+  "docs": [
+   {
+    "creator": "Megis",
+    "identifier": "jamendo-638441",
+    "licenseurl": "http://creativecommons.org/licenses/by/3.0/",
+    "mediatype": "audio",
+    "title": "Megis - Corporate Motivational Music 2"
+   },
+   {
+    "creator": "Megis",
+    "identifier": "jamendo-638694",
+    "licenseurl": "http://creativecommons.org/licenses/by/3.0/",
+    "mediatype": "audio",
+    "title": "Megis - Corporate Spirit"
+   },
+   {
+    "creator": "Megis",
+    "identifier": "jamendo-638944",
+    "licenseurl": "http://creativecommons.org/licenses/by/3.0/",
+    "mediatype": "audio",
+    "title": "Megis - Inspiring Corporate Breath"
+   },
+   {
+    "creator": "Megis",
+    "identifier": "jamendo-639318",
+    "licenseurl": "http://creativecommons.org/licenses/by/3.0/",
+    "mediatype": "audio",
+    "title": "Megis - Acoustic Corporate Motivational"
+   }
+  ]
+ }
+}

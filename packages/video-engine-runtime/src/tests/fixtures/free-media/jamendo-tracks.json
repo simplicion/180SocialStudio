@@ -1,0 +1,52 @@
+{
+ "headers": {
+  "status": "success",
+  "code": 0,
+  "error_message": "",
+  "warnings": "",
+  "results_count": 3
+ },
+ "results": [
+  {
+   "id": "1532771",
+   "name": "Sunny Morning",
+   "duration": 142,
+   "artist_name": "Example Artist",
+   "album_name": "Mornings",
+   "license_ccurl": "http://creativecommons.org/licenses/by/3.0/",
+   "audio": "https://prod-1.storage.jamendo.com/?trackid=1532771&format=mp31",
+   "audiodownload": "https://prod-1.storage.jamendo.com/download/track/1532771/mp32/",
+   "shareurl": "https://www.jamendo.com/track/1532771",
+   "image": "https://usercontent.jamendo.com?type=album&id=1&width=300",
+   "musicinfo": {
+    "speed": "medium",
+    "tags": {
+     "genres": [
+      "pop"
+     ],
+     "vartags": [
+      "happy"
+     ]
+    }
+   }
+  },
+  {
+   "id": "1532772",
+   "name": "NC Track",
+   "duration": 120,
+   "artist_name": "Other",
+   "license_ccurl": "http://creativecommons.org/licenses/by-nc-sa/3.0/",
+   "audio": "https://prod-1.storage.jamendo.com/?trackid=1532772&format=mp31",
+   "shareurl": "https://www.jamendo.com/track/1532772"
+  },
+  {
+   "id": "1532773",
+   "name": "Share Alike Groove",
+   "duration": 95,
+   "artist_name": "SA Band",
+   "license_ccurl": "https://creativecommons.org/licenses/by-sa/4.0/",
+   "audio": "https://prod-1.storage.jamendo.com/?trackid=1532773&format=mp31",
+   "shareurl": "https://www.jamendo.com/track/1532773"
+  }
+ ]
+}

@@ -1,0 +1,42 @@
+{
+    "name":  "@workspace/ai",
+    "version":  "1.0.0",
+    "description":  "Centralized AI Intelligence, Multi-Provider Kernel, Mem0 Memory, and LangChain Domain for 180 Workspace",
+    "main":  "dist/index.js",
+    "types":  "dist/index.d.ts",
+    "scripts":  {
+                    "build":  "tsc",
+                    "dev":  "tsc -w",
+                    "test":  "node tests/run-100-tests.js"
+                },
+    "dependencies":  {
+                         "@anthropic-ai/sdk":  "^0.36.1",
+                         "@ffmpeg-installer/ffmpeg":  "^1.1.0",
+                         "@ffprobe-installer/ffprobe":  "^2.1.2",
+                         "@google/generative-ai":  "^0.21.0",
+                         "@prisma/client":  "^5.x.x",
+                         "@types/node-cron":  "^3.0.11",
+                         "@workspace/db":  "workspace:*",
+                         "@workspace/video-contracts":  "workspace:*",
+                         "axios":  "^1.19.0",
+                         "fluent-ffmpeg":  "^2.1.3",
+                         "form-data":  "^4.0.0",
+                         "jsonrepair":  "^3.15.0",
+                         "mammoth":  "^1.12.1",
+                         "node-cron":  "^3.0.3",
+                         "openai":  "^4.83.0",
+                         "pdf-parse":  "^2.4.5"
+                     },
+    "devDependencies":  {
+                            "@types/fluent-ffmpeg":  "^2.1.24",
+                            "@types/node":  "^20.0.0",
+                            "@workspace/typescript-config":  "workspace:*",
+                            "typescript":  "^5.0.0"
+                        },
+    "exports":  {
+                    ".":  "./dist/index.js",
+                    "./agent-runs":  "./dist/agent-runs/index.js",
+                    "./content/autopilot":  "./dist/content/autopilot/index.js",
+                    "./content/craft":  "./dist/content/craft/index.js"
+                }
+}

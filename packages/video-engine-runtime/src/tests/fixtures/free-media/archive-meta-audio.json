@@ -1,0 +1,185 @@
+{
+ "alternate_locations": {
+  "servers": [
+   {
+    "server": "dn710205.ca.archive.org",
+    "dir": "/0/items/jamendo-638441"
+   }
+  ],
+  "workable": [
+   {
+    "server": "dn710205.ca.archive.org",
+    "dir": "/0/items/jamendo-638441"
+   }
+  ]
+ },
+ "created": 1790392268,
+ "d1": "ia601908.us.archive.org",
+ "d2": "ia801908.us.archive.org",
+ "dir": "/31/items/jamendo-638441",
+ "files": [
+  {
+   "name": "01-2326347-Megis-Corporate Motivational Music 2.afpk",
+   "source": "derivative",
+   "format": "Columbia Peaks",
+   "original": "01-2326347-Megis-Corporate Motivational Music 2.mp3",
+   "mtime": "1780540738",
+   "size": "9840",
+   "md5": "6764e76373c7147c764ba49d6830ed35",
+   "crc32": "5d6773dc",
+   "sha1": "0b3b772ddea4146afaeed50630f03718efb39e74"
+  },
+  {
+   "name": "01-2326347-Megis-Corporate Motivational Music 2.mp3",
+   "source": "original",
+   "mtime": "1780535066",
+   "size": "1259860",
+   "md5": "f4dab94bc4c4fe493475544d8e51399e",
+   "crc32": "e11c93da",
+   "sha1": "8f5b89f858ed25cad4b8c108eacd08faac02dfbf",
+   "format": "VBR MP3",
+   "length": "52.35",
+   "title": "Corporate Motivational Music 2",
+   "creator": "Megis",
+   "album": "Corporate Motivational Music 2",
+   "track": "1",
+   "artist": "Megis",
+   "genre": "corporate, pop",
+   "comment": "https://www.jamendo.com cc_standard"
+  },
+  {
+   "name": "01-2326347-Megis-Corporate Motivational Music 2.png",
+   "source": "derivative",
+   "format": "PNG",
+   "original": "01-2326347-Megis-Corporate Motivational Music 2.mp3",
+   "mtime": "1780539405",
+   "size": "35545",
+   "md5": "0d212a7b32ddf80e8bb6487308d10520",
+   "crc32": "45618f68",
+   "sha1": "31d98fa249b9d99839e1e3f8bcb5e8c3a95cbe26"
+  },
+  {
+   "name": "01-2326347-Megis-Corporate Motivational Music 2_spectrogram.png",
+   "source": "derivative",
+   "format": "Spectrogram",
+   "original": "01-2326347-Megis-Corporate Motivational Music 2.mp3",
+   "mtime": "1780539926",
+   "size": "319576",
+   "md5": "5dd6b86f2eee8a68c1052abb13eae616",
+   "crc32": "2b8162b0",
+   "sha1": "bfc98cedf118d56f1f46cbc48a7bda73f4244064"
+  },
+  {
+   "name": "License.txt",
+   "source": "original",
+   "mtime": "1780535088",
+   "size": "133",
+   "md5": "69d0bc9ec07cd018604ec855f4db0de7",
+   "crc32": "31c89aee",
+   "sha1": "412eb6cccbe94be945fca5a807875be8496d4777",
+   "format": "Text"
+  },
+  {
+   "name": "Readme.txt",
+   "source": "original",
+   "mtime": "1780535139",
+   "size": "6761",
+   "md5": "58d06ae777b8197bd774b6bd20c5cacf",
+   "crc32": "d88ca174",
+   "sha1": "3be56c96da7aa42cd45ed538379fcd3c2bf6616a",
+   "format": "Text"
+  },
+  {
+   "name": "__ia_thumb.jpg",
+   "source": "original",
+   "mtime": "1780535149",
+   "size": "12899",
+   "md5": "61d99d5108e07c3d05473aaac97f50f7",
+   "crc32": "6117a440",
+   "sha1": "0e1b94f9aa255f234d1c8a346b6731d37bdab88b",
+   "format": "Item Tile"
+  },
+  {
+   "name": "cover.jpg",
+   "source": "original",
+   "mtime": "1780535083",
+   "size": "609865",
+   "md5": "79b07e1027c92a0d4bca984adb048339",
+   "crc32": "9e6f37cc",
+   "sha1": "19103aa2fe3989da289b7cc957b3d688f700144b",
+   "format": "JPEG"
+  },
+  {
+   "name": "cover_thumb.jpg",
+   "source": "derivative",
+   "format": "JPEG Thumb",
+   "original": "cover.jpg",
+   "mtime": "1780538307",
+   "size": "9989",
+   "md5": "968de91866febe8ad8db861824c4bc41",
+   "crc32": "5c04bbfd",
+   "sha1": "220896c4f540480438035b5b47afd45a02054b53"
+  },
+  {
+   "name": "jamendo-638441_archive.torrent",
+   "source": "metadata",
+   "btih": "adf06f49814502ae00c6eac0280d84d1a34170fa",
+   "mtime": "1780541043",
+   "size": "3403",
+   "md5": "74fb9fd5c3521d19066e0915b37d1412",
+   "crc32": "05dd66db",
+   "sha1": "ebde4d9adc189d26cb94741419d9bff41f96bec7",
+   "format": "Archive BitTorrent"
+  },
+  {
+   "name": "jamendo-638441_files.xml",
+   "source": "original",
+   "format": "Metadata",
+   "md5": "135cae0a45fc80cd965ecc118f0bc8e9",
+   "summation": "md5"
+  },
+  {
+   "name": "jamendo-638441_meta.sqlite",
+   "source": "original",
+   "mtime": "1780535143",
+   "size": "32768",
+   "md5": "242cae23536cd0913100056c6160ac78",
+   "crc32": "1575e54e",
+   "sha1": "a28605a550368881639dae3dacbeafbd39fc9293",
+   "format": "Metadata"
+  },
+  {
+   "name": "jamendo-638441_meta.xml",
+   "source": "original",
+   "mtime": "1780541030",
+   "size": "1550",
+   "md5": "43cd1c34717fbc3194a45c9e00a66707",
+   "crc32": "47ec97cf",
+   "sha1": "430b6810e25658a75c05b32bebac721bb9dd1fa3",
+   "format": "Metadata"
+  },
+  {
+   "name": "playlist.m3u",
+   "source": "original",
+   "mtime": "1780535136",
+   "size": "113",
+   "md5": "7a36e4cfb67c12cb1708b824ceadee3b",
+   "crc32": "d04c044c",
+   "sha1": "a1a31997db2c425e4ee6e29ad8b091e2ea607f23",
+   "format": "M3U"
+  }
+ ],
+ "files_count": 14,
+ "item_last_updated": 1780541045,
+ "item_size": 2302302,
+ "metadata": {
+  "identifier": "jamendo-638441",
+  "mediatype": "audio"
+ },
+ "server": "ia801908.us.archive.org",
+ "uniq": 1594527528,
+ "workable_servers": [
+  "ia801908.us.archive.org",
+  "ia601908.us.archive.org"
+ ]
+}

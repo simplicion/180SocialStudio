@@ -1,0 +1,30 @@
+{
+  "name": "@workspace/video-engine-runtime",
+  "version": "1.0.0",
+  "description": "Production Video Engine Runtime & Headless CLI for 180 Workspace",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "bin": {
+    "video-engine": "./src/cli.ts"
+  },
+  "scripts": {
+    "build": "tsc --noEmit",
+    "cli": "tsx src/cli.ts"
+  },
+  "dependencies": {
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "@ffprobe-installer/ffprobe": "^2.1.2",
+    "@workspace/video-contracts": "workspace:*",
+    "@workspace/ai": "workspace:*",
+    "commander": "^12.0.0",
+    "fluent-ffmpeg": "^2.1.3",
+    "sharp": "^0.35.5",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/fluent-ffmpeg": "^2.1.27",
+    "@types/node": "^20.0.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.0.0"
+  }
+}

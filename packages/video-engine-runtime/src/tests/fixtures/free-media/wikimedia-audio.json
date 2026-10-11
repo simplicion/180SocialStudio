@@ -1,0 +1,307 @@
+{
+ "batchcomplete": true,
+ "continue": {
+  "gsroffset": 4,
+  "continue": "gsroffset||"
+ },
+ "query": {
+  "pages": [
+   {
+    "pageid": 79161523,
+    "ns": 6,
+    "title": "File:Blue Danube (Exercise and variations-collections in piano) JMC, Han.ogg",
+    "index": 3,
+    "imagerepository": "local",
+    "videoinfo": [
+     {
+      "size": 5236138,
+      "width": 0,
+      "height": 0,
+      "duration": 438.67863945578233,
+      "thumburl": "https://commons.wikimedia.org/w/resources/assets/file-type-icons/fileicon-ogg.png",
+      "thumbwidth": 640,
+      "thumbheight": 640,
+      "thumbattribs": [],
+      "url": "https://upload.wikimedia.org/wikipedia/commons/a/aa/Blue_Danube_%28Exercise_and_variations-collections_in_piano%29_JMC%2C_Han.ogg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+      "descriptionurl": "https://commons.wikimedia.org/wiki/File:Blue_Danube_(Exercise_and_variations-collections_in_piano)_JMC,_Han.ogg",
+      "descriptionshorturl": "https://commons.wikimedia.org/w/index.php?curid=79161523",
+      "extmetadata": {
+       "ObjectName": {
+        "value": "Blue Danube (Exercise and variations-collections in piano) JMC, Han",
+        "source": "mediawiki-metadata"
+       },
+       "Artist": {
+        "value": "<a href=\"//commons.wikimedia.org/wiki/User:Jason_M._C.,_Han\" title=\"User:Jason M. C., Han\">Jason M. C., Han</a>",
+        "source": "commons-desc-page"
+       },
+       "LicenseShortName": {
+        "value": "CC BY-SA 4.0",
+        "source": "commons-desc-page",
+        "hidden": ""
+       },
+       "UsageTerms": {
+        "value": "Creative Commons Attribution-Share Alike 4.0",
+        "source": "commons-desc-page"
+       },
+       "AttributionRequired": {
+        "value": "true",
+        "source": "commons-desc-page",
+        "hidden": ""
+       },
+       "LicenseUrl": {
+        "value": "https://creativecommons.org/licenses/by-sa/4.0",
+        "source": "commons-desc-page"
+       },
+       "License": {
+        "value": "cc-by-sa-4.0",
+        "source": "commons-templates",
+        "hidden": ""
+       }
+      },
+      "mime": "application/ogg",
+      "mediatype": "AUDIO",
+      "derivatives": [
+       {
+        "src": "https://upload.wikimedia.org/wikipedia/commons/a/aa/Blue_Danube_%28Exercise_and_variations-collections_in_piano%29_JMC%2C_Han.ogg?utm_source=commons.wikimedia.org&utm_campaign=api&utm_content=original",
+        "type": "audio/ogg; codecs=\"vorbis\"",
+        "width": 0,
+        "height": 0,
+        "bandwidth": 95489
+       },
+       {
+        "src": "https://upload.wikimedia.org/wikipedia/commons/transcoded/a/aa/Blue_Danube_%28Exercise_and_variations-collections_in_piano%29_JMC%2C_Han.ogg/Blue_Danube_%28Exercise_and_variations-collections_in_piano%29_JMC%2C_Han.ogg.mp3",
+        "type": "audio/mpeg",
+        "transcodekey": "mp3",
+        "width": 0,
+        "height": 0,
+        "bandwidth": 149376
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "pageid": 80317990,
+    "ns": 6,
+    "title": "File:Cole Porter’s “I Love You” - JMC, Han's Piano Edition.ogg",
+    "index": 2,
+    "imagerepository": "local",
+    "videoinfo": [
+     {
+      "size": 766004,
+      "width": 0,
+      "height": 0,
+      "duration": 65.1740589569161,
+      "thumburl": "https://commons.wikimedia.org/w/resources/assets/file-type-icons/fileicon-ogg.png",
+      "thumbwidth": 640,
+      "thumbheight": 640,
+      "thumbattribs": [],
+      "url": "https://upload.wikimedia.org/wikipedia/commons/4/42/Cole_Porter%E2%80%99s_%E2%80%9CI_Love_You%E2%80%9D_-_JMC%2C_Han%27s_Piano_Edition.ogg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+      "descriptionurl": "https://commons.wikimedia.org/wiki/File:Cole_Porter%E2%80%99s_%E2%80%9CI_Love_You%E2%80%9D_-_JMC,_Han%27s_Piano_Edition.ogg",
+      "descriptionshorturl": "https://commons.wikimedia.org/w/index.php?curid=80317990",
+      "extmetadata": {
+       "ObjectName": {
+        "value": "Cole Porter’s “I Love You” - JMC, Han's Piano Edition",
+        "source": "mediawiki-metadata"
+       },
+       "Artist": {
+        "value": "<a href=\"//commons.wikimedia.org/wiki/User:Jason_M._C.,_Han\" title=\"User:Jason M. C., Han\">Jason M. C., Han</a>",
+        "source": "commons-desc-page"
+       },
+       "LicenseShortName": {
+        "value": "CC BY-SA 4.0",
+        "source": "commons-desc-page",
+        "hidden": ""
+       },
+       "UsageTerms": {
+        "value": "Creative Commons Attribution-Share Alike 4.0",
+        "source": "commons-desc-page"
+       },
+       "AttributionRequired": {
+        "value": "true",
+        "source": "commons-desc-page",
+        "hidden": ""
+       },
+       "LicenseUrl": {
+        "value": "https://creativecommons.org/licenses/by-sa/4.0",
+        "source": "commons-desc-page"
+       },
+       "License": {
+        "value": "cc-by-sa-4.0",
+        "source": "commons-templates",
+        "hidden": ""
+       }
+      },
+      "mime": "application/ogg",
+      "mediatype": "AUDIO",
+      "derivatives": [
+       {
+        "src": "https://upload.wikimedia.org/wikipedia/commons/4/42/Cole_Porter%E2%80%99s_%E2%80%9CI_Love_You%E2%80%9D_-_JMC%2C_Han%27s_Piano_Edition.ogg?utm_source=commons.wikimedia.org&utm_campaign=api&utm_content=original",
+        "type": "audio/ogg; codecs=\"vorbis\"",
+        "width": 0,
+        "height": 0,
+        "bandwidth": 94025
+       },
+       {
+        "src": "https://upload.wikimedia.org/wikipedia/commons/transcoded/4/42/Cole_Porter%E2%80%99s_%E2%80%9CI_Love_You%E2%80%9D_-_JMC%2C_Han%27s_Piano_Edition.ogg/Cole_Porter%E2%80%99s_%E2%80%9CI_Love_You%E2%80%9D_-_JMC%2C_Han%27s_Piano_Edition.ogg.mp3",
+        "type": "audio/mpeg",
+        "transcodekey": "mp3",
+        "width": 0,
+        "height": 0,
+        "bandwidth": 155168
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "pageid": 81097371,
+    "ns": 6,
+    "title": "File:Outing- Chinese kids' Piano Song - Junjun's edition (selected from real piano lesson).ogg",
+    "index": 1,
+    "imagerepository": "local",
+    "videoinfo": [
+     {
+      "size": 962651,
+      "width": 0,
+      "height": 0,
+      "duration": 81.19582766439909,
+      "thumburl": "https://commons.wikimedia.org/w/resources/assets/file-type-icons/fileicon-ogg.png",
+      "thumbwidth": 640,
+      "thumbheight": 640,
+      "thumbattribs": [],
+      "url": "https://upload.wikimedia.org/wikipedia/commons/4/41/Outing-_Chinese_kids%27_Piano_Song_-_Junjun%27s_edition_%28selected_from_real_piano_lesson%29.ogg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+      "descriptionurl": "https://commons.wikimedia.org/wiki/File:Outing-_Chinese_kids%27_Piano_Song_-_Junjun%27s_edition_(selected_from_real_piano_lesson).ogg",
+      "descriptionshorturl": "https://commons.wikimedia.org/w/index.php?curid=81097371",
+      "extmetadata": {
+       "ObjectName": {
+        "value": "Outing- Chinese kids' Piano Song - Junjun's edition (selected from real piano lesson)",
+        "source": "mediawiki-metadata"
+       },
+       "Artist": {
+        "value": "<a href=\"//commons.wikimedia.org/wiki/User:Jason_M._C.,_Han\" title=\"User:Jason M. C., Han\">Jason M. C., Han</a>",
+        "source": "commons-desc-page"
+       },
+       "LicenseShortName": {
+        "value": "CC BY-SA 4.0",
+        "source": "commons-desc-page",
+        "hidden": ""
+       },
+       "UsageTerms": {
+        "value": "Creative Commons Attribution-Share Alike 4.0",
+        "source": "commons-desc-page"
+       },
+       "AttributionRequired": {
+        "value": "true",
+        "source": "commons-desc-page",
+        "hidden": ""
+       },
+       "LicenseUrl": {
+        "value": "https://creativecommons.org/licenses/by-sa/4.0",
+        "source": "commons-desc-page"
+       },
+       "License": {
+        "value": "cc-by-sa-4.0",
+        "source": "commons-templates",
+        "hidden": ""
+       }
+      },
+      "mime": "application/ogg",
+      "mediatype": "AUDIO",
+      "derivatives": [
+       {
+        "src": "https://upload.wikimedia.org/wikipedia/commons/4/41/Outing-_Chinese_kids%27_Piano_Song_-_Junjun%27s_edition_%28selected_from_real_piano_lesson%29.ogg?utm_source=commons.wikimedia.org&utm_campaign=api&utm_content=original",
+        "type": "audio/ogg; codecs=\"vorbis\"",
+        "width": 0,
+        "height": 0,
+        "bandwidth": 94847
+       },
+       {
+        "src": "https://upload.wikimedia.org/wikipedia/commons/transcoded/4/41/Outing-_Chinese_kids%27_Piano_Song_-_Junjun%27s_edition_%28selected_from_real_piano_lesson%29.ogg/Outing-_Chinese_kids%27_Piano_Song_-_Junjun%27s_edition_%28selected_from_real_piano_lesson%29.ogg.mp3",
+        "type": "audio/mpeg",
+        "transcodekey": "mp3",
+        "width": 0,
+        "height": 0,
+        "bandwidth": 152488
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "pageid": 81111479,
+    "ns": 6,
+    "title": "File:Listen to Mother's Old Story - Piano Pupil Yiwen, Cui.ogg",
+    "index": 4,
+    "imagerepository": "local",
+    "videoinfo": [
+     {
+      "size": 1803789,
+      "width": 0,
+      "height": 0,
+      "duration": 150.59301587301587,
+      "thumburl": "https://commons.wikimedia.org/w/resources/assets/file-type-icons/fileicon-ogg.png",
+      "thumbwidth": 640,
+      "thumbheight": 640,
+      "thumbattribs": [],
+      "url": "https://upload.wikimedia.org/wikipedia/commons/e/e4/Listen_to_Mother%27s_Old_Story_-_Piano_Pupil_Yiwen%2C_Cui.ogg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+      "descriptionurl": "https://commons.wikimedia.org/wiki/File:Listen_to_Mother%27s_Old_Story_-_Piano_Pupil_Yiwen,_Cui.ogg",
+      "descriptionshorturl": "https://commons.wikimedia.org/w/index.php?curid=81111479",
+      "extmetadata": {
+       "ObjectName": {
+        "value": "Listen to Mother's Old Story - Piano Pupil Yiwen, Cui",
+        "source": "mediawiki-metadata"
+       },
+       "Artist": {
+        "value": "<a href=\"//commons.wikimedia.org/wiki/User:Jason_M._C.,_Han\" title=\"User:Jason M. C., Han\">Jason M. C., Han</a>",
+        "source": "commons-desc-page"
+       },
+       "LicenseShortName": {
+        "value": "CC BY-SA 4.0",
+        "source": "commons-desc-page",
+        "hidden": ""
+       },
+       "UsageTerms": {
+        "value": "Creative Commons Attribution-Share Alike 4.0",
+        "source": "commons-desc-page"
+       },
+       "AttributionRequired": {
+        "value": "true",
+        "source": "commons-desc-page",
+        "hidden": ""
+       },
+       "LicenseUrl": {
+        "value": "https://creativecommons.org/licenses/by-sa/4.0",
+        "source": "commons-desc-page"
+       },
+       "License": {
+        "value": "cc-by-sa-4.0",
+        "source": "commons-templates",
+        "hidden": ""
+       }
+      },
+      "mime": "application/ogg",
+      "mediatype": "AUDIO",
+      "derivatives": [
+       {
+        "src": "https://upload.wikimedia.org/wikipedia/commons/e/e4/Listen_to_Mother%27s_Old_Story_-_Piano_Pupil_Yiwen%2C_Cui.ogg?utm_source=commons.wikimedia.org&utm_campaign=api&utm_content=original",
+        "type": "audio/ogg; codecs=\"vorbis\"",
+        "width": 0,
+        "height": 0,
+        "bandwidth": 95823
+       },
+       {
+        "src": "https://upload.wikimedia.org/wikipedia/commons/transcoded/e/e4/Listen_to_Mother%27s_Old_Story_-_Piano_Pupil_Yiwen%2C_Cui.ogg/Listen_to_Mother%27s_Old_Story_-_Piano_Pupil_Yiwen%2C_Cui.ogg.mp3",
+        "type": "audio/mpeg",
+        "transcodekey": "mp3",
+        "width": 0,
+        "height": 0,
+        "bandwidth": 151760
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ }
+}

@@ -1,0 +1,36 @@
+{
+  "name": "180-social-studio",
+  "version": "1.0.0",
+  "private": true,
+  "description": "180 Social Studio: Autonomous AI Video Director, Content Calendar & Multi-Platform Social Media Hub",
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "node scripts/dev-runner.js",
+    "dev:backend": "pnpm --filter @workspace/social-studio-backend dev",
+    "dev:mobile": "cd apps/social-studio-mobile && flutter run",
+    "db:generate": "pnpm --filter @workspace/db-social-studio generate",
+    "db:push": "pnpm --filter @workspace/db-social-studio db:push",
+    "db:migrate": "pnpm --filter @workspace/db-social-studio migrate:dev",
+    "test": "node scripts/test-all.mjs",
+    "test:director": "npx tsx packages/domains/ai/tests/video-director.test.ts",
+    "test:video-edge": "cd packages/video-engine-runtime && npx tsx src/tests/run-all-edge-tests.ts",
+    "lint": "turbo run lint",
+    "clean": "turbo run clean && rm -rf node_modules",
+    "format": "prettier --write \"**/*.{ts,tsx,dart,md}\""
+  },
+  "devDependencies": {
+    "cross-env": "^7.0.3",
+    "prettier": "latest",
+    "turbo": "latest",
+    "typescript": "^5.7.3"
+  },
+  "packageManager": "pnpm@9.0.0",
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": "9"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.22.0",
+    "prisma": "^5.22.0"
+  }
+}

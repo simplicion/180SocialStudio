@@ -1,0 +1,527 @@
+generator client {
+  provider        = "prisma-client-js"
+  engineType      = "library"
+  binaryTargets   = ["native", "rhel-openssl-3.0.x"]
+  previewFeatures = ["fullTextSearch"]
+  output          = "../generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 180 SOCIAL STUDIO CREATOR IDENTITY & WORKSPACE CONTEXT
+// ─────────────────────────────────────────────────────────────────────────────
+
+model User {
+  id                   String           @id @default(uuid())
+  email                String           @unique
+  name                 String
+  passwordHash         String?
+  avatarUrl            String?          @default("")
+  role                 String           @default("CREATOR") // "CREATOR", "ADMIN", "EDITOR"
+  companyId            String?
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+
+  company              Company?         @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  postsCreated         SocialPost[]     @relation("CreatorPosts")
+
+  @@index([email])
+  @@index([companyId])
+}
+
+model Company {
+  id                   String           @id @default(uuid())
+  name                 String
+  slug                 String?          @unique
+  logoUrl              String?
+  subscriptionTier     String           @default("pro")
+  creditsBalance       Int              @default(100)
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+
+  users                User[]
+  projects             Project[]
+  socialAccounts       SocialAccount[]
+  posts                SocialPost[]
+  calendars            ContentCalendar[]
+  brandVoices          BrandVoiceProfile[]
+  conversations        SocialConversation[]
+  engagementRules      SocialEngagementRule[]
+  evergreenSlots       EvergreenQueueSlot[]
+  reviewSessions       ClientReviewSession[]
+}
+
+model Project {
+  id                   String           @id @default(uuid())
+  companyId            String
+  name                 String
+  description          String?          @default("")
+  color                String?          @default("#6366F1")
+  avatarUrl            String?
+  startDate            DateTime?
+  endDate              DateTime?
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+
+  company              Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  socialAccounts       SocialAccount[]
+  posts                SocialPost[]
+  calendars            ContentCalendar[]
+  brandVoice           BrandVoiceProfile?
+  conversations        SocialConversation[]
+  engagementRules      SocialEngagementRule[]
+  evergreenSlots       EvergreenQueueSlot[]
+  reviewSessions       ClientReviewSession[]
+
+  @@index([companyId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 180 SOCIAL STUDIO CHANNELS & OAUTH VAULT
+// ─────────────────────────────────────────────────────────────────────────────
+
+model SocialAccount {
+  id                  String               @id @default(uuid())
+  companyId           String
+  projectId           String?
+  platform            String               // "instagram", "facebook", "linkedin", "tiktok", "youtube", "x", "pinterest"
+  platformAccountId   String
+  accountName         String
+  username            String
+  profileImageUrl     String?
+  scopes              String[]             @default([])
+  metadata            Json?                @default("{}")
+  capabilities        Json?                @default("{\"canPublishReels\":true,\"canPublishPosts\":true,\"canPublishStories\":false,\"canReadInbox\":true,\"canComment\":true}")
+  reauthRequired      Boolean              @default(false)
+  reauthReason        String?              @db.Text
+  lastHealthCheckAt   DateTime?
+  isActive            Boolean              @default(true)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  company             Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  project             Project?             @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  credential          SocialAccountCredential?
+  posts               SocialPost[]         @relation("AccountSocialPosts")
+  postVariants        SocialPostVariant[]  @relation("AccountPostVariants")
+  publishAttempts     SocialPublishAttempt[] @relation("AccountPublishAttempts")
+  conversations       SocialConversation[] @relation("AccountSocialConversations")
+  engagementRules     SocialEngagementRule[] @relation("AccountSocialEngagementRules")
+
+  @@unique([companyId, platform, platformAccountId])
+  @@index([companyId, projectId])
+  @@index([companyId, platform])
+}
+
+/// AES-256-GCM encrypted provider credentials vault
+model SocialAccountCredential {
+  id                    String        @id @default(uuid())
+  companyId             String
+  socialAccountId       String        @unique
+  accessTokenEnc        String        @db.Text
+  refreshTokenEnc       String?       @db.Text
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  tokenType             String?
+  scopes                String[]      @default([])
+  keyId                 String
+  lastRefreshedAt       DateTime?
+  refreshFailureCount   Int           @default(0)
+  lastRefreshError      String?       @db.Text
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  socialAccount         SocialAccount @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([accessTokenExpiresAt])
+  @@map("social_account_credentials")
+}
+
+model SocialOAuthSession {
+  id                  String        @id @default(uuid())
+  companyId           String
+  userId              String
+  projectId           String?
+  platform            String
+  client              String        @default("web") // "web", "mobile"
+  redirectUri         String        @db.Text
+  codeVerifierEnc     String?       @db.Text
+  candidatesEnc       String?       @db.Text
+  status              String        @default("pending") // "pending", "awaiting_selection", "completed", "failed"
+  error               String?       @db.Text
+  expiresAt           DateTime
+  consumedAt          DateTime?
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  @@index([companyId, userId])
+  @@index([expiresAt])
+  @@map("social_oauth_sessions")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SOCIAL POSTS & MULTI-PLATFORM VARIANTS
+// ─────────────────────────────────────────────────────────────────────────────
+
+model SocialPost {
+  id                  String                @id @default(uuid())
+  companyId           String
+  projectId           String?
+  calendarId          String?
+  calendarPieceId     String?               @unique
+  socialAccountId     String?
+  createdById         String?
+  title               String?
+  content             String                @db.Text
+  mediaUrls           String[]              @default([])
+  rawMediaUrls        String[]              @default([])
+  finalVideoUrl       String?
+  thumbnailUrl        String?
+  mediaType           String                @default("video") // "video", "image", "carousel", "document"
+  status              String                @default("draft") // "draft", "in_editing", "in_review", "approved", "scheduled", "publishing", "published", "failed"
+  scheduledFor        DateTime?
+  publishedAt         DateTime?
+  errorMessage        String?
+  publishedLinks      Json?                 @default("{}")
+  metadata            Json?                 @default("{}")
+  versionNumber       Int                   @default(1)
+  publishAttemptCount Int                   @default(0)
+  nextPublishAttemptAt DateTime?
+  publishLeaseUntil   DateTime?
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+
+  company             Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  project             Project?              @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  calendar            ContentCalendar?      @relation(fields: [calendarId], references: [id], onDelete: SetNull)
+  socialAccount       SocialAccount?        @relation("AccountSocialPosts", fields: [socialAccountId], references: [id], onDelete: SetNull)
+  createdBy           User?                 @relation("CreatorPosts", fields: [createdById], references: [id], onDelete: SetNull)
+  variants            SocialPostVariant[]
+  publishAttempts     SocialPublishAttempt[]
+  reviewComments      PostReviewComment[]
+  engagementRules     SocialEngagementRule[] @relation("PostSocialEngagementRules")
+
+  @@index([companyId, status])
+  @@index([companyId, projectId])
+  @@index([companyId, scheduledFor])
+  @@index([status, scheduledFor])
+}
+
+model SocialPostVariant {
+  id                  String               @id @default(uuid())
+  postId              String
+  platform            String               // "instagram", "facebook", "linkedin", "tiktok", "youtube", "x"
+  customContent       String               @db.Text
+  customMediaUrls     String[]             @default([])
+  firstComment        String?              @db.Text
+  platformMeta        Json?                @default("{}")
+  socialAccountId     String?
+  publishStatus       String               @default("pending") // "pending", "publishing", "processing", "published", "failed"
+  externalId          String?
+  externalUrl         String?              @db.Text
+  publishedAt         DateTime?
+  lastError           String?              @db.Text
+  lastErrorCode       String?
+  lastErrorRetryable  Boolean              @default(false)
+  attemptCount        Int                  @default(0)
+  publishLeaseUntil   DateTime?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  post                SocialPost           @relation(fields: [postId], references: [id], onDelete: Cascade)
+  socialAccount       SocialAccount?       @relation("AccountPostVariants", fields: [socialAccountId], references: [id], onDelete: SetNull)
+  publishAttempts     SocialPublishAttempt[]
+
+  @@index([postId, platform])
+  @@index([publishStatus, platform])
+}
+
+model SocialPublishAttempt {
+  id                  String             @id @default(uuid())
+  companyId           String
+  postId              String
+  variantId           String?
+  platform            String
+  socialAccountId     String?
+  trigger             String             // "manual", "retry", "scheduler"
+  attemptNumber       Int                @default(1)
+  status              String             @default("started") // "started", "succeeded", "processing", "failed"
+  externalId          String?
+  externalUrl         String?            @db.Text
+  errorCode           String?
+  errorMessage        String?            @db.Text
+  retryable           Boolean            @default(false)
+  startedAt           DateTime           @default(now())
+  finishedAt          DateTime?
+
+  post                SocialPost         @relation(fields: [postId], references: [id], onDelete: Cascade)
+  variant             SocialPostVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  socialAccount       SocialAccount?     @relation("AccountPublishAttempts", fields: [socialAccountId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, postId])
+  @@index([postId, platform])
+  @@map("social_publish_attempts")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BRAND VOICE & CONTENT CALENDAR
+// ─────────────────────────────────────────────────────────────────────────────
+
+model BrandVoiceProfile {
+  id                  String               @id @default(uuid())
+  companyId           String
+  projectId           String               @unique
+  tone                String               @default("Professional & Insightful")
+  targetAudience      String               @default("General Audience")
+  sampleViralPosts    String[]             @default([])
+  forbiddenWords      String[]             @default([])
+  defaultHashtags     String[]             @default([])
+  standardCtas        String[]             @default([])
+  metadata            Json?                @default("{}")
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  company             Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  project             Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+}
+
+model ContentCalendar {
+  id                    String                 @id @default(uuid())
+  companyId             String
+  clientId              String?
+  projectId             String?
+  name                  String
+  description           String                 @default("")
+  startDate             DateTime?
+  endDate               DateTime?
+  contentPillars        String[]               @default([])
+  tone                  String                 @default("")
+  engagementGoal        String                 @default("")
+  hashtagStrategy       String                 @default("")
+  competitors           String[]               @default([])
+  status                String                 @default("draft")
+  isTemplate            Boolean                @default(false)
+  templateName          String                 @default("")
+  totalPieces           Int                    @default(0)
+  reelsCount            Int                    @default(0)
+  postsCount            Int                    @default(0)
+  carouselsCount        Int                    @default(0)
+  metadata              Json?                  @default("{}")
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  company               Company                @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  project               Project?               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  calendarContentPieces CalendarContentPiece[]
+  posts                 SocialPost[]
+  aiRequestLogs         AiRequestLog[]
+
+  @@index([companyId, projectId])
+}
+
+model CalendarContentPiece {
+  id                                         String          @id @default(uuid())
+  calendarId                                 String
+  weekNumber                                 Int             @default(1)
+  dateScheduled                              DateTime?
+  date                                       DateTime        @default(now())
+  title                                      String          @default("")
+  platform                                   String          @default("")
+  contentType                                String          @default("")
+  pillar                                     String          @default("")
+  headline                                   String          @default("")
+  adCopyFull                                 String          @default("")
+  videoScriptOrHooks                         String          @default("")
+  callToAction                               String          @default("")
+  hashtagsResearched                         String          @default("")
+  visualAssetsBrief                          String          @default("")
+  engagementTargetEstimatedImpressions       String          @default("")
+  engagementTargetEstimatedEngagementPercent Float           @default(0)
+  engagementTargetEstimatedShares            String          @default("")
+  postingTimeTz                              String          @default("")
+  notes                                      String          @default("")
+  ideaNotes                                  String?         @db.Text
+  status                                     String          @default("ready")
+  viralScore                                 Float           @default(5)
+  performanceData                            Json?           @default("{}")
+  mediaUrls                                  String[]        @default([])
+  rawMediaUrls                               String[]        @default([])
+  finalVideoUrl                              String?
+  thumbnailUrl                               String?
+  createdAt                                  DateTime        @default(now())
+  updatedAt                                  DateTime        @updatedAt
+
+  calendar                                   ContentCalendar @relation(fields: [calendarId], references: [id], onDelete: Cascade)
+
+  @@index([calendarId])
+}
+
+model AiRequestLog {
+  id                   String           @id @default(uuid())
+  calendarId           String?
+  userId               String?
+  inputParameters      Json?            @default("{}")
+  aiResponseTimeMs     Int              @default(0)
+  totalPiecesGenerated Int              @default(0)
+  qualityScore         Float            @default(0)
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+  calendar             ContentCalendar? @relation(fields: [calendarId], references: [id], onDelete: Cascade)
+}
+
+model SavedBank {
+  id                  String               @id @default(uuid())
+  companyId           String
+  type                String
+  name                String
+  content             String               @db.Text
+  tags                String[]             @default([])
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  @@index([companyId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INBOX, REVIEWS & ENGAGEMENT
+// ─────────────────────────────────────────────────────────────────────────────
+
+model SocialConversation {
+  id                  String               @id @default(uuid())
+  companyId           String
+  projectId           String?
+  socialAccountId     String
+  platform            String
+  platformThreadId    String
+  participantName     String
+  participantHandle   String
+  participantAvatar   String?
+  lastMessageSnippet  String?              @db.Text
+  lastMessageAt       DateTime             @default(now())
+  isRead              Boolean              @default(false)
+  aiAgentActive       Boolean              @default(false)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  company             Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  project             Project?             @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  socialAccount       SocialAccount        @relation("AccountSocialConversations", fields: [socialAccountId], references: [id], onDelete: Cascade)
+  messages            SocialMessage[]
+
+  @@unique([companyId, platform, platformThreadId])
+  @@index([companyId, projectId])
+}
+
+model SocialMessage {
+  id                  String               @id @default(uuid())
+  conversationId      String
+  senderType          String               // "participant", "agent", "ai_bot"
+  content             String               @db.Text
+  platformMessageId   String?
+  createdAt           DateTime             @default(now())
+
+  conversation        SocialConversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+}
+
+model SocialEngagementRule {
+  id                      String                  @id @default(uuid())
+  companyId               String
+  projectId               String?
+  socialAccountId         String?
+  postId                  String?
+  name                    String
+  status                  String                  @default("active") // "active", "paused"
+  triggerType             String                  // "comment_keyword", "comment_any", "dm_inbound"
+  triggerKeywords         String[]                @default([])
+  actionAutoLike          Boolean                 @default(true)
+  actionPublicReplies     String[]                @default([])
+  actionSendDm            Boolean                 @default(true)
+  actionDmTemplate        String                  @db.Text
+  createdAt               DateTime                @default(now())
+  updatedAt               DateTime                @updatedAt
+
+  company                 Company                 @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  project                 Project?                @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  socialAccount           SocialAccount?          @relation("AccountSocialEngagementRules", fields: [socialAccountId], references: [id], onDelete: SetNull)
+  socialPost              SocialPost?             @relation("PostSocialEngagementRules", fields: [postId], references: [id], onDelete: SetNull)
+  logs                    SocialInteractionLog[]
+
+  @@index([companyId, status])
+}
+
+model SocialInteractionLog {
+  id                      String                  @id @default(uuid())
+  companyId               String
+  ruleId                  String
+  socialAccountId         String
+  platform                String
+  recipientHandle         String
+  status                  String                  // "success", "failed"
+  commentLiked            Boolean                 @default(false)
+  publicReplySent         String?                 @db.Text
+  dmSent                  String?                 @db.Text
+  createdAt               DateTime                @default(now())
+
+  rule                    SocialEngagementRule    @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, ruleId])
+}
+
+model EvergreenQueueSlot {
+  id                  String               @id @default(uuid())
+  companyId           String
+  projectId           String
+  dayOfWeek           Int                  // 0 (Sun) to 6 (Sat)
+  timeSlotUtc         String               // "14:30"
+  category            String
+  isActive            Boolean              @default(true)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  company             Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  project             Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, projectId])
+}
+
+model ClientReviewSession {
+  id                  String               @id @default(uuid())
+  companyId           String
+  projectId           String?
+  token               String               @unique @default(uuid())
+  name                String
+  status              String               @default("pending")
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  company             Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  project             Project?             @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  comments            PostReviewComment[]
+
+  @@index([companyId])
+  @@index([token])
+}
+
+model PostReviewComment {
+  id                  String               @id @default(uuid())
+  postId              String
+  sessionId           String?
+  authorName          String
+  commentText         String               @db.Text
+  resolved            Boolean              @default(false)
+  createdAt           DateTime             @default(now())
+
+  post                SocialPost           @relation(fields: [postId], references: [id], onDelete: Cascade)
+  session             ClientReviewSession? @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+}

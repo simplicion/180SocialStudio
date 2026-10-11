@@ -1,0 +1,107 @@
+{
+ "alternate_locations": {
+  "servers": [
+   {
+    "server": "dn710109.ca.archive.org",
+    "dir": "/0/items/sunset-ocean-waves"
+   }
+  ],
+  "workable": [
+   {
+    "server": "dn710109.ca.archive.org",
+    "dir": "/0/items/sunset-ocean-waves"
+   }
+  ]
+ },
+ "created": 1790392253,
+ "d1": "dn600305.us.archive.org",
+ "dir": "/0/items/sunset-ocean-waves",
+ "files": [
+  {
+   "name": "Sunset Ocean Waves.mp4",
+   "source": "original",
+   "mtime": "1655669716",
+   "size": "7322139",
+   "md5": "c602a22bcfc1194e12b1987de254b4c5",
+   "crc32": "b1ecc5d3",
+   "sha1": "d2af7b0aa2584ef0ccdef539c495bb20f7e19ad5",
+   "format": "MPEG4",
+   "length": "113.8",
+   "width": "640",
+   "height": "360"
+  },
+  {
+   "name": "__ia_thumb.jpg",
+   "source": "original",
+   "mtime": "1655669785",
+   "size": "6728",
+   "md5": "4e8c35c1435a2479763aa13bfc7101f8",
+   "crc32": "04d43350",
+   "sha1": "bba71906cd3fc0d6334bb00f42e73da39d140ab1",
+   "format": "Item Tile",
+   "rotation": "0"
+  },
+  {
+   "name": "sunset-ocean-waves_archive.torrent",
+   "source": "metadata",
+   "btih": "6624e38236230cdc8578f3e648e368069745b83e",
+   "mtime": "1655669864",
+   "size": "2127",
+   "md5": "32f909ba50ecbc3878edaa0d1d94020b",
+   "crc32": "03754fe9",
+   "sha1": "64fe51c0ffb676b277c3c3e3b5fb8ae480cdd455",
+   "format": "Archive BitTorrent"
+  },
+  {
+   "name": "sunset-ocean-waves_files.xml",
+   "source": "original",
+   "format": "Metadata",
+   "md5": "445998fbf4e83d1ebf5a8175c047466a",
+   "summation": "md5"
+  },
+  {
+   "name": "sunset-ocean-waves_meta.sqlite",
+   "source": "original",
+   "mtime": "1655669737",
+   "size": "28672",
+   "md5": "754436d41c4c7eab93687b1deb929e02",
+   "crc32": "6d401682",
+   "sha1": "e8780ab78e20973b13daac2afec8d5207391aa8b",
+   "format": "Metadata"
+  },
+  {
+   "name": "sunset-ocean-waves_meta.xml",
+   "source": "original",
+   "mtime": "1781078424",
+   "size": "1950",
+   "md5": "a73c3942aa3767947e3556c179b9a1b6",
+   "crc32": "bf07f9ba",
+   "sha1": "36d1e8f906b729199c6b7345d036a1b775dfe411",
+   "format": "Metadata"
+  }
+ ],
+ "files_count": 26,
+ "item_last_updated": 1781078426,
+ "item_size": 8079959,
+ "metadata": {
+  "identifier": "sunset-ocean-waves",
+  "mediatype": "movies"
+ },
+ "server": "dn600305.us.archive.org",
+ "simplelists": {
+  "solo_manifest": {
+   "solo_manifest_dn600305": {
+    "sys_changed_by": {
+     "source": "task",
+     "task_id": "5428331364"
+    },
+    "sys_last_changed": "2026-06-10 08:00:35.297981"
+   }
+  }
+ },
+ "solo": true,
+ "uniq": 1343476510,
+ "workable_servers": [
+  "dn600305.us.archive.org"
+ ]
+}

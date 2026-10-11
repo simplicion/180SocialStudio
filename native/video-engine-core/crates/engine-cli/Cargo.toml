@@ -1,0 +1,21 @@
+[package]
+name = "video-engine-cli"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "video-engine-cli"
+path = "src/main.rs"
+
+[dependencies]
+engine-timeline = { path = "../engine-timeline" }
+engine-core = { path = "../engine-core" }
+engine-media = { path = "../engine-media" }
+engine-render = { path = "../engine-render" }
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+thiserror.workspace = true
+env_logger.workspace = true
+log.workspace = true

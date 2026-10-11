@@ -1,0 +1,11 @@
+[package]
+name = "engine-media"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+engine-timeline = { path = "../engine-timeline" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true

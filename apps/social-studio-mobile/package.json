@@ -1,0 +1,14 @@
+{
+  "name": "social-studio-mobile",
+  "version": "1.0.0",
+  "private": true,
+  "description": "180 Social Studio - Flutter Mobile App",
+  "scripts": {
+    "dev": "flutter run -d chrome --web-port 3007",
+    "dev:mobile": "flutter run",
+    "dev:android": "flutter run -d android",
+    "dev:ios": "flutter run -d ios",
+    "analyze": "flutter analyze",
+    "test": "flutter test"
+  }
+}

@@ -1,0 +1,118 @@
+# dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+
+# testing
+coverage/
+.nyc_output/
+
+# build outputs
+dist/
+build/
+.next/
+.open-next/
+out/
+*.apk
+*.aab
+
+# turborepo
+.turbo/
+
+# environment variables
+.env
+.env.*
+*.env
+prod.env
+packages/keys/
+keys/
+oauth-rsa-key.json
+*-key.json
+*.key
+*.cert
+*.crt
+*.pfx
+!.env.example
+!**/.env.example
+*service-account*.json
+google-services.json
+*test-key*.json
+
+# logs and debug
+*.log
+out.txt
+
+# misc
+.DS_Store
+*.pem
+eslint-report.json
+
+# IDEs and Editors
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Local DB
+mongodb-local/
+instaura.db
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+
+# Flutter/Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+ios/Flutter/Generated.xcconfig
+scripts/config.yaml
+
+apps/backend/debug-module-guard.txt
+apps/backend/perf-analysis.jsonl
+apps/worker/perf-analysis.jsonl
+scratch/
+
+# Media & Generated Video/Audio
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.webm
+*.wav
+*.mp3
+*.aac
+*.m4a
+*.flac
+.*_tmp/
+.temp_*/
+.vproj_temp/
+.vproj_cache/
+temp_brand_test_*/
+.director_memory/
+temp_zero_footage_test_*/
+ssm_out.json
+
+# Desktop app build outputs
+apps/desktop-app/src-tauri/target/
+apps/desktop-app/src-tauri/gen/
+apps/desktop-app/src-tauri/binaries/
+apps/desktop-app/dist/
+
+# Android releases
+*.apk
+*.aab
+generated/
+
+
+*.env
+.recovered_chats/
+

@@ -1,0 +1,279 @@
+{
+ "batchcomplete": true,
+ "continue": {
+  "gsroffset": 4,
+  "continue": "gsroffset||"
+ },
+ "query": {
+  "pages": [
+   {
+    "pageid": 77978517,
+    "ns": 6,
+    "title": "File:Sunrise over Benmore Range, New Zealand.jpg",
+    "index": 1,
+    "imagerepository": "local",
+    "videoinfo": [
+     {
+      "size": 10159496,
+      "width": 11647,
+      "height": 2412,
+      "thumburl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a6/Sunrise_over_Benmore_Range%2C_New_Zealand.jpg/960px-Sunrise_over_Benmore_Range%2C_New_Zealand.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "thumbwidth": 640,
+      "thumbheight": 133,
+      "responsiveUrls": {
+       "2": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a6/Sunrise_over_Benmore_Range%2C_New_Zealand.jpg/1280px-Sunrise_over_Benmore_Range%2C_New_Zealand.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail"
+      },
+      "thumbattribs": {
+       "src": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a6/Sunrise_over_Benmore_Range%2C_New_Zealand.jpg/960px-Sunrise_over_Benmore_Range%2C_New_Zealand.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+       "decoding": "async",
+       "loading": "lazy",
+       "width": 640,
+       "height": 133,
+       "srcset": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a6/Sunrise_over_Benmore_Range%2C_New_Zealand.jpg/1280px-Sunrise_over_Benmore_Range%2C_New_Zealand.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail 2x"
+      },
+      "url": "https://upload.wikimedia.org/wikipedia/commons/a/a6/Sunrise_over_Benmore_Range%2C_New_Zealand.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+      "descriptionurl": "https://commons.wikimedia.org/wiki/File:Sunrise_over_Benmore_Range,_New_Zealand.jpg",
+      "descriptionshorturl": "https://commons.wikimedia.org/w/index.php?curid=77978517",
+      "extmetadata": {
+       "ObjectName": {
+        "value": "Sunrise over Benmore Range, New Zealand",
+        "source": "mediawiki-metadata"
+       },
+       "Artist": {
+        "value": "<a href=\"//commons.wikimedia.org/wiki/User:Podzemnik\" title=\"User:Podzemnik\">Michal Klajban</a>",
+        "source": "commons-desc-page"
+       },
+       "LicenseShortName": {
+        "value": "CC BY-SA 4.0",
+        "source": "commons-desc-page",
+        "hidden": ""
+       },
+       "UsageTerms": {
+        "value": "Creative Commons Attribution-Share Alike 4.0",
+        "source": "commons-desc-page"
+       },
+       "AttributionRequired": {
+        "value": "true",
+        "source": "commons-desc-page",
+        "hidden": ""
+       },
+       "LicenseUrl": {
+        "value": "https://creativecommons.org/licenses/by-sa/4.0",
+        "source": "commons-desc-page"
+       },
+       "License": {
+        "value": "cc-by-sa-4.0",
+        "source": "commons-templates",
+        "hidden": ""
+       }
+      },
+      "mime": "image/jpeg",
+      "mediatype": "BITMAP",
+      "derivatives": []
+     }
+    ]
+   },
+   {
+    "pageid": 92721148,
+    "ns": 6,
+    "title": "File:Wooden walkway leading to a hut with straw roof in front of karst mountains with mist, at sunrise, Vang Vieng, Laos.jpg",
+    "index": 4,
+    "imagerepository": "local",
+    "videoinfo": [
+     {
+      "size": 13833291,
+      "width": 6253,
+      "height": 4169,
+      "thumburl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/d/d0/Wooden_walkway_leading_to_a_hut_with_straw_roof_in_front_of_karst_mountains_with_mist%2C_at_sunrise%2C_Vang_Vieng%2C_Laos.jpg/960px-Wooden_walkway_leading_to_a_hut_with_straw_roof_in_front_of_karst_mountains_with_mist%2C_at_sunrise%2C_Vang_Vieng%2C_Laos.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "thumbwidth": 640,
+      "thumbheight": 427,
+      "responsiveUrls": {
+       "2": "https://thumb.wikimedia.org/wikipedia/commons/thumb/d/d0/Wooden_walkway_leading_to_a_hut_with_straw_roof_in_front_of_karst_mountains_with_mist%2C_at_sunrise%2C_Vang_Vieng%2C_Laos.jpg/1280px-Wooden_walkway_leading_to_a_hut_with_straw_roof_in_front_of_karst_mountains_with_mist%2C_at_sunrise%2C_Vang_Vieng%2C_Laos.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail"
+      },
+      "thumbattribs": {
+       "src": "https://thumb.wikimedia.org/wikipedia/commons/thumb/d/d0/Wooden_walkway_leading_to_a_hut_with_straw_roof_in_front_of_karst_mountains_with_mist%2C_at_sunrise%2C_Vang_Vieng%2C_Laos.jpg/960px-Wooden_walkway_leading_to_a_hut_with_straw_roof_in_front_of_karst_mountains_with_mist%2C_at_sunrise%2C_Vang_Vieng%2C_Laos.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+       "decoding": "async",
+       "loading": "lazy",
+       "width": 640,
+       "height": 427,
+       "srcset": "https://thumb.wikimedia.org/wikipedia/commons/thumb/d/d0/Wooden_walkway_leading_to_a_hut_with_straw_roof_in_front_of_karst_mountains_with_mist%2C_at_sunrise%2C_Vang_Vieng%2C_Laos.jpg/1280px-Wooden_walkway_leading_to_a_hut_with_straw_roof_in_front_of_karst_mountains_with_mist%2C_at_sunrise%2C_Vang_Vieng%2C_Laos.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail 2x"
+      },
+      "url": "https://upload.wikimedia.org/wikipedia/commons/d/d0/Wooden_walkway_leading_to_a_hut_with_straw_roof_in_front_of_karst_mountains_with_mist%2C_at_sunrise%2C_Vang_Vieng%2C_Laos.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+      "descriptionurl": "https://commons.wikimedia.org/wiki/File:Wooden_walkway_leading_to_a_hut_with_straw_roof_in_front_of_karst_mountains_with_mist,_at_sunrise,_Vang_Vieng,_Laos.jpg",
+      "descriptionshorturl": "https://commons.wikimedia.org/w/index.php?curid=92721148",
+      "extmetadata": {
+       "ObjectName": {
+        "value": "Wooden walkway leading to a hut with straw roof in front of karst mountains with mist, at sunrise, Vang Vieng, Laos",
+        "source": "mediawiki-metadata"
+       },
+       "Artist": {
+        "value": "<a href=\"//commons.wikimedia.org/wiki/User:Basile_Morin\" title=\"User:Basile Morin\">Basile Morin</a>",
+        "source": "commons-desc-page"
+       },
+       "LicenseShortName": {
+        "value": "CC BY-SA 4.0",
+        "source": "commons-desc-page",
+        "hidden": ""
+       },
+       "UsageTerms": {
+        "value": "Creative Commons Attribution-Share Alike 4.0",
+        "source": "commons-desc-page"
+       },
+       "AttributionRequired": {
+        "value": "true",
+        "source": "commons-desc-page",
+        "hidden": ""
+       },
+       "LicenseUrl": {
+        "value": "https://creativecommons.org/licenses/by-sa/4.0",
+        "source": "commons-desc-page"
+       },
+       "License": {
+        "value": "cc-by-sa-4.0",
+        "source": "commons-templates",
+        "hidden": ""
+       }
+      },
+      "mime": "image/jpeg",
+      "mediatype": "BITMAP",
+      "derivatives": []
+     }
+    ]
+   },
+   {
+    "pageid": 100018646,
+    "ns": 6,
+    "title": "File:Karst mountains colorful clouds and mist at sunrise from the top of Mount Nam Xay Vang Vieng Laos.jpg",
+    "index": 3,
+    "imagerepository": "local",
+    "videoinfo": [
+     {
+      "size": 10091585,
+      "width": 6720,
+      "height": 4480,
+      "thumburl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/cd/Karst_mountains_colorful_clouds_and_mist_at_sunrise_from_the_top_of_Mount_Nam_Xay_Vang_Vieng_Laos.jpg/960px-Karst_mountains_colorful_clouds_and_mist_at_sunrise_from_the_top_of_Mount_Nam_Xay_Vang_Vieng_Laos.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "thumbwidth": 640,
+      "thumbheight": 427,
+      "responsiveUrls": {
+       "2": "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/cd/Karst_mountains_colorful_clouds_and_mist_at_sunrise_from_the_top_of_Mount_Nam_Xay_Vang_Vieng_Laos.jpg/1280px-Karst_mountains_colorful_clouds_and_mist_at_sunrise_from_the_top_of_Mount_Nam_Xay_Vang_Vieng_Laos.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail"
+      },
+      "thumbattribs": {
+       "src": "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/cd/Karst_mountains_colorful_clouds_and_mist_at_sunrise_from_the_top_of_Mount_Nam_Xay_Vang_Vieng_Laos.jpg/960px-Karst_mountains_colorful_clouds_and_mist_at_sunrise_from_the_top_of_Mount_Nam_Xay_Vang_Vieng_Laos.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+       "decoding": "async",
+       "loading": "lazy",
+       "width": 640,
+       "height": 427,
+       "srcset": "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/cd/Karst_mountains_colorful_clouds_and_mist_at_sunrise_from_the_top_of_Mount_Nam_Xay_Vang_Vieng_Laos.jpg/1280px-Karst_mountains_colorful_clouds_and_mist_at_sunrise_from_the_top_of_Mount_Nam_Xay_Vang_Vieng_Laos.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail 2x"
+      },
+      "url": "https://upload.wikimedia.org/wikipedia/commons/c/cd/Karst_mountains_colorful_clouds_and_mist_at_sunrise_from_the_top_of_Mount_Nam_Xay_Vang_Vieng_Laos.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+      "descriptionurl": "https://commons.wikimedia.org/wiki/File:Karst_mountains_colorful_clouds_and_mist_at_sunrise_from_the_top_of_Mount_Nam_Xay_Vang_Vieng_Laos.jpg",
+      "descriptionshorturl": "https://commons.wikimedia.org/w/index.php?curid=100018646",
+      "extmetadata": {
+       "ObjectName": {
+        "value": "Karst mountains colorful clouds and mist at sunrise from the top of Mount Nam Xay Vang Vieng Laos",
+        "source": "mediawiki-metadata"
+       },
+       "Artist": {
+        "value": "<a href=\"//commons.wikimedia.org/wiki/User:Basile_Morin\" title=\"User:Basile Morin\">Basile Morin</a>",
+        "source": "commons-desc-page"
+       },
+       "LicenseShortName": {
+        "value": "CC BY-SA 4.0",
+        "source": "commons-desc-page",
+        "hidden": ""
+       },
+       "UsageTerms": {
+        "value": "Creative Commons Attribution-Share Alike 4.0",
+        "source": "commons-desc-page"
+       },
+       "AttributionRequired": {
+        "value": "true",
+        "source": "commons-desc-page",
+        "hidden": ""
+       },
+       "LicenseUrl": {
+        "value": "https://creativecommons.org/licenses/by-sa/4.0",
+        "source": "commons-desc-page"
+       },
+       "License": {
+        "value": "cc-by-sa-4.0",
+        "source": "commons-templates",
+        "hidden": ""
+       }
+      },
+      "mime": "image/jpeg",
+      "mediatype": "BITMAP",
+      "derivatives": []
+     }
+    ]
+   },
+   {
+    "pageid": 141591569,
+    "ns": 6,
+    "title": "File:Mountains clouds Mekong and dwellings from Mount Phou Si at sunrise in Luang Prabang Laos.jpg",
+    "index": 2,
+    "imagerepository": "local",
+    "videoinfo": [
+     {
+      "size": 7599090,
+      "width": 6484,
+      "height": 3647,
+      "thumburl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a8/Mountains_clouds_Mekong_and_dwellings_from_Mount_Phou_Si_at_sunrise_in_Luang_Prabang_Laos.jpg/960px-Mountains_clouds_Mekong_and_dwellings_from_Mount_Phou_Si_at_sunrise_in_Luang_Prabang_Laos.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "thumbwidth": 640,
+      "thumbheight": 360,
+      "responsiveUrls": {
+       "2": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a8/Mountains_clouds_Mekong_and_dwellings_from_Mount_Phou_Si_at_sunrise_in_Luang_Prabang_Laos.jpg/1280px-Mountains_clouds_Mekong_and_dwellings_from_Mount_Phou_Si_at_sunrise_in_Luang_Prabang_Laos.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail"
+      },
+      "thumbattribs": {
+       "src": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a8/Mountains_clouds_Mekong_and_dwellings_from_Mount_Phou_Si_at_sunrise_in_Luang_Prabang_Laos.jpg/960px-Mountains_clouds_Mekong_and_dwellings_from_Mount_Phou_Si_at_sunrise_in_Luang_Prabang_Laos.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+       "decoding": "async",
+       "loading": "lazy",
+       "width": 640,
+       "height": 360,
+       "srcset": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a8/Mountains_clouds_Mekong_and_dwellings_from_Mount_Phou_Si_at_sunrise_in_Luang_Prabang_Laos.jpg/1280px-Mountains_clouds_Mekong_and_dwellings_from_Mount_Phou_Si_at_sunrise_in_Luang_Prabang_Laos.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail 2x"
+      },
+      "url": "https://upload.wikimedia.org/wikipedia/commons/a/a8/Mountains_clouds_Mekong_and_dwellings_from_Mount_Phou_Si_at_sunrise_in_Luang_Prabang_Laos.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+      "descriptionurl": "https://commons.wikimedia.org/wiki/File:Mountains_clouds_Mekong_and_dwellings_from_Mount_Phou_Si_at_sunrise_in_Luang_Prabang_Laos.jpg",
+      "descriptionshorturl": "https://commons.wikimedia.org/w/index.php?curid=141591569",
+      "extmetadata": {
+       "ObjectName": {
+        "value": "Mountains clouds Mekong and dwellings from Mount Phou Si at sunrise in Luang Prabang Laos",
+        "source": "mediawiki-metadata"
+       },
+       "Artist": {
+        "value": "<a href=\"//commons.wikimedia.org/wiki/User:Basile_Morin\" title=\"User:Basile Morin\">Basile Morin</a>",
+        "source": "commons-desc-page"
+       },
+       "LicenseShortName": {
+        "value": "CC BY-SA 4.0",
+        "source": "commons-desc-page",
+        "hidden": ""
+       },
+       "UsageTerms": {
+        "value": "Creative Commons Attribution-Share Alike 4.0",
+        "source": "commons-desc-page"
+       },
+       "AttributionRequired": {
+        "value": "true",
+        "source": "commons-desc-page",
+        "hidden": ""
+       },
+       "LicenseUrl": {
+        "value": "https://creativecommons.org/licenses/by-sa/4.0",
+        "source": "commons-desc-page"
+       },
+       "License": {
+        "value": "cc-by-sa-4.0",
+        "source": "commons-templates",
+        "hidden": ""
+       }
+      },
+      "mime": "image/jpeg",
+      "mediatype": "BITMAP",
+      "derivatives": []
+     }
+    ]
+   }
+  ]
+ }
+}

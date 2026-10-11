@@ -1,0 +1,13 @@
+import { createTaskTool, batchCreateTasksTool, createProjectTool, getProjectHealthTool, getMyTasksTool, updateTaskStatusTool, deleteProjectTool, deleteTaskTool, createMilestoneTool, logProjectTimesheetTool, logMyTimesheetTool } from '../providers/projects.provider';
+import { getCrmMetricsTool, createLeadTool, assignLeadTool, convertLeadToClientTool, deleteLeadTool, createCrmClientTool, checkProductPriceTool, createSalesOrderTool } from '../providers/crm.provider';
+import { getHrWorkforceSummaryTool, addEmployeeTool, hireEmployeeTool, terminateEmployeeTool, manageLeaveRequestTool, submitMyLeaveRequestTool, checkMyLeaveBalanceTool } from '../providers/hrms.provider';
+import { getFinancialSummaryTool, createInvoiceTool, logExpenseTransactionTool, getPayrollAndSalarySummaryTool } from '../providers/finance.provider';
+import { generateFormAstTool, deleteFormTool, getFormSubmissionsTool } from '../providers/forms.provider';
+import { generateDocumentAstTool, deleteDocumentTool, sendDocumentToClientTool, searchKnowledgeBaseTool, searchBusinessKnowledgeTool } from '../providers/documents.provider';
+import { createWebsiteTool, scheduleSocialPostTool, createSupportTicketTool, featureNavigationGuideTool } from '../providers/websites.provider';
+import { listAgentRequestsTool, processAgentRequestTool, scheduleMeetingTool, bookAppointmentTool, sendSmsConfirmationTool } from '../providers/voiceforce.provider';
+export { createTaskTool, batchCreateTasksTool, createProjectTool, getProjectHealthTool, getMyTasksTool, updateTaskStatusTool, deleteProjectTool, deleteTaskTool, createMilestoneTool, logProjectTimesheetTool, logMyTimesheetTool, getCrmMetricsTool, createLeadTool, assignLeadTool, convertLeadToClientTool, deleteLeadTool, createCrmClientTool, checkProductPriceTool, createSalesOrderTool, getHrWorkforceSummaryTool, addEmployeeTool, hireEmployeeTool, terminateEmployeeTool, manageLeaveRequestTool, submitMyLeaveRequestTool, checkMyLeaveBalanceTool, getFinancialSummaryTool, createInvoiceTool, logExpenseTransactionTool, getPayrollAndSalarySummaryTool, generateFormAstTool, deleteFormTool, getFormSubmissionsTool, generateDocumentAstTool, deleteDocumentTool, sendDocumentToClientTool, searchKnowledgeBaseTool, searchBusinessKnowledgeTool, createWebsiteTool, scheduleSocialPostTool, createSupportTicketTool, featureNavigationGuideTool, listAgentRequestsTool, processAgentRequestTool, scheduleMeetingTool, bookAppointmentTool, sendSmsConfirmationTool };
+/**
+ * Registers all built-in tools into the singleton AI Tool Registry
+ */
+export declare function registerAllBuiltInTools(targetRegistry?: any): void;
