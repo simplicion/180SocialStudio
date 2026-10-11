@@ -15,7 +15,7 @@ class AppConfig {
     return 'localhost';
   }
 
-  /// Origin of the 180 Workspace backend (no trailing slash, no `/api`).
+  /// Origin of the 180 Social Studio backend (no trailing slash, no `/api`).
   static String get apiBaseUrl {
     const fromEnv = String.fromEnvironment('API_BASE_URL');
     if (fromEnv.isNotEmpty) return fromEnv;
@@ -25,10 +25,7 @@ class AppConfig {
         return 'http://$host:4005';
       }
     }
-    if (kDebugMode) {
-      return 'http://$_localHost:4005';
-    }
-    return 'https://api.180workspace.com';
+    return 'http://18.207.84.197:4005';
   }
 
   /// Origin of the web app. Used to build shareable links such as `/review/<token>`.

@@ -8,6 +8,7 @@
     "generate": "prisma generate",
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push",
+    "db:push": "prisma db push",
     "build": "prisma generate"
   },
   "dependencies": {
