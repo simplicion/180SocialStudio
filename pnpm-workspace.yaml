@@ -1,5 +1,4 @@
 packages:
   - "apps/*"
-  - "apps/media-editor-web/remotion-editor"
   - "packages/*"
   - "packages/domains/*"
