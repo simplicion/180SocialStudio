@@ -1537,7 +1537,7 @@ class _DryRunTesterSheetState extends ConsumerState<_DryRunTesterSheet> {
                   Wrap(
                     spacing: 8,
                     children: [
-                      for (final p in ['instagram', 'youtube', 'linkedin', 'threads', 'x'])
+                      for (final p in ['instagram', 'facebook', 'youtube', 'linkedin'])
                         ChoiceChip(
                           label: Text(p[0].toUpperCase() + p.substring(1)),
                           selected: _selectedPlatform == p,

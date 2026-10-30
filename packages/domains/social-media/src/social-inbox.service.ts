@@ -5,7 +5,7 @@ import { SAFE_ACCOUNT_SELECT, SocialDomainError, notFound, requireCompanyId } fr
 
 export interface IngestMessageDTO {
     socialAccountId: string;
-    platform: 'instagram' | 'facebook' | 'linkedin' | 'tiktok' | 'youtube' | 'threads';
+    platform: 'instagram' | 'facebook' | 'linkedin';
     platformThreadId: string;
     participantName: string;
     participantHandle: string;
@@ -247,10 +247,8 @@ Return ONLY JSON: [{"tone": "short tone label", "text": "reply"}]`;
         const { SocialTokenVault } = require('./publishing/token-vault');
         const { metaGraphUrl } = require('./publishing/config');
         const { providerFetch, readBody } = require('./publishing/http');
-        const { ThreadsAdapter } = require('./adapters/threads.adapter');
-        const { LinkedInAdapter } = require('./adapters/linkedin.adapter');
-        const { YouTubeAdapter } = require('./adapters/youtube.adapter');
-        const { AiEngagementAgent } = require('./engagement/ai-engagement-agent');
+                const { LinkedInAdapter } = require('./adapters/linkedin.adapter');
+                const { AiEngagementAgent } = require('./engagement/ai-engagement-agent');
 
         const where: any = { companyId, isActive: true };
         if (projectId) {
@@ -726,74 +724,6 @@ Return ONLY JSON: [{"tone": "short tone label", "text": "reply"}]`;
                 }
             }
 
-            // ── 3. THREADS ────────────────────────────────────────────────────────────
-            else if (plat === 'threads') {
-                try {
-                    const threads = await ThreadsAdapter.fetchThreads(platformAccountId, token, 20);
-                    for (const t of threads) {
-                        const tid = String(t.id || '');
-                        if (!tid) continue;
-                        const replies = await ThreadsAdapter.fetchReplies(tid, token, 30);
-                        for (const rep of replies) {
-                            const rid = String(rep.id || '');
-                            if (!rid) continue;
-                            const text = rep.text || '';
-                            if (!text) continue;
-                            const user = rep.username || 'Threads User';
-                            const repTime = rep.timestamp ? new Date(rep.timestamp) : new Date();
-
-                            const conv = await db.socialConversation.upsert({
-                                where: {
-                                    companyId_platform_platformThreadId: {
-                                        companyId,
-                                        platform: 'threads',
-                                        platformThreadId: `comment:${rid}`,
-                                    },
-                                },
-                                update: {
-                                    lastMessageSnippet: text.substring(0, 120),
-                                    lastMessageAt: repTime,
-                                    ...(targetProjectId ? { projectId: targetProjectId } : {}),
-                                },
-                                create: {
-                                    companyId,
-                                    projectId: targetProjectId ?? null,
-                                    socialAccountId: acc.id,
-                                    platform: 'threads',
-                                    platformThreadId: `comment:${rid}`,
-                                    participantName: user,
-                                    participantHandle: user,
-                                    lastMessageSnippet: text.substring(0, 120),
-                                    lastMessageAt: repTime,
-                                    isRead: false,
-                                },
-                            });
-
-                            await db.socialMessage.createMany({
-                                data: [{
-                                    conversationId: conv.id,
-                                    senderType: 'participant',
-                                    content: text,
-                                    platformMessageId: rid,
-                                    createdAt: repTime,
-                                }],
-                                skipDuplicates: true,
-                            });
-                            syncedCount++;
-
-                            if (acc.aiInboxMode && acc.aiInboxMode !== 'off' && !conv.isHumanTakeover) {
-                                AiEngagementAgent.handleIncomingDm(conv.id, text, companyId).catch((err: any) => {
-                                    console.warn(`[SyncAiAgent] Threads reply auto-reply failed for ${conv.id}:`, err?.message);
-                                });
-                            }
-                        }
-                    }
-                } catch (err: any) {
-                    console.warn('[SocialInboxSync] Threads sync failed:', err?.message);
-                    notes.push(`Threads sync: ${err?.message}`);
-                }
-            }
-
             // ── 4. LINKEDIN ───────────────────────────────────────────────────────────
             else if (plat === 'linkedin') {
                 try {
@@ -862,83 +792,7 @@ Return ONLY JSON: [{"tone": "short tone label", "text": "reply"}]`;
                 }
             }
 
-            // ── 5. YOUTUBE ────────────────────────────────────────────────────────────
-            else if (plat === 'youtube') {
-                try {
-                    const videos = await YouTubeAdapter.fetchChannelVideos(platformAccountId, token, 15);
-                    for (const v of videos) {
-                        const vid = v.id?.videoId || (typeof v.id === 'string' ? v.id : '');
-                        if (!vid) continue;
-                        const threads = await YouTubeAdapter.fetchComments(vid, token, 30);
-                        for (const item of threads) {
-                            const commentsToIngest: any[] = [];
-                            if (item.snippet?.topLevelComment) commentsToIngest.push(item.snippet.topLevelComment);
-                            if (Array.isArray(item.replies?.comments)) {
-                                for (const rep of item.replies.comments) commentsToIngest.push(rep);
-                            }
-                            for (const c of commentsToIngest) {
-                                const cid = c.id;
-                                if (!cid) continue;
-                                const text = c.snippet?.textDisplay || c.snippet?.textOriginal || '';
-                                if (!text) continue;
-                                const author = c.snippet?.authorDisplayName || 'YouTube User';
-                                const avatar = c.snippet?.authorProfileImageUrl;
-                                const cTime = c.snippet?.publishedAt ? new Date(c.snippet.publishedAt) : new Date();
 
-                                const conv = await db.socialConversation.upsert({
-                                    where: {
-                                        companyId_platform_platformThreadId: {
-                                            companyId,
-                                            platform: 'youtube',
-                                            platformThreadId: `comment:${cid}`,
-                                        },
-                                    },
-                                    update: {
-                                        lastMessageSnippet: text.substring(0, 120),
-                                        lastMessageAt: cTime,
-                                        ...(avatar ? { participantAvatar: avatar } : {}),
-                                        ...(targetProjectId ? { projectId: targetProjectId } : {}),
-                                    },
-                                    create: {
-                                        companyId,
-                                        projectId: targetProjectId ?? null,
-                                        socialAccountId: acc.id,
-                                        platform: 'youtube',
-                                        platformThreadId: `comment:${cid}`,
-                                        participantName: author,
-                                        participantHandle: author.toLowerCase().replace(/\s+/g, '_'),
-                                        participantAvatar: avatar ?? null,
-                                        lastMessageSnippet: text.substring(0, 120),
-                                        lastMessageAt: cTime,
-                                        isRead: false,
-                                    },
-                                });
-
-                                await db.socialMessage.createMany({
-                                    data: [{
-                                        conversationId: conv.id,
-                                        senderType: 'participant',
-                                        content: text,
-                                        platformMessageId: cid,
-                                        createdAt: cTime,
-                                    }],
-                                    skipDuplicates: true,
-                                });
-                                syncedCount++;
-
-                                if (acc.aiInboxMode && acc.aiInboxMode !== 'off' && !conv.isHumanTakeover) {
-                                    AiEngagementAgent.handleIncomingDm(conv.id, text, companyId).catch((err: any) => {
-                                        console.warn(`[SyncAiAgent] YouTube comment auto-reply failed for ${conv.id}:`, err?.message);
-                                    });
-                                }
-                            }
-                        }
-                    }
-                } catch (err: any) {
-                    console.warn('[SocialInboxSync] YouTube sync failed:', err?.message);
-                    notes.push(`YouTube sync: ${err?.message}`);
-                }
-            }
         }
 
         if (syncedCount === 0 && includeSample && accounts.length > 0) {

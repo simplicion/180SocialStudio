@@ -43,9 +43,6 @@ export class SimulatedPlatformPublisher implements PlatformPublisher {
             case 'instagram':
                 permalink = `https://www.instagram.com/p/C_${simId}/`;
                 break;
-            case 'threads':
-                permalink = `https://www.threads.net/@${handle}/post/${simId}`;
-                break;
             case 'facebook':
                 permalink = `https://www.facebook.com/permalink.php?story_fbid=${simId}`;
                 break;
@@ -54,9 +51,6 @@ export class SimulatedPlatformPublisher implements PlatformPublisher {
                 break;
             case 'linkedin':
                 permalink = `https://www.linkedin.com/feed/update/urn:li:share:${simId}`;
-                break;
-            case 'x':
-                permalink = `https://x.com/${handle}/status/${simId}`;
                 break;
             default:
                 permalink = `https://${this.platform}.com/post/${simId}`;

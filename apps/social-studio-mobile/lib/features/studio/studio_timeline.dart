@@ -202,17 +202,6 @@ class _StudioTimelineState extends State<StudioTimeline> {
                                         muted: TimelineOps.mutableTracks.contains(k) && TimelineOps.isTrackMuted(ir, k),
                                       ),
                                     if (k == TrackKind.video) ...[
-                                      // Prepend '+' button at the beginning of the video timeline
-                                      Positioned(
-                                        left: math.max(0.0, x(0) - 28),
-                                        width: 24,
-                                        top: 7,
-                                        bottom: 7,
-                                        child: _AddClipButton(
-                                          tooltip: 'Add video to beginning',
-                                          onTap: () => _showAddVideoSheet(context, atIndex: 0),
-                                        ),
-                                      ),
                                       // Append '+' button at the very end of the video timeline
                                       Positioned(
                                         left: x(ir.durationMs) + 4,
@@ -520,12 +509,15 @@ class _StudioTimelineState extends State<StudioTimeline> {
     final c = widget.controller;
     if (it.kind == TrackKind.video) {
       c.select(c.selectedClip == index ? null : index);
-      widget.onScrub(it.startMs);
+      // Keep the playhead where it is inside the clip, so "Split" on the clip bar cuts there.
+      if (c.playheadMs < it.startMs || c.playheadMs >= it.endMs) widget.onScrub(it.startMs);
       return;
     }
     widget.onScrub(it.startMs);
     if (it.kind == TrackKind.voice) return; // speech follows the clips; the header mutes it
     setState(() => _selectedId = it.id);
+    // The Text tool edits the selected title / caption.
+    if (it.kind == TrackKind.text || it.kind == TrackKind.captions) c.selectTrackItem(it.id, it.kind);
     showTimelineItemSheet(context, c, it, onEdit: widget.onEdit, onOpenTool: widget.onOpenTool);
   }
 }
@@ -864,14 +856,35 @@ class _TimelineItemInspectorState extends State<TimelineItemInspector> {
               child: Text('Apply strength'),
             ),
           ],
-          if (it.kind == TrackKind.text) ...[
+          if (it.kind == TrackKind.text || it.kind == TrackKind.captions) ...[
             SizedBox(height: 12),
-            TextField(controller: _text, decoration: fieldDecoration('Text')),
+            TextField(controller: _text, minLines: 1, maxLines: 3, decoration: fieldDecoration(it.kind == TrackKind.text ? 'Text' : 'Caption text')),
             SizedBox(height: 8),
-            OutlinedButton(
-              onPressed: () => _apply((ir) => TimelineOps.editText(ir, it.id, text: _text.text), 'Text updated'),
-              child: Text('Update text'),
-            ),
+            Row(children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => _apply(
+                    (ir) => TimelineOps.editText(ir, it.id, text: _text.text),
+                    it.kind == TrackKind.text ? 'Text updated' : 'Caption corrected',
+                  ),
+                  child: Text(it.kind == TrackKind.text ? 'Update text' : 'Save caption'),
+                ),
+              ),
+              SizedBox(width: 8),
+              Expanded(
+                child: FilledButton.tonalIcon(
+                  onPressed: () {
+                    widget.c.selectTrackItem(it.id, it.kind);
+                    Navigator.pop(context);
+                    widget.onOpenTool(StudioTool.text);
+                  },
+                  icon: Icon(Icons.format_paint_rounded, size: 18),
+                  label: Text('Font & style'),
+                ),
+              ),
+            ]),
+          ],
+          if (it.kind == TrackKind.text) ...[
             SizedBox(height: 8),
             Text('Style', style: Theme.of(context).textTheme.labelMedium),
             SizedBox(height: 6),
@@ -891,7 +904,7 @@ class _TimelineItemInspectorState extends State<TimelineItemInspector> {
                 widget.onOpenTool(StudioTool.captions);
               },
               icon: Icon(Icons.closed_caption_rounded),
-              label: Text('Change caption style'),
+              label: Text('Style all captions'),
             ),
           ],
           if (it.kind == TrackKind.broll && o != null) ...[

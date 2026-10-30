@@ -34,7 +34,7 @@ app.use(compression());
 // CORS configuration for mobile and web studios
 const allowedOrigins = process.env.CLIENT_URL
     ? process.env.CLIENT_URL.split(',').map((u) => u.trim())
-    : ['http://localhost:3000', 'http://localhost:3002', 'http://10.0.2.2:4005'];
+    : ['http://localhost:3000', 'http://localhost:3002', 'http://10.0.2.2:4007'];
 
 app.use(
     cors({
@@ -126,6 +126,8 @@ app.use('/api/auth', authRoutes);
 app.use('/auth', authRoutes);
 app.use('/api/oauth', authRoutes);
 app.use('/oauth', authRoutes);
+app.use('/api/v1/identity/oauth', authRoutes);
+app.use('/api/v1/auth', authRoutes);
 
 // ─── Media Storage & File Uploads ─────────────────────────────────────────────
 app.use('/api/files', filesRoutes);
@@ -187,7 +189,7 @@ app.use((req: Request, res: Response) => {
 });
 
 // ─── Start Server ─────────────────────────────────────────────────────────────
-const PORT = process.env.SOCIAL_STUDIO_PORT || process.env.PORT || 4005;
+const PORT = process.env.SOCIAL_STUDIO_PORT || process.env.PORT || 4007;
 
 server.listen(PORT, () => {
     console.log(`🚀 180 Social Studio Dedicated Backend running on port ${PORT}`);

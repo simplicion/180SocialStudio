@@ -38,14 +38,14 @@ export const PLATFORM_LIMITS: Record<string, PlatformConstraints> = {
         supportsFirstComment: false,
         supportsPdfCarousel: true,
     },
-    tiktok: {
-        maxCaptionLength: 2200,
-        maxHashtags: 20,
-        supportedAspectRatios: ['9:16'],
-        maxVideoDurationSeconds: 600, // 10 mins
-        minVideoDurationSeconds: 3,
-        maxMediaSizeMB: 287,
-        supportsFirstComment: false,
+    facebook: {
+        maxCaptionLength: 63206,
+        maxHashtags: 30,
+        supportedAspectRatios: ['1:1', '4:5', '9:16', '16:9'],
+        maxVideoDurationSeconds: 14400, // 240 mins
+        minVideoDurationSeconds: 1,
+        maxMediaSizeMB: 500,
+        supportsFirstComment: true,
         supportsPdfCarousel: false,
     },
     youtube: {

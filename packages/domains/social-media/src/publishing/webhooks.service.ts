@@ -146,7 +146,7 @@ export class MetaWebhooksService {
         const accounts = await db.socialAccount.findMany({
             where: {
                 platformAccountId: userId,
-                platform: { in: ['facebook', 'instagram', 'threads'] },
+                platform: { in: ['facebook', 'instagram'] },
             },
         });
 
@@ -157,7 +157,7 @@ export class MetaWebhooksService {
         await db.socialAccount.updateMany({
             where: {
                 platformAccountId: userId,
-                platform: { in: ['facebook', 'instagram', 'threads'] },
+                platform: { in: ['facebook', 'instagram'] },
             },
             data: {
                 reauthRequired: true,
@@ -186,7 +186,7 @@ export class MetaWebhooksService {
         const accounts = await db.socialAccount.findMany({
             where: {
                 platformAccountId: userId,
-                platform: { in: ['facebook', 'instagram', 'threads'] },
+                platform: { in: ['facebook', 'instagram'] },
             },
         });
 
@@ -240,7 +240,7 @@ export class MetaWebhooksService {
         const entries = Array.isArray(payload.entry) ? payload.entry : [];
         let messagesIngested = 0;
         let duplicates = 0;
-        const platforms = objectType === 'instagram' ? ['instagram'] : objectType === 'threads' ? ['threads'] : ['facebook'];
+        const platforms = objectType === 'instagram' ? ['instagram'] : ['facebook'];
         const toMs = (t: any) => {
             const n = typeof t === 'string' && !/^\d+$/.test(t) ? Date.parse(t) : Number(t);
             if (!Number.isFinite(n) || n <= 0) return undefined;

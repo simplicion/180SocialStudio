@@ -9,6 +9,7 @@ import 'package:video_player/video_player.dart';
 
 import '../../core/media/asset_cache.dart';
 import '../../core/native_engine/media_engine_service.dart';
+import '../../core/network/api_exception.dart';
 import '../../core/network/audio_transcription_service.dart';
 import '../director/ai_director_service.dart';
 import 'caption_fonts.dart';
@@ -25,17 +26,27 @@ class DirectorMessage {
     required this.text,
     this.response,
     this.applied = false,
+    this.error,
   });
   final bool fromUser;
+
+  /// What the chat shows. For a failed turn this is a friendly sentence; the raw failure is in [error].
   final String text;
   final DirectorResponse? response;
   final bool applied;
+
+  /// The exception behind a failed director turn (for logs / support); null for a normal message.
+  final Object? error;
+
+  /// A director turn that failed (the chat offers "Try again", see [StudioController.retryLastDirectorTurn]).
+  bool get failed => error != null;
 
   DirectorMessage copyWith({bool? applied}) => DirectorMessage(
     fromUser: fromUser,
     text: text,
     response: response,
     applied: applied ?? this.applied,
+    error: error,
   );
 }
 
@@ -90,7 +101,23 @@ class StudioController extends ChangeNotifier {
   void selectTrackItem(String id, TrackKind kind) {
     selectedItemId = id;
     selectedKind = kind;
-    notifyListeners();
+    _notify();
+  }
+
+  /// Forgets the selected timeline item (text / caption / overlay), e.g. before "Add text" from the toolbar so the
+  /// Text tool adds a new title instead of editing the last one tapped.
+  void clearItemSelection() {
+    if (selectedItemId == null && selectedKind == null) return;
+    selectedItemId = null;
+    selectedKind = null;
+    _notify();
+  }
+
+  /// The selected text / caption, or null when nothing (or something that no longer exists) is selected.
+  EditIrCaption? get selectedCaption {
+    final id = selectedItemId;
+    if (id == null) return null;
+    return _ir?.captions.where((c) => c.id == id).firstOrNull;
   }
 
   bool _greeted = false;
@@ -681,21 +708,51 @@ class StudioController extends ChangeNotifier {
     final current = _ir;
     if (current == null) return;
     final next = edit(current);
-    _push(current);
-    _ir = next;
-    playheadMs = playheadMs.clamp(0, next.durationMs);
-    if (selectedClip != null && selectedClip! >= next.clips.length) {
-      selectedClip = next.clips.length - 1;
-    }
-    _notify();
+    // A gesture still open (drag on the preview) is folded into this edit: one undo step restores the state before both.
+    _push(_liveStart ?? current);
+    _liveStart = null;
+    _setTimeline(next);
   }
 
-  /// Applies live update (e.g. dragging text on canvas) without cluttering the undo stack.
+  /// Applies live update (e.g. dragging text on canvas) without cluttering the undo stack. Wrap a gesture in
+  /// [beginLiveEdit] / [endLiveEdit] so the whole gesture becomes one undo step.
   void applyWithoutHistory(MobileEditIr Function(MobileEditIr ir) edit) {
     final current = _ir;
     if (current == null) return;
-    final next = edit(current);
+    _setTimeline(edit(current));
+  }
+
+  /// Timeline before the gesture in progress (drag on the preview); null when no gesture is open.
+  MobileEditIr? _liveStart;
+
+  /// Starts a live gesture: the following [applyWithoutHistory] updates are undone together.
+  void beginLiveEdit() {
+    _liveStart ??= _ir;
+  }
+
+  /// Ends a live gesture: records one undo step back to the state before [beginLiveEdit] (none if nothing changed).
+  void endLiveEdit() {
+    final start = _liveStart;
+    _liveStart = null;
+    if (start == null || _ir == null || identical(start, _ir)) return;
+    _push(start);
+    _notify();
+  }
+
+  void _setTimeline(MobileEditIr next) {
     _ir = next;
+    playheadMs = playheadMs.clamp(0, next.durationMs);
+    if (selectedClip != null && selectedClip! >= next.clips.length) {
+      selectedClip = next.clips.isEmpty ? null : next.clips.length - 1;
+    }
+    final id = selectedItemId;
+    if (id != null && !TimelineOps.items(next).any((i) => i.id == id)) {
+      selectedItemId = null;
+      selectedKind = null;
+    }
+    // A finished (or failed) export no longer matches a changed timeline: the export sheet must render again instead
+    // of offering the old file. A render in progress keeps going (it renders the timeline it started with).
+    if (export != null && !export!.running) export = null;
     _notify();
   }
 
@@ -735,20 +792,19 @@ class StudioController extends ChangeNotifier {
 
   void undo() {
     if (_undo.isEmpty || _ir == null) return;
+    _liveStart = null;
     _redo.add(_ir!);
-    _ir = _undo.removeLast();
-    playheadMs = playheadMs.clamp(0, _ir!.durationMs);
     selectedClip = null;
-    _notify();
+    _setTimeline(_undo.removeLast());
   }
 
   void redo() {
     if (_redo.isEmpty || _ir == null) return;
+    _liveStart = null;
     _undo.add(_ir!);
-    _ir = _redo.removeLast();
-    playheadMs = playheadMs.clamp(0, _ir!.durationMs);
+    if (_undo.length > _maxUndo) _undo.removeAt(0);
     selectedClip = null;
-    _notify();
+    _setTimeline(_redo.removeLast());
   }
 
   void seek(int ms) {
@@ -1155,16 +1211,41 @@ class StudioController extends ChangeNotifier {
   }
 
   Future<void> askDirector(String prompt) async {
-    final ir = _ir;
-    if (ir == null || directorBusy || prompt.trim().isEmpty) return;
-    final history = [
-      for (final m in messages)
-        DirectorTurn(
-          role: m.fromUser ? 'user' : 'assistant',
-          content: m.fromUser ? m.text : (m.response?.reply ?? m.text),
-        ),
-    ];
+    if (_ir == null || directorBusy || prompt.trim().isEmpty) return;
+    // Re-sending the message whose turn just failed is a retry: no second copy of it in the chat.
+    final lastUser = messages.lastIndexWhere((m) => m.fromUser);
+    if (messages.isNotEmpty && messages.last.failed && lastUser >= 0 && messages[lastUser].text == prompt.trim()) {
+      return retryLastDirectorTurn();
+    }
     messages.add(DirectorMessage(fromUser: true, text: prompt.trim()));
+    await _directorTurn(prompt, messages.length - 1);
+  }
+
+  /// "Try again" after a failed turn: resends the last thing the user said without adding it to the chat a second
+  /// time; the failure reply it replaces is removed.
+  Future<void> retryLastDirectorTurn() async {
+    if (_ir == null || directorBusy) return;
+    final i = messages.lastIndexWhere((m) => m.fromUser);
+    if (i < 0) return;
+    for (var j = messages.length - 1; j > i; j--) {
+      if (messages[j].failed) messages.removeAt(j);
+    }
+    await _directorTurn(messages[i].text, i);
+  }
+
+  /// Sends [prompt] (already in the chat at [userIndex]) with the conversation before it as history.
+  Future<void> _directorTurn(String prompt, int userIndex) async {
+    final ir = _ir;
+    if (ir == null) return;
+    final history = [
+      for (final m in messages.take(userIndex))
+        // Failed turns are not part of the conversation the director should see.
+        if (!m.failed)
+          DirectorTurn(
+            role: m.fromUser ? 'user' : 'assistant',
+            content: m.fromUser ? m.text : (m.response?.reply ?? m.text),
+          ),
+    ];
     directorBusy = true;
     _notify();
     try {
@@ -1196,18 +1277,38 @@ class StudioController extends ChangeNotifier {
         ),
       );
       if (autoApply) _applyDirector(r);
-    } catch (e) {
-      messages.add(
-        DirectorMessage(
-          fromUser: false,
-          text:
-              'I could not do that: ${e is MediaEngineException ? e.message : e}',
-        ),
-      );
+    } catch (e, st) {
+      debugPrint('AI Director turn failed: $e\n$st');
+      messages.add(DirectorMessage(fromUser: false, text: directorFailureText(e), error: e));
     } finally {
       directorBusy = false;
       _notify();
     }
+  }
+
+  /// A failed director turn in plain words, never a raw exception dump (the exception is kept in
+  /// [DirectorMessage.error]): the server's own explanation when it gave one (a vague prompt, an edit it refused),
+  /// otherwise what went wrong in general. Always starts with "I could not do that:", which the chat panel uses to
+  /// offer "Try again".
+  static String directorFailureText(Object e) => 'I could not do that: ${_failureReason(e)}';
+
+  static String _failureReason(Object e) {
+    const connection = 'the connection dropped for a moment.';
+    const limit = 'the AI usage limit is reached for now. Try again a bit later.';
+    const generic = 'something went wrong on my side.';
+    if (e is ApiException) {
+      if (e.isNetwork) return connection;
+      if (e.kind == ApiErrorKind.rateLimited) return limit;
+      if (e.isTransient) return generic;
+      if (e.message.trim().isNotEmpty) return e.message.trim();
+    }
+    if (e is MediaEngineException) {
+      return e.code == 'INVALID_EDIT_IR' ? 'my edit could not be applied on this phone, so your video is unchanged.' : e.message;
+    }
+    final raw = '$e'.toLowerCase();
+    if (raw.contains('socket') || raw.contains('network') || raw.contains('connection') || raw.contains('timed out')) return connection;
+    if (raw.contains('quota') || raw.contains('credit')) return limit;
+    return generic;
   }
 
   void _applyDirector(DirectorResponse r) {
@@ -1232,7 +1333,9 @@ class StudioController extends ChangeNotifier {
             effects: next.effects,
           );
     _push(ir);
+    _liveStart = null;
     _ir = _withGeneratedDurations(withSources);
+    if (export != null && !export!.running) export = null;
     // Download what the Director picked (B-roll, photos, music, SFX) right away, with progress on screen.
     unawaited(prefetchRemoteMedia());
     // Heavy jobs the Director queued (reverse / stabilise / cut-out) run on the phone now.
@@ -1352,6 +1455,13 @@ class StudioController extends ChangeNotifier {
           );
           working = TimelineOps.removeOverlay(working, o.id);
         }
+      }
+      // The renderer refuses overlapping full-screen cutaways (the whole export would fail): shorten them instead.
+      final (resolved, shortened) = TimelineOps.resolveCutawayOverlaps(working);
+      if (shortened > 0) {
+        working = resolved;
+        warnings.add('$shortened full-screen B-roll clip${shortened == 1 ? ' ran' : 's ran'} into the next one and '
+            '${shortened == 1 ? 'was' : 'were'} shortened. Make one picture-in-picture to show both.');
       }
       final musicPaths = <String, String>{};
       for (final m in working.audio.music) {

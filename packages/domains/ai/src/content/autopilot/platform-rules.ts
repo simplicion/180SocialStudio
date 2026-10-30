@@ -14,20 +14,15 @@ export interface PlatformRules {
 export const PLATFORM_RULES: Record<AutopilotPlatform, PlatformRules> = {
     instagram: { maxCaptionChars: 2200, maxHashtags: 5, formats: ['reel', 'carousel', 'static'] },
     facebook: { maxCaptionChars: 5000, maxHashtags: 3, formats: ['reel', 'carousel', 'static', 'text'] },
-    tiktok: { maxCaptionChars: 2200, maxHashtags: 5, formats: ['reel', 'carousel'] },
     youtube: { maxCaptionChars: 5000, maxHashtags: 3, formats: ['reel'] },
     linkedin: { maxCaptionChars: 3000, maxHashtags: 5, formats: ['reel', 'carousel', 'static', 'text'] },
-    x: { maxCaptionChars: 280, maxHashtags: 2, formats: ['reel', 'static', 'text'] },
 };
 
 const ALIASES: Record<string, AutopilotPlatform> = {
     instagram: 'instagram', ig: 'instagram', instagram_reels: 'instagram',
     facebook: 'facebook', fb: 'facebook', meta: 'facebook',
-    tiktok: 'tiktok',
     youtube: 'youtube', youtube_shorts: 'youtube', shorts: 'youtube', yt: 'youtube',
     linkedin: 'linkedin',
-    x: 'x', twitter: 'x',
-    threads: 'facebook',
 };
 
 /** Maps free-form platform names ("YouTube Shorts", "Twitter") to autopilot platform ids. Unknown names are dropped. */

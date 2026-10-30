@@ -616,4 +616,75 @@ void main() {
       expect(EditIrTransition.fromJson(odd.toJson()).type, 'WIPE_LEFT');
     });
   });
+
+  group('manual captions and text edits', () {
+    test('addCaption types a word-timed speech caption without a transcript and never overlaps the next one', () {
+      var ir = TimelineOps.addCaption(base(), 'hello big world', startMs: 2000, durationMs: 1500);
+      final cap = ir.captions.single;
+      expect(cap.kind, 'caption');
+      expect((cap.startMs, cap.endMs), (2000, 3500));
+      expect(cap.words.map((w) => w.text), ['hello', 'big', 'world']);
+      expect(cap.words.first.startMs, 2000);
+      expect(cap.words.last.endMs, 3500);
+      for (var i = 1; i < cap.words.length; i++) {
+        expect(cap.words[i].startMs, greaterThanOrEqualTo(cap.words[i - 1].endMs - 1));
+      }
+      // Takes the look of the captions already there.
+      ir = TimelineOps.styleCaptions(ir, 'KARAOKE');
+      ir = TimelineOps.addCaption(ir, 'before it', startMs: 1000, durationMs: 4000);
+      final first = ir.captions.first;
+      expect(first.endMs, 2000, reason: 'stops where the next caption starts');
+      expect(first.style['animation'], 'karaoke');
+      expect(() => TimelineOps.addCaption(ir, 'inside', startMs: 2500), throwsA(isA<MediaEngineException>()));
+      expect(() => TimelineOps.addCaption(ir, '   ', startMs: 6000), throwsA(isA<MediaEngineException>()));
+      ir.validate();
+    });
+
+    test('editing a speech caption keeps its word timing; editing a title replaces its single word', () {
+      var ir = TimelineOps.autoCaptions(base(), words, wordsPerCaption: 3);
+      final cap = ir.captions.first;
+      ir = TimelineOps.editText(ir, cap.id, text: 'one two three');
+      final fixed = ir.captions.firstWhere((c) => c.id == cap.id);
+      expect(fixed.kind, 'caption');
+      expect(fixed.text, 'one two three');
+      expect([for (final w in fixed.words) (w.startMs, w.endMs)], [for (final w in cap.words) (w.startMs, w.endMs)]);
+
+      ir = TimelineOps.addText(ir, 'Title', startMs: 0, durationMs: 2000);
+      final title = ir.captions.firstWhere((c) => c.kind == 'text');
+      ir = TimelineOps.editText(ir, title.id, text: 'New title', style: {...title.style, 'textColor': '#FFE600'});
+      final edited = ir.captions.firstWhere((c) => c.id == title.id);
+      expect(edited.text, 'New title');
+      expect(edited.words.single.text, 'New title');
+      expect(edited.style['textColor'], '#FFE600');
+      expect(() => TimelineOps.editText(ir, 'missing', text: 'x'), throwsA(isA<MediaEngineException>()));
+    });
+
+    test('a title added with the playhead at the end keeps its full length (starts earlier)', () {
+      final ir = TimelineOps.addText(base(), 'End card', startMs: 10000, durationMs: 3000);
+      final t = ir.captions.single;
+      expect((t.startMs, t.endMs), (7000, 10000));
+    });
+
+    test('overlapping full-screen cutaways are shortened for the renderer; layers may overlap', () {
+      var ir = TimelineOps.addBroll(base(), {'kind': 'url', 'url': 'https://x/a.mp4'}, startMs: 1000, durationMs: 3000);
+      ir = TimelineOps.addBroll(ir, {'kind': 'url', 'url': 'https://x/b.mp4'}, startMs: 2500, durationMs: 3000);
+      ir = TimelineOps.addSticker(ir, {'kind': 'url', 'url': 'https://x/s.png'}, startMs: 1500);
+      final (out, n) = TimelineOps.resolveCutawayOverlaps(ir);
+      expect(n, 1);
+      final cut = out.overlays.where((o) => !o.isLayer).toList()..sort((a, b) => a.timelineStartMs.compareTo(b.timelineStartMs));
+      expect(cut.first.timelineEndMs, 2500);
+      expect(cut.last.timelineStartMs, 2500);
+      expect(out.overlays.where((o) => o.isLayer), hasLength(1));
+      expect(TimelineOps.resolveCutawayOverlaps(out).$2, 0);
+    });
+
+    test('brand colours are normalised so templates never emit a colour the renderer rejects', () {
+      expect(BrandLook.hex6('#abc'), '#AABBCC');
+      expect(BrandLook.hex6('1f3a2e'), '#1F3A2E');
+      expect(BrandLook.hex6('#1F3A2E80'), '#1F3A2E');
+      expect(BrandLook.hex6('red'), isNull);
+      final lower = TextTemplate.byId('lower_third')!.style(BrandLook(primaryColor: '#1F3A2E80'));
+      expect((lower['background'] as Map)['color'], '#1F3A2EE6');
+    });
+  });
 }

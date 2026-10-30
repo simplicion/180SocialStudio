@@ -226,7 +226,7 @@ export async function runCopyAgent(params: RunCopyParams): Promise<Map<string, P
 
     const systemPrompt = [
         'You are a senior social media copywriter.',
-        'You write natural, native captions for each platform (Instagram, LinkedIn, YouTube, X, TikTok, Facebook).',
+        'You write natural, native captions for each platform (Instagram, Facebook, YouTube, LinkedIn).',
         'Captions must hook the reader in the first line, provide value, and conclude with a natural CTA. Avoid generic clichés.',
     ].join(' ');
 

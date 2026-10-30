@@ -3,7 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { EditIRCompiler } from "../src/edit-ir-compiler";
 import { CreativeEditPlanSchema, AutoCaptionsOpSchema } from "../src/creative-plan.schema";
-import { editIRFromMobileMedia, toMobileEditIR } from "../src/mobile-edit-ir";
+import { editIRFromMobileMedia, editIRFromMobile, toMobileEditIR } from "../src/mobile-edit-ir";
 import { PlanExpander } from "../src/plan-expander";
 import { retextCaptionSegment } from "../src/caption-translation";
 import { RationalTimeMath } from "../src/time";
@@ -142,4 +142,28 @@ test("autoCaptions: one key word per caption is highlighted, no emoji is added, 
   const hindi = ["आज", "हम", "बात", "करेंगे"].map((word, i) => ({ word, startSeconds: 0.5 + i * 0.4, endSeconds: 0.85 + i * 0.4 })) as any[];
   const hi = mobileCaptions(compile(PlanExpander.captionOps(hindi, AutoCaptionsOpSchema.parse({ type: "autoCaptions", template: "HORMOZI_BOUNCE" }))).updatedEditIR);
   assert.equal(hi[0].style.fontFamily, "Noto Sans Devanagari");
+});
+
+test("a title from the phone's text tool (partial style, legacy animation) is accepted and round-trips", () => {
+  const base = toMobileEditIR({ editIR: editIRFromMobileMedia(media, "p1"), sources, primaryAssetId: "primary" }).editIR;
+  const fromPhone = {
+    ...base,
+    captions: [
+      // Only what the text tool sets; `animation` holds an older motion id.
+      { id: "txt_1", kind: "text", startMs: 500, endMs: 2500, text: "Hello\nworld", words: [{ text: "Hello world", startMs: 500, endMs: 2500 }],
+        style: { fontFamily: "Anton", fontSizePx: 96, textColor: "#FFFFFF", positionX: 0.5, positionY: 0.2, background: { color: "#000000B3" }, animation: "fade_in" } },
+      // A manual speech caption without word timings.
+      { id: "cap_1", kind: "caption", startMs: 3000, endMs: 4000, text: "typed by hand", words: [], style: {} },
+    ],
+  };
+  const parsed = MobileEditIRSchema.parse(fromPhone);
+  const title = parsed.captions[0];
+  assert.equal(title.style.animation, "none");
+  assert.equal(title.style.fontWeight, 800);
+  assert.deepEqual(title.style.background, { color: "#000000B3", paddingPx: 16, radiusPx: 16 });
+  assert.equal(title.words[0].highlight, false);
+  assert.equal(parsed.captions[1].style.fontSizePx, 64);
+
+  const back = toMobileEditIR({ editIR: editIRFromMobile(parsed), sources, primaryAssetId: "primary" }).editIR;
+  assert.deepEqual(back.captions.map((c) => [c.id, c.kind, c.text]), [["txt_1", "text", "Hello\nworld"], ["cap_1", "caption", "typed by hand"]]);
 });

@@ -135,13 +135,13 @@ export class SmartTimezoneScheduler {
             };
         }
 
-        if (plat === 'tiktok') {
+        if (plat === 'facebook') {
             return {
-                platform: 'TikTok',
+                platform: 'Facebook',
                 industry,
-                recommendedDayOfWeek: 'Tuesday or Thursday',
-                recommendedTimeSlot: '07:00 PM - 10:00 PM',
-                reasoning: 'Short-form entertainment video sees highest retention and viral algorithm velocity during prime evening hours.',
+                recommendedDayOfWeek: 'Wednesday or Thursday',
+                recommendedTimeSlot: '01:00 PM - 04:00 PM',
+                reasoning: 'Mid-afternoon desktop and mobile browsing shows peak engagement and click-through rates.',
             };
         }
 

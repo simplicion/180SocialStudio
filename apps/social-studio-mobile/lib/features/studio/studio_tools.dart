@@ -97,7 +97,7 @@ Future<void> showStudioTool(BuildContext context, StudioTool tool, StudioControl
           StudioTool.text => _TextSheet(
             c: c,
             onEdit: onEdit,
-            captionId: c.selectedKind == TrackKind.captions ? c.selectedItemId : null,
+            captionId: c.selectedCaption?.id,
           ),
           StudioTool.captions => _CaptionsSheet(c: c, onEdit: onEdit),
           StudioTool.music => _MusicSheet(c: c, onEdit: onEdit),
@@ -171,7 +171,14 @@ class _TrimSheet extends StatefulWidget {
 
 class _TrimSheetState extends State<_TrimSheet> {
   late final EditIrClip clip = widget.c.ir!.clips[widget.index];
-  late final int srcLen = widget.c.ir!.sources.firstOrNull?.durationMs ?? clip.sourceEndMs;
+
+  /// Length of this clip's own file (not the first video's: added clips, stills and processed copies differ).
+  late final int srcLen = () {
+    final own = widget.c.ir!.sources.where((s) => s.assetId == clip.assetId).firstOrNull?.durationMs ?? clip.sourceEndMs;
+    // A still can hold for any length; offer up to twice its current hold (at least 10 s).
+    if (widget.c.isStillAsset(clip.assetId)) return math.min(own, math.max(clip.sourceEndMs * 2, 10000));
+    return math.max(own, clip.sourceEndMs);
+  }();
   late RangeValues v = RangeValues(clip.sourceStartMs.toDouble(), clip.sourceEndMs.toDouble());
 
   @override
@@ -1014,30 +1021,43 @@ class _TextSheet extends StatefulWidget {
 }
 
 class _TextSheetState extends State<_TextSheet> {
+  /// The title / caption being edited; null = adding a new title.
   late final EditIrCaption? _existing = () {
-    final id = widget.captionId ??
-        (widget.c.selectedKind == TrackKind.captions ? widget.c.selectedItemId : null);
+    final id = widget.captionId ?? widget.c.selectedItemId;
     if (id == null) return null;
     return widget.c.ir?.captions.where((c) => c.id == id).firstOrNull;
   }();
 
-  late final _text = TextEditingController(text: _existing?.text ?? '');
-  late double seconds = _existing != null ? ((_existing.endMs - _existing.startMs) / 1000).clamp(0.5, 30.0) : 3.0;
-  late double y = (_existing?.style['positionY'] as num?)?.toDouble() ?? 0.25;
-  late double x = (_existing?.style['positionX'] as num?)?.toDouble() ?? 0.50;
+  bool get _isCaption => _existing?.kind == 'caption';
 
-  late String _fontFamily = (_existing?.style['fontFamily'] as String?) ?? 'Inter';
-  late double _fontSize = (_existing?.style['fontSizePx'] as num?)?.toDouble() ?? 24;
-  late String _textColor = (_existing?.style['textColor'] as String?) ?? '#FFFFFF';
-  late String? _bgColor = (_existing?.style['background'] as Map?)?['color'] as String?;
-  late int _strokeWidth = (_existing?.style['strokeWidthPx'] as num?)?.toInt() ?? 0;
-  late bool _shadow = _existing?.style['shadow'] == true;
-  late bool _glow = _existing?.style['glow'] == true;
-  late final Map<String, dynamic> _initialStyle = normaliseCaptionStyle(_existing?.style ?? const {});
+  /// Style the edit starts from: the item's own (so keys this sheet does not show — preset, weight, wrap width,
+  /// outline colour, padding — are kept), or the title preset for new text.
+  late final Map<String, dynamic> _initialStyle = normaliseCaptionStyle(
+    _existing?.style ?? TimelineOps.captionStyle('TITLE', positionY: 0.25),
+  );
+
+  late final _text = TextEditingController(text: _existing?.text ?? '');
+  late final int _initialMs = _existing == null ? 3000 : _existing.endMs - _existing.startMs;
+  late double seconds = (_initialMs / 1000).clamp(_minSeconds, _maxSeconds);
+  late double? y = (_initialStyle['positionY'] as num?)?.toDouble() ?? 0.25;
+  late final double x = (_initialStyle['positionX'] as num?)?.toDouble() ?? 0.5;
+
+  late String _fontFamily = (_initialStyle['fontFamily'] as String?) ?? 'Inter';
+
+  /// Canvas pixels (contract §3.4): 72 px is about 7% of a 1080-wide frame.
+  late double _fontSize = ((_initialStyle['fontSizePx'] as num?)?.toDouble() ?? 72).clamp(_minFont, _maxFont);
+  late String _textColor = _hex6(_initialStyle['textColor']) ?? '#FFFFFF';
+  late String? _bgColor = (_initialStyle['background'] as Map?)?['color'] as String?;
+  late int _strokeWidth = (_initialStyle['strokeWidthPx'] as num?)?.round() ?? 0;
+  late bool _shadow = _initialStyle['shadow'] != false;
+  late bool _glow = _initialStyle['glow'] == true;
   late String _animation = (_initialStyle['animation'] as String?) ?? 'none';
   late String? _enter = (_initialStyle['enter'] as Map?)?['type'] as String?;
   late String? _exit = (_initialStyle['exit'] as Map?)?['type'] as String?;
   late String? _loop = (_initialStyle['loop'] as Map?)?['type'] as String?;
+
+  static const _minFont = 24.0, _maxFont = 240.0;
+  static const _minSeconds = 0.5, _maxSeconds = 30.0;
 
   static const _emojis = ['🔥', '🚀', '❤️', '💡', '👏', '😂', '✨', '🎯', '📈', '⚡', '🎬', '💥', '💰', '👑', '🎉', '💯'];
   static const _fonts = ['Inter', 'Anton', 'Montserrat', 'Poppins', 'Syne', 'Outfit', 'Roboto', 'Bebas Neue'];
@@ -1051,13 +1071,16 @@ class _TextSheetState extends State<_TextSheet> {
     ('#000000', 'Black'),
     ('#EF4444', 'Red'),
   ];
+
+  /// Box colours in the contract's #RRGGBBAA order (alpha last), as the renderer reads them.
   static const _bgColors = [
     (null, 'None'),
-    ('#B3000000', 'Black'),
-    ('#CCFFFFFF', 'White'),
-    ('#4D22D3EE', 'Cyan'),
-    ('#80EF4444', 'Red'),
+    ('#000000B3', 'Black'),
+    ('#FFFFFFCC', 'White'),
+    ('#22D3EE4D', 'Cyan'),
+    ('#EF444480', 'Red'),
   ];
+
   /// Word highlighting (captions); motion lives in the In / Out / Loop pickers below.
   static const _animations = [
     ('none', 'None'),
@@ -1066,6 +1089,18 @@ class _TextSheetState extends State<_TextSheet> {
     ('word_box', 'Word Box'),
     ('word_reveal', 'Word Reveal'),
   ];
+
+  static const _positions = [(0.18, 'Top'), (0.5, 'Center'), (0.82, 'Bottom')];
+
+  /// '#RRGGBB' from a contract colour (#RRGGBB / #RRGGBBAA), or null when it is not one.
+  static String? _hex6(Object? v) {
+    if (v is! String) return null;
+    final h = v.trim().replaceFirst('#', '');
+    if ((h.length != 6 && h.length != 8) || int.tryParse(h, radix: 16) == null) return null;
+    return '#${h.substring(0, 6).toUpperCase()}';
+  }
+
+  static Color _swatch(String hex) => Color(int.parse('FF${hex.substring(1, 7)}', radix: 16));
 
   @override
   void dispose() {
@@ -1086,28 +1121,63 @@ class _TextSheetState extends State<_TextSheet> {
     setState(() {});
   }
 
-  Map<String, dynamic> _buildStyle() => {
-        'fontFamily': _fontFamily,
-        'fontSizePx': _fontSize,
-        'textColor': _textColor,
-        'highlightColor': _textColor,
-        'positionX': x,
-        'positionY': y,
-        if (_bgColor != null) 'background': {'color': _bgColor},
-        if (_strokeWidth > 0) 'strokeWidthPx': _strokeWidth,
-        if (_strokeWidth > 0) 'strokeColor': '#000000',
-        'shadow': _shadow,
-        'glow': _glow,
-        'animation': _animation,
-        if (_enter != null) 'enter': {'type': _enter, 'durationMs': _enter == 'typewriter' ? 1200 : 400},
-        if (_exit != null) 'exit': {'type': _exit, 'durationMs': 400},
-        if (_loop != null) 'loop': {'type': _loop, 'periodMs': 1200},
-      };
+  /// The edited style on top of the starting one. Every key this sheet controls is written explicitly (null clears
+  /// it), so turning something off really turns it off.
+  Map<String, dynamic> _buildStyle() {
+    final bg = _initialStyle['background'];
+    return {
+      ..._initialStyle,
+      'fontFamily': _fontFamily,
+      'fontSizePx': _fontSize.roundToDouble(),
+      'textColor': _textColor,
+      // A title has no spoken words: its "highlight" is its own colour. Captions keep their highlight colour.
+      if (!_isCaption) 'highlightColor': _textColor,
+      'positionX': x,
+      'positionY': y ?? (_initialStyle['positionY'] as num?)?.toDouble() ?? 0.25,
+      'background': _bgColor == null ? null : {if (bg is Map) ...bg.cast<String, dynamic>(), 'color': _bgColor},
+      'strokeWidthPx': _strokeWidth,
+      'strokeColor': _initialStyle['strokeColor'] ?? '#000000',
+      'shadow': _shadow,
+      'glow': _glow,
+      'animation': _animation,
+      'enter': _enter == null ? null : {'type': _enter, 'durationMs': _enter == 'typewriter' ? 1200 : 400},
+      'exit': _exit == null ? null : {'type': _exit, 'durationMs': 400},
+      'loop': _loop == null ? null : {'type': _loop, 'periodMs': 1200},
+    };
+  }
+
+  void _submit() {
+    final t = _text.text.trim();
+    if (t.isEmpty) {
+      showError(context, _isCaption ? 'Type the caption first.' : 'Type some text first.');
+      return;
+    }
+    final style = _buildStyle();
+    final ex = _existing;
+    final ms = (seconds * 1000).round();
+    _close(context);
+    if (ex != null) {
+      // Text, look and length in one step, so a single Undo restores the item as it was.
+      widget.onEdit((ir) {
+        var out = TimelineOps.editText(ir, ex.id, text: t, style: style);
+        if ((ms - _initialMs).abs() >= 50) {
+          out = TimelineOps.setItemRange(out, _isCaption ? TrackKind.captions : TrackKind.text, ex.id, ex.startMs, ex.startMs + ms);
+        }
+        return out;
+      }, done: _isCaption ? 'Caption updated' : 'Text updated');
+    } else {
+      widget.onEdit(
+        (ir) => TimelineOps.addText(ir, t, startMs: widget.c.playheadMs, durationMs: ms, style: style),
+        done: 'Text added. Drag it on the video to move it.',
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final titles = widget.c.ir!.captions.where((c) => c.kind == 'text').toList();
     final previewStyle = _buildStyle();
+    final ex = _existing;
 
     return SizedBox(
       height: MediaQuery.of(context).size.height * 0.78,
@@ -1115,8 +1185,10 @@ class _TextSheetState extends State<_TextSheet> {
         padding: EdgeInsets.zero,
         children: [
           _Title(
-            _existing != null ? 'Edit text style' : 'Add text',
-            subtitle: 'Starts at ${timecode(widget.c.playheadMs)}. Drag directly on video to position.',
+            ex == null ? 'Add text' : (_isCaption ? 'Edit caption' : 'Edit text'),
+            subtitle: ex == null
+                ? 'Starts at ${timecode(widget.c.playheadMs)}. Drag it on the video to position it.'
+                : '${timecode(ex.startMs)} – ${timecode(ex.endMs)}. Drag it on the video to position it.',
           ),
 
           // Live Text Preview Box
@@ -1136,10 +1208,11 @@ class _TextSheetState extends State<_TextSheet> {
                 textAlign: TextAlign.center,
                 style: CaptionFonts.textStyle(
                   previewStyle,
-                  fontSize: _fontSize.clamp(14, 32),
-                  color: Color(int.parse('FF${_textColor.substring(1)}', radix: 16)),
+                  // Canvas pixels shown at roughly phone-preview size.
+                  fontSize: (_fontSize / 3).clamp(12, 32).toDouble(),
+                  color: _swatch(_textColor),
                   shadows: [
-                    if (_glow) Shadow(blurRadius: 16, color: Color(int.parse('FF${_textColor.substring(1)}', radix: 16))),
+                    if (_glow) Shadow(blurRadius: 16, color: _swatch(_textColor)),
                     if (_shadow || _strokeWidth > 0) ...[
                       Shadow(blurRadius: 4, color: Colors.black),
                       Shadow(blurRadius: 1, color: Colors.black),
@@ -1153,10 +1226,11 @@ class _TextSheetState extends State<_TextSheet> {
           // Text Field
           TextField(
             controller: _text,
-            autofocus: _existing == null,
-            maxLines: 2,
+            autofocus: ex == null,
+            minLines: 1,
+            maxLines: 3,
             onChanged: (_) => setState(() {}),
-            decoration: fieldDecoration('Text content', hint: 'Type your title, hook, or text…'),
+            decoration: fieldDecoration(_isCaption ? 'Caption text' : 'Text content', hint: 'Type your title, hook, or text…'),
           ),
           SizedBox(height: 8),
 
@@ -1196,7 +1270,7 @@ class _TextSheetState extends State<_TextSheet> {
             scrollDirection: Axis.horizontal,
             child: Row(
               children: [
-                for (final f in _fonts)
+                for (final f in {..._fonts, _fontFamily})
                   Padding(
                     padding: EdgeInsets.only(right: 6),
                     child: ChoiceChip(
@@ -1217,21 +1291,26 @@ class _TextSheetState extends State<_TextSheet> {
             scrollDirection: Axis.horizontal,
             child: Row(
               children: [
-                for (final (hex, _) in _textColors)
+                for (final (hex, label) in _textColors)
                   Padding(
                     padding: EdgeInsets.only(right: 8),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(16),
-                      onTap: () => setState(() => _textColor = hex),
-                      child: Container(
-                        width: 32,
-                        height: 32,
-                        decoration: BoxDecoration(
-                          color: Color(int.parse('FF${hex.substring(1)}', radix: 16)),
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: _textColor == hex ? AppTheme.primary : AppTheme.border,
-                            width: _textColor == hex ? 3 : 1,
+                    child: Semantics(
+                      button: true,
+                      selected: _textColor == hex,
+                      label: 'Text colour $label',
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(16),
+                        onTap: () => setState(() => _textColor = hex),
+                        child: Container(
+                          width: 32,
+                          height: 32,
+                          decoration: BoxDecoration(
+                            color: _swatch(hex),
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: _textColor == hex ? AppTheme.primary : AppTheme.border,
+                              width: _textColor == hex ? 3 : 1,
+                            ),
                           ),
                         ),
                       ),
@@ -1298,21 +1377,12 @@ class _TextSheetState extends State<_TextSheet> {
               selected: _glow,
               onSelected: (v) => setState(() => _glow = v),
             ),
-            ChoiceChip(
-              label: Text('No Stroke'),
-              selected: _strokeWidth == 0,
-              onSelected: (_) => setState(() => _strokeWidth = 0),
-            ),
-            ChoiceChip(
-              label: Text('Outline 2px'),
-              selected: _strokeWidth == 2,
-              onSelected: (_) => setState(() => _strokeWidth = 2),
-            ),
-            ChoiceChip(
-              label: Text('Outline 4px'),
-              selected: _strokeWidth == 4,
-              onSelected: (_) => setState(() => _strokeWidth = 4),
-            ),
+            for (final (w, label) in const [(0, 'No Stroke'), (6, 'Outline'), (10, 'Thick outline')])
+              ChoiceChip(
+                label: Text(label),
+                selected: _strokeWidth == w,
+                onSelected: (_) => setState(() => _strokeWidth = w),
+              ),
           ]),
           SizedBox(height: 12),
 
@@ -1323,9 +1393,9 @@ class _TextSheetState extends State<_TextSheet> {
                 Text('Size: ${_fontSize.round()}px', style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
                 Slider(
                   value: _fontSize,
-                  min: 14,
-                  max: 56,
-                  divisions: 21,
+                  min: _minFont,
+                  max: _maxFont,
+                  divisions: ((_maxFont - _minFont) / 4).round(),
                   onChanged: (v) => setState(() => _fontSize = v),
                 ),
               ]),
@@ -1335,9 +1405,9 @@ class _TextSheetState extends State<_TextSheet> {
                 Text('Duration: ${seconds.toStringAsFixed(1)}s', style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
                 Slider(
                   value: seconds,
-                  min: 0.5,
-                  max: 10,
-                  divisions: 19,
+                  min: _minSeconds,
+                  max: _maxSeconds,
+                  divisions: ((_maxSeconds - _minSeconds) * 2).round(),
                   onChanged: (v) => setState(() => seconds = v),
                 ),
               ]),
@@ -1345,50 +1415,40 @@ class _TextSheetState extends State<_TextSheet> {
           ]),
           SizedBox(height: 8),
 
-          // Vertical Position Quick Buttons
+          // Vertical Position Quick Buttons (a position dragged on the video selects none of them)
           Text('Vertical Position', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textSecondary)),
           SizedBox(height: 6),
           SegmentedButton<double>(
-            segments: [
-              ButtonSegment(value: 0.18, label: Text('Top')),
-              ButtonSegment(value: 0.50, label: Text('Center')),
-              ButtonSegment(value: 0.82, label: Text('Bottom')),
-            ],
-            selected: {y},
-            onSelectionChanged: (v) => setState(() => y = v.first),
+            segments: [for (final (v, label) in _positions) ButtonSegment(value: v, label: Text(label))],
+            selected: {
+              for (final (v, _) in _positions)
+                if (y != null && (y! - v).abs() < 0.01) v,
+            },
+            emptySelectionAllowed: true,
+            onSelectionChanged: (v) {
+              if (v.isNotEmpty) setState(() => y = v.first);
+            },
           ),
           SizedBox(height: 16),
 
           // Apply / Add Button
           FilledButton.icon(
-            icon: Icon(_existing != null ? Icons.check_rounded : Icons.add_rounded),
-            label: Text(_existing != null ? 'Update text' : 'Add text to video'),
-            onPressed: () {
-              final t = _text.text.trim();
-              if (t.isEmpty) return;
-              _close(context);
-              final ex = _existing;
-              if (ex != null) {
-                widget.onEdit(
-                  (ir) => TimelineOps.editText(ir, ex.id, text: t, style: _buildStyle()),
-                  done: 'Text updated',
-                );
-              } else {
-                widget.onEdit(
-                  (ir) => TimelineOps.addText(
-                    ir,
-                    t,
-                    startMs: widget.c.playheadMs,
-                    durationMs: (seconds * 1000).round(),
-                    positionY: y,
-                    positionX: x,
-                    style: _buildStyle(),
-                  ),
-                  done: 'Text added',
-                );
-              }
-            },
+            icon: Icon(ex != null ? Icons.check_rounded : Icons.add_rounded),
+            label: Text(ex != null ? (_isCaption ? 'Update caption' : 'Update text') : 'Add text to video'),
+            onPressed: _submit,
           ),
+          if (ex != null) ...[
+            SizedBox(height: 8),
+            TextButton.icon(
+              style: TextButton.styleFrom(foregroundColor: AppTheme.error),
+              icon: Icon(Icons.delete_outline_rounded),
+              label: Text(_isCaption ? 'Delete this caption' : 'Delete this text'),
+              onPressed: () {
+                _close(context);
+                widget.onEdit((ir) => TimelineOps.removeCaption(ir, ex.id), done: _isCaption ? 'Caption deleted' : 'Text deleted');
+              },
+            ),
+          ],
 
           if (titles.isNotEmpty) ...[
             SizedBox(height: 16),
@@ -1396,13 +1456,24 @@ class _TextSheetState extends State<_TextSheet> {
             for (final t in titles)
               ListTile(
                 dense: true,
+                selected: t.id == ex?.id,
                 title: Text(t.text, maxLines: 1, overflow: TextOverflow.ellipsis),
                 subtitle: Text('${timecode(t.startMs)} – ${timecode(t.endMs)}'),
+                onTap: t.id == ex?.id
+                    ? null
+                    : () {
+                        // Edit another title: reopen the sheet on it (from the editor's navigator: this sheet closes).
+                        final nav = Navigator.of(context);
+                        widget.c.selectTrackItem(t.id, TrackKind.text);
+                        widget.c.seek(t.startMs);
+                        nav.pop();
+                        showStudioTool(nav.context, StudioTool.text, widget.c, onEdit: widget.onEdit);
+                      },
                 trailing: IconButton(
                   icon: Icon(Icons.delete_outline_rounded, color: AppTheme.error),
                   onPressed: () {
                     _close(context);
-                    widget.onEdit((ir) => TimelineOps.removeCaption(ir, t.id));
+                    widget.onEdit((ir) => TimelineOps.removeCaption(ir, t.id), done: 'Text deleted');
                   },
                 ),
               ),
@@ -1581,8 +1652,31 @@ class _CaptionsSheetState extends State<_CaptionsSheet> {
   Map<String, TextEditingController>? _fixing;
   Object? _exportError;
 
+  /// A caption typed by hand at the playhead (works without a transcript).
+  final _manual = TextEditingController();
+
+  void _addManual() {
+    final c = widget.c;
+    final t = _manual.text.trim();
+    if (t.isEmpty) {
+      showError(context, 'Type the caption first.');
+      return;
+    }
+    final hasSpeech = c.ir!.captions.any((x) => x.kind == 'caption');
+    // About 0.45 s per word, like natural speech, between 1.2 s and 5 s.
+    final ms = (t.split(RegExp(r'\s+')).length * 450).clamp(1200, 5000);
+    final style = hasSpeech ? null : TimelineOps.captionStyle(preset, highlightColor: color, positionY: y, fontSizePx: _fontSizePx);
+    final at = c.playheadMs;
+    _close(context);
+    widget.onEdit(
+      (ir) => TimelineOps.addCaption(ir, t, startMs: at, durationMs: ms, style: style),
+      done: 'Caption added at ${timecode(at)}',
+    );
+  }
+
   @override
   void dispose() {
+    _manual.dispose();
     for (final t in _fixing?.values ?? const <TextEditingController>[]) {
       t.dispose();
     }
@@ -1680,7 +1774,7 @@ class _CaptionsSheetState extends State<_CaptionsSheet> {
                   '${c.spokenLanguage == CaptionLanguages.auto && CaptionLanguages.isKnown(detected) ? ', detected ${CaptionLanguages.nameOf(detected!)}' : ''}).'
               : running
                   ? 'Waiting for the transcript…'
-                  : 'Captions need a transcript. ${errorText(c.transcriptError ?? '')}'),
+                  : 'Auto captions need a transcript. ${errorText(c.transcriptError ?? '')} You can still type captions below.'),
       if (!has) ...[
         Container(
           margin: EdgeInsets.only(bottom: 12),
@@ -1726,6 +1820,24 @@ class _CaptionsSheetState extends State<_CaptionsSheet> {
           ),
         ),
       ],
+      // Manual captions: no transcript needed (no speech, a failed transcription, or a line to add by hand).
+      Text('Type a caption', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textSecondary)),
+      SizedBox(height: 4),
+      Row(children: [
+        Expanded(
+          child: TextField(
+            controller: _manual,
+            minLines: 1,
+            maxLines: 2,
+            textInputAction: TextInputAction.done,
+            onSubmitted: (_) => _addManual(),
+            decoration: fieldDecoration('Caption at ${timecode(c.playheadMs)}', hint: 'What is said here…'),
+          ),
+        ),
+        SizedBox(width: 8),
+        FilledButton.tonal(onPressed: _addManual, child: Text('Add')),
+      ]),
+      SizedBox(height: 12),
       Row(children: [
         Expanded(child: Text('Spoken language')),
         DropdownButton<String>(

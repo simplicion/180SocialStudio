@@ -47,7 +47,7 @@ router.post('/checkout', async (req: Request, res: Response) => {
             return res.status(401).json({ success: false, error: 'UNAUTHORIZED', message: 'User authentication required.' });
         }
         const companyId = (req as any).user?.companyId || (req as any).companyId || userId;
-        const userEmail = (req as any).user?.email || 'creator@180workspace.com';
+        const userEmail = (req as any).user?.email || `${userId}@180workspace.com`;
 
         const { type, days, returnUrl } = req.body;
         const checkout = await SocialBillingService.createCheckout(userId, companyId, userEmail, {

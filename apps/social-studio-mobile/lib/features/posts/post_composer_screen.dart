@@ -624,13 +624,7 @@ class _ComposerFormState extends ConsumerState<_ComposerForm> {
                                     'facebookFormat': _platformFormat[p]!,
                                   }
                                 : const <String, dynamic>{})
-                            : p == SocialPlatform.x
-                                // Over 280 characters: published as a numbered thread (each post replies to the last).
-                                ? <String, dynamic>{
-                                    'publishingMode': 'user_assisted',
-                                    if ((_ownText(_variantText[p], _copiedCaption[p], _content.text.trim()) ?? _content.text.trim()).characters.length > 280) 'thread': true,
-                                  }
-                                : const <String, dynamic>{},
+                            : const <String, dynamic>{},
           ).toCreateJson(),
       ],
       if (_p == null) ...{
@@ -1402,24 +1396,6 @@ List<_FormatOption> _getPlatformFormatOptions(SocialPlatform platform) {
           description: 'Universal post: text, single image, multi-image, or video.',
         ),
       ];
-    case SocialPlatform.threads:
-      return const [
-        _FormatOption(
-          id: 'post',
-          label: '🧵 Threads Post',
-          icon: Icons.forum_rounded,
-          description: 'Universal post: text, photo carousel (up to 10), or video.',
-        ),
-      ];
-    case SocialPlatform.x:
-      return const [
-        _FormatOption(
-          id: 'post',
-          label: '🐦 Tweet / Thread',
-          icon: Icons.chat_bubble_outline_rounded,
-          description: '280-char post (auto-threads if longer) with media.',
-        ),
-      ];
     default:
       return const [];
   }
@@ -1538,25 +1514,6 @@ class _PlatformSpec {
           guidelines: 'Focus on professional insights, career learnings, and business value. Spaced-out paragraphs improve read-through.',
         );
 
-      case SocialPlatform.x:
-        return const _PlatformSpec(
-          name: 'X (Twitter)',
-          mediaTypes: 'Up to 4 images, 1 video, or text-only',
-          aspectRatios: '16:9 or 1:1',
-          maxChars: 280,
-          features: ['Concise 280 chars', 'Trending hashtags', 'Thread-ready (auto-splits > 280)'],
-          guidelines: 'Keep copy punchy and fast-paced. Over 280 chars will publish as an automated numbered thread.',
-        );
-
-      case SocialPlatform.threads:
-        return const _PlatformSpec(
-          name: 'Threads',
-          mediaTypes: 'Up to 10 photos, video (up to 5m), or text',
-          aspectRatios: '9:16, 1:1, or 4:5',
-          maxChars: 500,
-          features: ['500 character limit', 'Conversational tone', 'Instagram identity sync'],
-          guidelines: 'Prioritize conversational prompts, community replies, and engaging bite-sized discussions.',
-        );
 
       default:
         return _PlatformSpec(
@@ -2010,9 +1967,7 @@ class _PlatformCustomizationSheetState extends State<_PlatformCustomizationSheet
                     : '${platform.label} Caption',
                 hint: widget.globalCaption.isNotEmpty ? widget.globalCaption : 'Enter caption for ${platform.label}',
                 helper: isOverLimit
-                    ? (platform == SocialPlatform.x
-                        ? 'Over 280 characters: this goes out as a thread of about ${(captionLength / 270).ceil()} posts.'
-                        : 'Over the ${platform.label} character limit. Shorten it before publishing.')
+                    ? 'Over the ${platform.label} character limit. Shorten it before publishing.'
                     : (widget.customCaptionController.text.trim() == widget.globalCaption.trim() && widget.globalCaption.isNotEmpty)
                         ? 'Pre-filled with your post description. Edit if you wish to customize.'
                         : null,

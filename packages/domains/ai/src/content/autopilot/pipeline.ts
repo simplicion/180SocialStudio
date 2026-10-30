@@ -134,7 +134,7 @@ async function runStrategist(input: AutopilotRunInput, research: ResearchOutcome
             ? `Plan EXACTLY these ${plan.length} slots (one slot per listed format, on that day; no more, no fewer):\n${describePlan(plan)}`
             : `Plan 1 high-impact content slot per day for days 1 to ${days} (${days} slots total).`,
         `Each slot cross-posts to the platforms that support its format: ${platforms.join(', ')}.`,
-        'Formats: "reel" (short vertical video: Reels / TikTok / Shorts), "carousel", "static" (single image), "text" (text post or thread).',
+        'Formats: "reel" (short vertical video: Reels / Shorts), "carousel", "static" (single image), "text" (text post).',
         `Platform format support: ${platforms.map((p) => `${p}=${PLATFORM_RULES[p].formats.join('/')}`).join('; ')}.`,
         `Hook types (assign one to every slot and use all five across the plan): ${HOOK_TYPES.join(', ')}.`,
         input.contentMix ? `Reels run about ${input.contentMix.targetReelDurationSec}s; carousels have about ${input.contentMix.carouselSlideCount} slides.` : '',
@@ -255,6 +255,9 @@ export function assignHookTypes(slots: StrategySlot[]) {
 
 interface WorkingSlot extends StrategySlot {
     slotId: string;
+    // Required once the strategy has been validated (the schema enforces them; restated so the type says so too).
+    format: NonNullable<StrategySlot['format']>;
+    topic: string;
     weekNumber: number;
 }
 
@@ -457,7 +460,7 @@ export function validateRunInput(input: AutopilotRunInput) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(input.startDate) || Number.isNaN(Date.parse(`${input.startDate}T00:00:00Z`))) {
         throw new AutopilotError('INVALID_INPUT', 'startDate must be YYYY-MM-DD');
     }
-    if (!input.platforms.length) throw new AutopilotError('INVALID_INPUT', 'at least one supported platform is required (instagram, facebook, tiktok, youtube, linkedin, x)');
+    if (!input.platforms.length) throw new AutopilotError('INVALID_INPUT', 'at least one supported platform is required (instagram, facebook, youtube, linkedin)');
     if (!isValidTimeZone(input.timezone)) throw new AutopilotError('INVALID_INPUT', `unknown timezone ${input.timezone}`);
 }
 
@@ -495,7 +498,8 @@ export async function runAutopilotPipeline(input: AutopilotRunInput, deps: Pipel
     const slots: WorkingSlot[] = strategy.slots.map((s) => {
         const n = (perDay.get(s.day) || 0) + 1;
         perDay.set(s.day, n);
-        return { ...s, slotId: `d${s.day}-${n}`, weekNumber: Math.ceil(s.day / 7) };
+        // format and topic are required by StrategySlotSchema, which the strategist's output has already passed.
+        return { ...s, format: s.format!, topic: s.topic!, slotId: `d${s.day}-${n}`, weekNumber: Math.ceil(s.day / 7) };
     });
 
     // 3. Hooks & scripts per week

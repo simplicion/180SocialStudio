@@ -3623,7 +3623,7 @@ model SocialAccount {
   companyId           String
   clientId            String?
   projectId           String?
-  platform            String               // "instagram", "facebook", "linkedin", "tiktok", "youtube"
+  platform            String               // "instagram", "facebook", "youtube", "linkedin"
   platformAccountId   String
   accountName         String
   username            String
@@ -3744,7 +3744,7 @@ model SocialPost {
 model SocialPostVariant {
   id                  String               @id @default(uuid())
   postId              String
-  platform            String               // "instagram", "facebook", "linkedin", "tiktok", "youtube"
+  platform            String               // "instagram", "facebook", "youtube", "linkedin"
   customContent       String               @db.Text
   customMediaUrls     String[]             @default([])
   firstComment        String?              @db.Text
@@ -3895,7 +3895,7 @@ model SocialConversation {
   companyId           String
   projectId           String?
   socialAccountId     String
-  platform            String               // "instagram", "facebook", "linkedin", "tiktok", "youtube"
+  platform            String               // "instagram", "facebook", "youtube", "linkedin"
   platformThreadId    String
   participantName     String
   participantHandle   String
@@ -4014,7 +4014,7 @@ model SocialInteractionLog {
   companyId               String
   ruleId                  String
   socialAccountId         String
-  platform                String                  // "instagram", "facebook", "twitter", "threads", "youtube", "linkedin"
+  platform                String                  // "instagram", "facebook", "youtube", "linkedin"
   platformCommentId       String?
   platformMessageId       String?
   platformMediaId         String?                 // post / reel the comment belongs to (one DM per user per post)

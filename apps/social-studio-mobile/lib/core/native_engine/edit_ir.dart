@@ -575,7 +575,81 @@ class EditIrCaption {
   final List<EditIrWord> words;
 
   /// Style object exactly as defined in contract §3.4 (preset, animation, fontSizePx, colours, ...).
+  ///
+  /// Units: `fontSizePx`, `strokeWidthPx` and `background.paddingPx` / `radiusPx` are CANVAS pixels (a 64 px
+  /// caption on a 1080-wide canvas is 64/1080 of the frame width). The export draws them at that size; a preview
+  /// drawn W logical pixels wide must multiply them by [canvasPxScale] (W / canvas.width) to look the same.
   final Map<String, dynamic> style;
+
+  /// Factor from contract canvas pixels to a preview [renderWidth] logical pixels wide.
+  static double canvasPxScale(double renderWidth, int canvasWidth) => canvasWidth > 0 && renderWidth > 0 ? renderWidth / canvasWidth : 1;
+
+  /// Marker word for a typed line break in [displayWords].
+  static const lineBreak = '\n';
+
+  /// The words the renderers draw, in order (mirrors `displayWords` in the Android VideoEffects.kt; use it in the
+  /// preview so both show the same text):
+  ///  - a title (`kind: text`) draws its [text] word by word for its whole range ([words] is only a stale copy);
+  ///  - a speech caption draws its timed [words], unless [text] was edited so it no longer matches them: then the
+  ///    new text is drawn, re-timed by character count (same word count keeps each word's timing and emphasis);
+  ///  - a caption without words draws its [text] for its whole range.
+  /// Typed line breaks become [lineBreak] entries.
+  List<EditIrWord> get displayWords {
+    String norm(String s) => s.trim().split(RegExp(r'\s+')).where((w) => w.isNotEmpty).join(' ');
+    List<String> tokens(String t) {
+      final out = <String>[];
+      final lines = t.replaceAll('\r\n', '\n').split('\n');
+      for (var i = 0; i < lines.length; i++) {
+        if (i > 0) out.add(lineBreak);
+        out.addAll(lines[i].split(RegExp(r'\s+')).where((w) => w.isNotEmpty));
+      }
+      while (out.isNotEmpty && out.first == lineBreak) {
+        out.removeAt(0);
+      }
+      while (out.isNotEmpty && out.last == lineBreak) {
+        out.removeLast();
+      }
+      return out;
+    }
+
+    List<EditIrWord> still(String t) => [for (final p in tokens(t)) EditIrWord(text: p, startMs: startMs, endMs: endMs)];
+
+    final spoken = words.where((w) => w.text.trim().isNotEmpty).toList();
+    if (kind == 'text') return still(text.trim().isEmpty ? spoken.map((w) => w.text).join(' ') : text);
+    if (spoken.isEmpty) return still(text);
+    if (text.trim().isEmpty || norm(text) == norm(spoken.map((w) => w.text).join(' '))) return spoken;
+    final parts = tokens(text);
+    final typed = parts.where((p) => p != lineBreak).toList();
+    if (typed.length == spoken.length) {
+      var i = 0;
+      return [
+        for (final p in parts)
+          if (p == lineBreak)
+            EditIrWord(text: p, startMs: startMs, endMs: endMs)
+          else
+            () {
+              final w = spoken[i++];
+              return EditIrWord(text: p, startMs: w.startMs, endMs: w.endMs, highlight: w.highlight, color: w.color, scale: w.scale);
+            }(),
+      ];
+    }
+    final total = typed.fold<int>(0, (n, p) => n + p.length).clamp(1, 1 << 30);
+    final span = endMs - startMs;
+    final pop = spoken.map((w) => w.scale).reduce((a, b) => a > b ? a : b);
+    var done = 0;
+    return [
+      for (final p in parts)
+        if (p == lineBreak)
+          EditIrWord(text: p, startMs: startMs, endMs: endMs)
+        else
+          () {
+            final s = startMs + (span * done / total).floor();
+            done += p.length;
+            final e = (startMs + (span * done / total).floor()).clamp(s + 1, endMs);
+            return EditIrWord(text: p, startMs: s, endMs: e, scale: pop);
+          }(),
+    ];
+  }
 
   factory EditIrCaption.fromJson(Map<String, dynamic> j) => EditIrCaption(
         id: _str(j, 'id'),

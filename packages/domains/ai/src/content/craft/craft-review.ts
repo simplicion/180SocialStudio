@@ -85,7 +85,7 @@ export function reviewPieceCraft(input: CraftPieceInput): CraftReport {
     const copy: CraftReport['copy'] = {};
     let allCopy = '';
     for (const p of platforms) {
-        const c = input.captions?.[p] ?? (p === 'x' ? input.captions?.twitter : undefined);
+        const c = input.captions?.[p];
         if (!c?.caption) continue;
         const tags = (c.hashtags || []).filter((t) => !c.caption.includes(t));
         const text = tags.length ? `${c.caption.trim()}\n\n${tags.join(' ')}` : c.caption.trim();

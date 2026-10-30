@@ -62,22 +62,38 @@ class _AiInboxSettingsSheetState extends ConsumerState<AiInboxSettingsSheet> {
 
   Future<void> _editInstructions(AiInboxAccount a) async {
     final ctl = TextEditingController(text: a.instructions ?? '');
-    final saved = await showDialog<String>(
+    final saved = await AppBottomSheet.show<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Instructions for @${a.username ?? a.accountName}'),
-        content: TextField(
-          controller: ctl,
-          minLines: 4,
-          maxLines: 8,
-          maxLength: 2000,
-          decoration: fieldDecoration('What should the AI know?',
-              hint: 'Our offer, prices you are happy to share, who is a good fit (e.g. budget above \$1,000, launching within 60 days), booking link.'),
+      title: 'Instructions for @${a.username ?? a.accountName}',
+      icon: Icon(Icons.psychology_rounded, color: AppTheme.primary, size: 24),
+      actions: [
+        OutlinedButton(
+          style: OutlinedButton.styleFrom(
+            side: BorderSide(color: AppTheme.border),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, ctl.text.trim()), child: const Text('Save')),
-        ],
+        const SizedBox(width: 12),
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppTheme.primary,
+            foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+          onPressed: () => Navigator.pop(context, ctl.text.trim()),
+          child: const Text('Save'),
+        ),
+      ],
+      builder: (ctx) => TextField(
+        controller: ctl,
+        autofocus: true,
+        minLines: 4,
+        maxLines: 8,
+        maxLength: 2000,
+        decoration: fieldDecoration('What should the AI know?',
+            hint: 'Our offer, prices you are happy to share, who is a good fit (e.g. budget above \$1,000, launching within 60 days), booking link.'),
       ),
     );
     ctl.dispose();

@@ -37,7 +37,7 @@ export interface UpdateEngagementRuleDTO extends Partial<CreateEngagementRuleDTO
 export interface InboundEngagementEvent {
     companyId: string;
     socialAccountId: string;
-    platform: 'instagram' | 'facebook' | 'threads' | 'youtube' | 'linkedin' | 'tiktok' | 'twitter' | string;
+    platform: 'instagram' | 'facebook' | 'youtube' | 'linkedin' | string;
     eventType: 'comment' | 'dm' | 'mention';
     commentId?: string;
     parentCommentId?: string;

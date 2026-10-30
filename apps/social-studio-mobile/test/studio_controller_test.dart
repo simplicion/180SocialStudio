@@ -227,4 +227,69 @@ void main() {
     expect((json['watermark'] as Map)['opacityPct'], 80);
     expect(c.ir!.withWatermark(null).toJson().containsKey('watermark'), isFalse);
   });
+
+  test('a drag on the preview is one undo step back to where the text was before it', () {
+    c.apply((ir) => TimelineOps.addText(ir, 'Hook', startMs: 0, durationMs: 2000, positionY: 0.2));
+    final id = c.ir!.captions.single.id;
+    double y() => (c.ir!.captions.single.style['positionY'] as num).toDouble();
+    final before = y();
+
+    c.beginLiveEdit();
+    for (final v in [0.3, 0.4, 0.5]) {
+      c.applyWithoutHistory((ir) => TimelineOps.updateCaptionPosition(ir, id, positionX: 0.5, positionY: v));
+    }
+    c.endLiveEdit();
+    expect(y(), 0.5);
+
+    c.undo();
+    expect(y(), before, reason: 'undo restores the pre-drag position, not the last drag frame');
+    c.undo();
+    expect(c.ir!.captions, isEmpty);
+    c.redo();
+    c.redo();
+    expect(y(), 0.5);
+
+    // A gesture that changed nothing adds no undo step.
+    c.beginLiveEdit();
+    c.endLiveEdit();
+    c.undo();
+    expect(y(), before);
+  });
+
+  test('selecting a text, deleting it, and editing invalidate stale state', () {
+    c.apply((ir) => TimelineOps.addText(ir, 'Hook', startMs: 0, durationMs: 2000));
+    final id = c.ir!.captions.single.id;
+    c.selectTrackItem(id, TrackKind.text);
+    expect(c.selectedCaption?.id, id);
+    c.clearItemSelection();
+    expect(c.selectedCaption, isNull);
+
+    c.selectTrackItem(id, TrackKind.text);
+    c.apply((ir) => TimelineOps.removeCaption(ir, id));
+    expect(c.selectedItemId, isNull, reason: 'a deleted item is no longer selected');
+
+    // A finished export is dropped once the timeline changes, so the sheet renders the new edit.
+    c.export = ExportState(error: Exception('old'));
+    c.apply((ir) => TimelineOps.split(ir, 5000));
+    expect(c.export, isNull);
+    expect(c.ir!.clips, hasLength(2));
+  });
+
+  test('a failed director turn is friendly, keeps the raw error, and Try again does not duplicate the message', () async {
+    backend.fail('POST', _direct, 503, 'upstream exploded');
+    await c.askDirector('cut the second half');
+    final failed = c.messages.last;
+    expect(failed.failed, isTrue);
+    expect(failed.error, isNotNull);
+    expect(failed.text, startsWith('I could not do that:'));
+    expect(failed.text, isNot(contains('Exception')));
+
+    backend.json('POST', _direct, directorAnswer());
+    await c.retryLastDirectorTurn();
+    expect(c.messages.where((m) => m.fromUser).map((m) => m.text), ['cut the second half']);
+    expect(c.messages.any((m) => m.failed), isFalse);
+    expect(c.ir!.durationMs, 5000);
+    // The failed attempt is not sent to the director as conversation history.
+    expect(backend.last('POST', _direct)!.json['history'], isEmpty);
+  });
 }

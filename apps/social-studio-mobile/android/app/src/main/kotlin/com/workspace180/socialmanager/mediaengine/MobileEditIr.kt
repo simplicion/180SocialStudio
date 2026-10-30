@@ -4,6 +4,7 @@ import android.graphics.Color
 import org.json.JSONArray
 import org.json.JSONObject
 import kotlin.math.abs
+import kotlin.math.min
 import kotlin.math.roundToLong
 
 /**
@@ -216,6 +217,8 @@ data class MobileEditIr(
     val audio: IrAudio,
     val watermark: IrWatermark? = null,
     val effects: List<IrEffect> = emptyList(),
+    /** What [parse] repaired instead of failing the export (reported with the render's warnings). */
+    val parseWarnings: List<String> = emptyList(),
 ) {
     companion object {
         const val SCHEMA_VERSION = "mobile-editir/1"
@@ -228,8 +231,17 @@ data class MobileEditIr(
             } catch (e: Exception) {
                 throw EditIrException("INVALID_EDIT_IR", "editIR is not valid JSON: ${e.message}")
             }
-            return fromJson(root).also { it.validate() }
+            return fromJson(root).normalized().also { it.validate() }
         }
+
+        /** Caption animations the renderer draws (contract CAPTION_ANIMATIONS). */
+        val CAPTION_ANIMATIONS = setOf("none", "word_pop", "karaoke", "word_box", "word_reveal")
+
+        /**
+         * Older text styles stored motion in `animation` (fade_in, slide_up, typewriter, pulse). Same mapping as
+         * `normaliseCaptionStyle` in edit_ir.dart: they become enter / loop motion and the animation becomes none.
+         */
+        private val LEGACY_ENTER = mapOf("fade_in" to "fade", "slide_up" to "slide_up", "typewriter" to "typewriter")
 
         private fun fromJson(o: JSONObject): MobileEditIr {
             val schema = o.req<String>("schemaVersion")
@@ -306,17 +318,25 @@ data class MobileEditIr(
             }
             val captions = (o.optJSONArray("captions") ?: JSONArray()).objects().map { j ->
                 val s = j.optJSONObject("style") ?: JSONObject()
+                val kind = j.optNullableString("kind") ?: "caption"
                 val textColor = parseColor(s.optNullableString("textColor") ?: "#FFFFFF")
-                val highlight = parseColor(s.optNullableString("highlightColor") ?: "#FFE600")
+                // A title's highlight defaults to its own text colour (it has no spoken words to highlight).
+                val highlight = parseColor(
+                    s.optNullableString("highlightColor") ?: if (kind == "text") (s.optNullableString("textColor") ?: "#FFFFFF") else "#FFE600",
+                )
+                val rawAnimation = s.optNullableString("animation") ?: if (kind == "text") "none" else "word_pop"
+                val legacyEnter = LEGACY_ENTER[rawAnimation]?.let { IrTextMotionSpec(it, if (rawAnimation == "typewriter") 1200L else 400L) }
+                val legacyLoop = if (rawAnimation == "pulse") IrTextMotionSpec("pulse", 1200L) else null
+                val animation = if (rawAnimation in CAPTION_ANIMATIONS) rawAnimation else "none"
                 IrCaption(
                     id = j.req("id"),
-                    kind = j.optNullableString("kind") ?: "caption",
+                    kind = kind,
                     startMs = j.getLong("startMs"),
                     endMs = j.getLong("endMs"),
                     text = j.optString("text", ""),
                     words = (j.optJSONArray("words") ?: JSONArray()).objects().map { w ->
                         IrWord(
-                            text = w.req("text"),
+                            text = w.optNullableString("text") ?: "",
                             startMs = w.getLong("startMs"),
                             endMs = w.getLong("endMs"),
                             highlight = w.optBoolean("highlight", false),
@@ -325,8 +345,8 @@ data class MobileEditIr(
                         )
                     },
                     style = IrCaptionStyle(
-                        preset = s.optNullableString("preset") ?: "HORMOZI_BOUNCE",
-                        animation = s.optNullableString("animation") ?: "word_pop",
+                        preset = s.optNullableString("preset") ?: if (kind == "text") "TITLE" else "HORMOZI_BOUNCE",
+                        animation = animation,
                         fontFamily = s.optNullableString("fontFamily") ?: "Inter",
                         fontWeight = s.optInt("fontWeight", 800),
                         fontSizePx = s.optDouble("fontSizePx", 72.0),
@@ -347,9 +367,9 @@ data class MobileEditIr(
                         positionY = s.optDouble("positionY", 0.72),
                         maxWidthFraction = s.optDouble("maxWidthFraction", 0.86),
                         glow = s.optBoolean("glow", false),
-                        enter = s.optNullableObject("enter")?.motion("durationMs", TextMotion.ENTER_TYPES),
+                        enter = s.optNullableObject("enter")?.motion("durationMs", TextMotion.ENTER_TYPES) ?: legacyEnter,
                         exit = s.optNullableObject("exit")?.motion("durationMs", TextMotion.EXIT_TYPES),
-                        loop = s.optNullableObject("loop")?.motion("periodMs", TextMotion.LOOP_TYPES),
+                        loop = s.optNullableObject("loop")?.motion("periodMs", TextMotion.LOOP_TYPES) ?: legacyLoop,
                     ),
                 )
             }
@@ -473,6 +493,74 @@ data class MobileEditIr(
         }
 
         private fun JSONArray.objects(): List<JSONObject> = (0 until length()).map { getJSONObject(it) }
+    }
+
+    /**
+     * Repairs what an editor can legitimately leave behind without changing what the user meant, so a whole export
+     * never fails over it: a transition into the first clip (nothing to transition from), a crop rect nudged past
+     * the frame edge, items a trim left past the new end, empty captions and effects. Each repair is reported in
+     * [parseWarnings]. Structural problems (gaps between clips, bad speed, bad canvas) still fail in [validate].
+     */
+    fun normalized(): MobileEditIr {
+        val notes = mutableListOf<String>()
+        val fixedClips = clips.mapIndexed { i, c ->
+            var out = c
+            if (i == 0 && c.transitionIn != null) {
+                notes.add("the first clip had a transition in; there is nothing before it, so it was ignored")
+                out = out.copy(transitionIn = null)
+            }
+            out.crop?.let { r ->
+                val x0 = r.x.coerceIn(0.0, 1.0)
+                val y0 = r.y.coerceIn(0.0, 1.0)
+                val x1 = (r.x + r.width).coerceIn(0.0, 1.0)
+                val y1 = (r.y + r.height).coerceIn(0.0, 1.0)
+                val fixed = if (x1 - x0 < 1e-3 || y1 - y0 < 1e-3) null else IrCrop(x0, y0, x1 - x0, y1 - y0)
+                if (fixed == null || abs(fixed.x - r.x) > 1e-6 || abs(fixed.y - r.y) > 1e-6 ||
+                    abs(fixed.width - r.width) > 1e-6 || abs(fixed.height - r.height) > 1e-6
+                ) {
+                    notes.add("clip ${c.id}: crop extended past the frame and was clamped")
+                    out = out.copy(crop = fixed)
+                }
+            }
+            out
+        }
+        val end = fixedClips.lastOrNull()?.timelineEndMs ?: durationMs
+        val fixedOverlays = overlays.mapNotNull { ov ->
+            val s = ov.timelineStartMs.coerceAtLeast(0L)
+            val e = min(ov.timelineEndMs, end)
+            when {
+                e - s < 1 -> {
+                    notes.add("overlay ${ov.id} is outside the timeline and was left out")
+                    null
+                }
+                s != ov.timelineStartMs || e != ov.timelineEndMs ->
+                    ov.copy(timelineStartMs = s, timelineEndMs = e, sourceStartMs = ov.sourceStartMs + (s - ov.timelineStartMs))
+                else -> ov
+            }
+        }
+        val fixedCaptions = captions.mapNotNull { cap ->
+            val s = cap.startMs.coerceAtLeast(0L)
+            val e = min(cap.endMs, end)
+            when {
+                e - s < 1 -> null
+                cap.text.isBlank() && cap.words.all { it.text.isBlank() } -> null
+                s != cap.startMs || e != cap.endMs -> cap.copy(startMs = s, endMs = e)
+                else -> cap
+            }
+        }
+        val fixedZooms = zooms.filter { it.endMs > it.startMs && it.startMs < end }.map {
+            val z = if (it.endMs > end) it.copy(endMs = end) else it
+            if (z.scale < 1.0) z.copy(scale = 1.0) else z
+        }
+        val fixedEffects = effects.filter { it.endMs > it.startMs && it.startMs < end }
+        return copy(
+            clips = fixedClips,
+            overlays = fixedOverlays,
+            captions = fixedCaptions,
+            zooms = fixedZooms,
+            effects = fixedEffects,
+            parseWarnings = parseWarnings + notes,
+        )
     }
 
     /** Enforces the invariants of contract §3 so the renderer never guesses. */

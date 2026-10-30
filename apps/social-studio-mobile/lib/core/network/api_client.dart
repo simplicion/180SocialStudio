@@ -256,10 +256,15 @@ class ApiClient {
   // ── interceptor ────────────────────────────────────────────────────────────
 
   Future<void> _onRequest(RequestOptions options, RequestInterceptorHandler handler) async {
-    options.headers.remove('x-company-id');
     if (options.extra['auth'] != false) {
       final token = await _tokens.accessToken;
       if (token != null && token.isNotEmpty) options.headers['Authorization'] = 'Bearer $token';
+
+      final profile = await _tokens.cachedProfile;
+      final cid = profile?['company']?['id'] ?? profile?['company']?['_id'];
+      if (cid != null && cid.toString().isNotEmpty) {
+        options.headers['x-company-id'] = cid.toString();
+      }
     }
     if (options.extra['device'] == true) {
       final deviceToken = await _tokens.deviceToken;

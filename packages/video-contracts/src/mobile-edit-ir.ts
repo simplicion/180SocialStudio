@@ -112,10 +112,20 @@ export const MobileCaptionWordSchema = z.object({
   text: z.string(),
   startMs: ms,
   endMs: ms,
-  highlight: z.boolean(),
-  color: hex.nullable(),
-  scale: z.number().positive(),
+  highlight: z.boolean().default(false),
+  color: hex.nullable().default(null),
+  scale: z.number().positive().default(1),
 });
+
+/**
+ * Older clients stored text motion in `animation` (fade_in, slide_up, typewriter, pulse). The renderers read
+ * those as `enter` / `loop` motion with animation "none" (edit_ir.dart normaliseCaptionStyle, MobileEditIr.kt);
+ * the schema accepts them the same way instead of rejecting the whole timeline.
+ */
+const captionAnimation = z.preprocess(
+  (v) => (typeof v === "string" && (CAPTION_ANIMATIONS as readonly string[]).includes(v) ? v : v == null ? undefined : "none"),
+  z.enum(CAPTION_ANIMATIONS).default("none")
+);
 
 /** Text motion (CapCut-style in / out / loop). Evaluated identically by the phone preview and the Android renderer. */
 export { TEXT_ENTER_TYPES, TEXT_EXIT_TYPES, TEXT_LOOP_TYPES };
@@ -124,22 +134,30 @@ export const MobileTextExitSchema = TextExitSchema;
 export const MobileTextLoopSchema = TextLoopSchema;
 export const MobileOverlayLayerSchema = OverlayLayerSchema;
 
+/**
+ * Caption / title style (contract §3.4). `fontSizePx`, `strokeWidthPx`, `paddingPx` and `radiusPx` are CANVAS pixels.
+ * Every field except the colours' format has the renderers' default, so a style written by the phone's text tool
+ * (which sets only what the user touched) is accepted as-is; parsing fills in exactly what the renderers assume.
+ */
 export const MobileCaptionStyleSchema = z.object({
-  preset: z.string(),
-  animation: z.enum(CAPTION_ANIMATIONS),
-  fontFamily: z.string(),
-  fontWeight: z.number().int(),
-  fontSizePx: z.number().positive(),
-  textColor: hex,
-  highlightColor: hex,
-  strokeColor: hex,
-  strokeWidthPx: z.number().nonnegative(),
-  shadow: z.boolean(),
-  background: z.object({ color: z.string(), paddingPx: z.number(), radiusPx: z.number() }).nullable(),
-  uppercase: z.boolean(),
-  positionX: z.number().min(0).max(1),
-  positionY: z.number().min(0).max(1),
-  maxWidthFraction: z.number().gt(0).max(1),
+  preset: z.string().default("CUSTOM"),
+  animation: captionAnimation,
+  fontFamily: z.string().min(1).default("Inter"),
+  fontWeight: z.number().int().min(100).max(1000).default(800),
+  fontSizePx: z.number().positive().default(64),
+  textColor: hex.default("#FFFFFF"),
+  highlightColor: hex.default("#FFE600"),
+  strokeColor: hex.default("#000000"),
+  strokeWidthPx: z.number().nonnegative().default(0),
+  shadow: z.boolean().default(true),
+  background: z
+    .object({ color: z.string(), paddingPx: z.number().nonnegative().default(16), radiusPx: z.number().nonnegative().default(16) })
+    .nullable()
+    .default(null),
+  uppercase: z.boolean().default(false),
+  positionX: z.number().min(0).max(1).default(0.5),
+  positionY: z.number().min(0).max(1).default(0.72),
+  maxWidthFraction: z.number().gt(0).max(1).default(0.86),
   /** Neon glow in the highlight colour (renderer-supported; kept so AI round-trips do not drop it). */
   glow: z.boolean().optional(),
   enter: MobileTextEnterSchema.optional(),
@@ -149,12 +167,13 @@ export const MobileCaptionStyleSchema = z.object({
 
 export const MobileCaptionSchema = z.object({
   id: z.string().min(1),
-  kind: z.enum(["caption", "text"]),
+  kind: z.enum(["caption", "text"]).default("caption"),
   startMs: ms,
   endMs: ms,
-  text: z.string(),
-  words: z.array(MobileCaptionWordSchema),
-  style: MobileCaptionStyleSchema,
+  text: z.string().default(""),
+  /** Timed words of a speech caption. A title (`kind: text`) is drawn from `text`; its words are informational. */
+  words: z.array(MobileCaptionWordSchema).default([]),
+  style: MobileCaptionStyleSchema.default({}),
 });
 
 export const MobileZoomSchema = z.object({
@@ -651,6 +670,8 @@ export function toMobileEditIR(input: MobileProjectionInput): { editIR: MobileEd
       const startMs = clampT(toMs(sec(cap.timeRange.start)));
       const endMs = clampT(toMs(sec(cap.timeRange.start) + sec(cap.timeRange.duration)));
       const highlightColor = hexOr(cap.style.highlightColor, "#FFE600");
+      // A speech caption that had words but lost all of them to cuts was not heard: it is dropped below.
+      const allWordsCut = kind === "caption" && cap.words.length > 0;
       const words = (kind === "text"
         ? [{ text: cap.text, startMs, endMs, highlight: false, color: null, scale: 1 }]
         : cap.words.map((w) => ({
@@ -672,6 +693,7 @@ export function toMobileEditIR(input: MobileProjectionInput): { editIR: MobileEd
         startMs,
         endMs,
         text: kind === "caption" && words.length > 0 && words.length < cap.words.length ? words.map((w) => w.text).join(" ") : cap.text,
+        dropped: allWordsCut && words.length === 0,
         words,
         style: {
           preset: cap.style.presetLabel || cap.style.preset,
@@ -694,9 +716,11 @@ export function toMobileEditIR(input: MobileProjectionInput): { editIR: MobileEd
           ...(cap.style.exit ? { exit: cap.style.exit } : {}),
           ...(cap.style.loop ? { loop: cap.style.loop } : {}),
         },
-      } as MobileEditIR["captions"][number];
+      } as MobileEditIR["captions"][number] & { dropped?: boolean };
     })
-    .filter((c) => c.endMs - c.startMs >= 50 && (c.kind === "text" || c.words.length > 0))
+    // A caption is kept when it has something to draw: a title, timed words, or (manual caption) plain text.
+    .filter((c) => !c.dropped && c.endMs - c.startMs >= 50 && (c.kind === "text" || c.words.length > 0 || c.text.trim().length > 0))
+    .map(({ dropped: _dropped, ...c }) => c as MobileEditIR["captions"][number])
     .sort((a, b) => a.startMs - b.startMs);
 
   const zooms: MobileEditIR["zooms"] = [];

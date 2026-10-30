@@ -43,7 +43,12 @@ class StudioDraft {
   final String? script;
   final String? thumbnailUrl;
 
+  /// Caption sizes are canvas pixels from version 2 on. Drafts without it were saved when the Text tool stored
+  /// title sizes in 1/360-of-width units (14–56); see [migrateLegacyTitleSizes].
+  static const unitsVersion = 2;
+
   Map<String, dynamic> toJson() => {
+    'unitsVersion': unitsVersion,
     'id': id,
     'title': title,
     'sourcePath': sourcePath,
@@ -65,7 +70,11 @@ class StudioDraft {
       title: (json['title'] as String?) ?? 'Untitled Draft',
       sourcePath: (json['sourcePath'] as String?) ?? '',
       sourcePaths: Map<String, String>.from((json['sourcePaths'] as Map?) ?? {}),
-      ir: MobileEditIr.fromJson(Map<String, dynamic>.from(json['ir'] as Map)),
+      ir: MobileEditIr.fromJson(
+        json['unitsVersion'] == null
+            ? migrateLegacyTitleSizes(Map<String, dynamic>.from(json['ir'] as Map))
+            : Map<String, dynamic>.from(json['ir'] as Map),
+      ),
       playheadMs: (json['playheadMs'] as num?)?.toInt() ?? 0,
       updatedAt: DateTime.tryParse((json['updatedAt'] as String?) ?? '') ?? DateTime.now(),
       projectId: json['projectId'] as String?,
@@ -75,6 +84,46 @@ class StudioDraft {
       script: json['script'] as String?,
       thumbnailUrl: json['thumbnailUrl'] as String?,
     );
+  }
+
+  /// Old drafts: the Text tool saved title sizes (font, stroke, box padding/radius) in units of width/360, so a
+  /// 24 there meant 72 canvas px on a 1080-wide video. Scales those titles up so they keep the size the creator
+  /// saw. Only `kind: 'text'` items at the old tool's sizes (≤ 56) are touched; speech captions came from presets
+  /// that were already canvas pixels.
+  static Map<String, dynamic> migrateLegacyTitleSizes(Map<String, dynamic> ir) {
+    final canvasWidth = ((ir['canvas'] as Map?)?['width'] as num?)?.toDouble() ?? 1080;
+    final k = canvasWidth / 360;
+    final captions = ir['captions'];
+    if (captions is! List || k <= 1) return ir;
+    double? scaled(Object? v) => v is num ? v.toDouble() * k : null;
+    return {
+      ...ir,
+      'captions': [
+        for (final c in captions)
+          if (c is Map && c['kind'] == 'text' && c['style'] is Map && (((c['style'] as Map)['fontSizePx'] as num?) ?? 999) <= 56)
+            {
+              ...c.cast<String, dynamic>(),
+              'style': () {
+                final style = Map<String, dynamic>.from(c['style'] as Map);
+                for (final key in const ['fontSizePx', 'strokeWidthPx']) {
+                  final v = scaled(style[key]);
+                  if (v != null) style[key] = v;
+                }
+                if (style['background'] is Map) {
+                  final bg = Map<String, dynamic>.from(style['background'] as Map);
+                  for (final key in const ['paddingPx', 'radiusPx']) {
+                    final v = scaled(bg[key]);
+                    if (v != null) bg[key] = v;
+                  }
+                  style['background'] = bg;
+                }
+                return style;
+              }(),
+            }
+          else
+            c,
+      ],
+    };
   }
 }
 

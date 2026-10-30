@@ -10,7 +10,10 @@ import '../native_engine/media_engine_exception.dart';
 import '../network/api_exception.dart';
 import '../network/social_api_client.dart';
 import '../theme/app_theme.dart';
+import 'bottom_sheet.dart';
 import 'universal_skeleton.dart';
+
+export 'bottom_sheet.dart';
 
 String errorText(Object error) {
   if (error is ApiException) {
@@ -352,45 +355,29 @@ InputDecoration fieldDecoration(String label, {String? hint, Widget? prefix, Wid
 List<String> splitList(String raw) =>
     raw.split(RegExp(r'[,\n]')).map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
 
-Future<bool> confirm(BuildContext context, {required String title, required String message, String action = 'Confirm', bool destructive = false}) async {
-  final ok = await showDialog<bool>(
-    context: context,
-    builder: (ctx) => AlertDialog(
-      backgroundColor: AppTheme.surfaceElevated,
-      title: Text(title),
-      content: Text(message),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('Cancel')),
-        TextButton(
-          onPressed: () => Navigator.pop(ctx, true),
-          child: Text(action, style: TextStyle(color: destructive ? AppTheme.error : AppTheme.primary)),
-        ),
-      ],
-    ),
+Future<bool> confirm(BuildContext context, {required String title, required String message, String action = 'Confirm', bool destructive = false}) {
+  return AppBottomSheet.confirm(
+    context,
+    title: title,
+    message: message,
+    action: action,
+    destructive: destructive,
   );
-  return ok ?? false;
 }
 
 Future<String?> promptText(BuildContext context, {required String title, String label = '', String initial = '', String action = 'Save', int maxLines = 1}) {
-  return showDialog<String>(
-    context: context,
-    builder: (ctx) => DialogControllers(
-      initial: [initial],
-      builder: (ctx, c) => AlertDialog(
-        backgroundColor: AppTheme.surfaceElevated,
-        title: Text(title),
-        content: TextField(controller: c.first, autofocus: true, maxLines: maxLines, decoration: fieldDecoration(label)),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Cancel')),
-          TextButton(onPressed: () => Navigator.pop(ctx, c.first.text.trim()), child: Text(action)),
-        ],
-      ),
-    ),
+  return AppBottomSheet.prompt(
+    context,
+    title: title,
+    label: label,
+    initial: initial,
+    action: action,
+    maxLines: maxLines,
   );
 }
 
-/// Owns a dialog's [TextEditingController]s for the lifetime of the dialog route, so they are
-/// disposed after its exit animation rather than when `showDialog` returns (too early).
+/// Owns a route's [TextEditingController]s for the lifetime of the route, so they are
+/// disposed after its exit animation rather than when route returns (too early).
 class DialogControllers extends StatefulWidget {
   const DialogControllers({super.key, this.count = 1, this.initial = const [], required this.builder});
   final int count;

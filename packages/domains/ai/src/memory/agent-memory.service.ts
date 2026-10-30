@@ -14,11 +14,14 @@ export interface RecordMemoryDto {
     weight?: number;
 }
 
+/** The stored memory row (named through `prisma` so the declaration emit does not reach into the generated client). */
+export type AgentMemoryRecord = Awaited<ReturnType<typeof prisma.agentMemory.create>>;
+
 export class AgentMemoryService {
     /**
      * Records a new memory. If a key is provided and kind is 'preference', it overwrites the existing entry for that key.
      */
-    static async recordMemory(dto: RecordMemoryDto) {
+    static async recordMemory(dto: RecordMemoryDto): Promise<AgentMemoryRecord> {
         if (dto.key && dto.kind === 'preference') {
             const existing = await prisma.agentMemory.findFirst({
                 where: { companyId: dto.companyId, projectId: dto.projectId, key: dto.key, kind: dto.kind }

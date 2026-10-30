@@ -44,7 +44,6 @@ class _PlatformPostPreviewState extends State<PlatformPostPreview> {
     SocialPlatform.youtube,
     SocialPlatform.linkedin,
     SocialPlatform.facebook,
-    SocialPlatform.x,
   ];
 
   @override
@@ -116,7 +115,6 @@ class _PlatformPostPreviewState extends State<PlatformPostPreview> {
                 SocialPlatform.youtube => _buildYouTubeShortsPreview(),
                 SocialPlatform.linkedin => _buildLinkedInPreview(),
                 SocialPlatform.facebook => _buildFacebookPreview(),
-                SocialPlatform.x => _buildTwitterPreview(),
                 _ => _buildInstagramPreview(),
               },
             ),
@@ -520,65 +518,6 @@ class _PlatformPostPreviewState extends State<PlatformPostPreview> {
               Row(children: [Icon(Icons.mode_comment_outlined, size: 18), SizedBox(width: 6), Text('Comment', style: TextStyle(fontSize: 12))]),
               Row(children: [Icon(Icons.share_outlined, size: 18), SizedBox(width: 6), Text('Share', style: TextStyle(fontSize: 12))]),
             ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ── Twitter / X Preview ──────────────────────────────────────────────────
-  Widget _buildTwitterPreview() {
-    final hasMedia = widget.mediaUrls.isNotEmpty;
-    final firstMedia = widget.mediaUrls.firstOrNull;
-
-    return Padding(
-      padding: EdgeInsets.all(12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          CircleAvatar(
-            radius: 18,
-            backgroundImage: widget.avatarUrl != null ? NetworkImage(widget.avatarUrl!) : null,
-            child: widget.avatarUrl == null ? Icon(Icons.person) : null,
-          ),
-          SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Text(_displayAuthor, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                    SizedBox(width: 4),
-                    Text(_displayHandle, style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
-                    Text(' · now', style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
-                  ],
-                ),
-                SizedBox(height: 4),
-                Text(widget.caption.isEmpty ? 'What is happening?!' : widget.caption, style: TextStyle(fontSize: 13)),
-                if (hasMedia && firstMedia != null) ...[
-                  SizedBox(height: 8),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: AspectRatio(
-                      aspectRatio: 16 / 9,
-                      child: Image.network(firstMedia, fit: BoxFit.cover),
-                    ),
-                  ),
-                ],
-                SizedBox(height: 10),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Icon(Icons.chat_bubble_outline_rounded, size: 16, color: AppTheme.textMuted),
-                    Icon(Icons.repeat_rounded, size: 16, color: AppTheme.textMuted),
-                    Icon(Icons.favorite_border_rounded, size: 16, color: AppTheme.textMuted),
-                    Icon(Icons.bookmark_border_rounded, size: 16, color: AppTheme.textMuted),
-                    Icon(Icons.share_outlined, size: 16, color: AppTheme.textMuted),
-                  ],
-                ),
-              ],
-            ),
           ),
         ],
       ),

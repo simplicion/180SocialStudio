@@ -85,12 +85,33 @@ class DirectorResponse {
     required this.editIrJson,
     required this.editIr,
     this.credits = const {},
+    this.message = '',
+    this.phase = 'chat',
+    this.quickReplies = const [],
+    this.proposedPlan = const [],
   });
 
   final String plannerSource;
   final String? plannerReason;
   final String summary;
+
+  /// What the director "said" as conversation history: the chat message plus the plan on the table
+  /// (`<message>` + `Plan:` + numbered steps), so a later "yes" executes exactly that plan.
   final String reply;
+
+  /// The short chat message shown in the bubble (1-4 sentences).
+  final String message;
+
+  /// recommend | gather | confirm | done | chat.
+  final String phase;
+
+  /// 0-3 one-tap answers (chips) under the latest director message.
+  final List<String> quickReplies;
+
+  /// Steps the director will do once the creator agrees (plan card). Nothing is applied for a pure proposal.
+  final List<String> proposedPlan;
+
+  bool get isProposal => proposedPlan.isNotEmpty && phase != 'done';
   final List<Json> operations;
   final List<String> appliedOperations;
   final List<String> rejectedOperations;
@@ -118,11 +139,17 @@ class DirectorResponse {
       throw ApiException(kind: ApiErrorKind.server, code: e.code, message: 'The AI Director returned an invalid timeline: ${e.message}');
     }
     final summary = jStr(d['summary']) ?? '';
+    final message = (jStr(d['reply']) ?? summary).trim();
+    final plan = jStrList(d['proposedPlan']).where((s) => s.trim().isNotEmpty).take(8).toList();
     return DirectorResponse(
       plannerSource: jStr(d['plannerSource']) ?? 'unknown',
       plannerReason: jStr(d['plannerReason']),
       summary: summary,
-      reply: jStr(d['reply']) ?? summary,
+      message: message,
+      reply: historyText(message, plan),
+      phase: jStr(d['phase']) ?? (jBool(d['requiresConfirmation']) ? 'confirm' : 'chat'),
+      quickReplies: jStrList(d['quickReplies']).where((s) => s.trim().isNotEmpty).take(3).toList(),
+      proposedPlan: plan,
       operations: jList(d['operations'], (m) => m),
       appliedOperations: jStrList(d['appliedOperations']),
       rejectedOperations: jStrList(d['rejectedOperations']),
@@ -136,6 +163,17 @@ class DirectorResponse {
       },
     );
   }
+}
+
+/// An assistant turn as history: the message plus the plan it proposed (the server reads the plan back
+/// from the last assistant turn when the creator says "yes").
+String historyText(String message, List<String> plan) {
+  if (plan.isEmpty) return message;
+  final b = StringBuffer(message)..write('\nPlan:');
+  for (var i = 0; i < plan.length; i++) {
+    b.write('\n${i + 1}. ${plan[i]}');
+  }
+  return b.toString();
 }
 
 class StockVideoResult {

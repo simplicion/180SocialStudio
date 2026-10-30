@@ -50,24 +50,6 @@ class _CentralizedManualPublishSheetState extends ConsumerState<CentralizedManua
     for (final platform in targets) {
       UniversalPlatformPayload? payload = p.platformPayloads[platform];
 
-      // Backwards compatibility for X & Reddit
-      if (payload == null && platform == SocialPlatform.x && p.xPayload != null) {
-        payload = UniversalPlatformPayload(
-          platform: SocialPlatform.x,
-          caption: p.xPayload!.text,
-          mediaPath: p.xPayload!.mediaPath,
-          mimeType: p.xPayload!.mimeType,
-        );
-      } else if (payload == null && platform == SocialPlatform.reddit && p.redditPayload != null) {
-        payload = UniversalPlatformPayload(
-          platform: SocialPlatform.reddit,
-          caption: p.redditPayload!.body ?? '',
-          title: p.redditPayload!.title,
-          subreddit: p.redditPayload!.subreddit,
-          mediaPath: p.redditPayload!.mediaPath,
-          mimeType: p.redditPayload!.mimeType,
-        );
-      }
       payload ??= UniversalPlatformPayload(
         platform: platform,
         caption: p.caption ?? '',
@@ -81,19 +63,14 @@ class _CentralizedManualPublishSheetState extends ConsumerState<CentralizedManua
       if (PlatformCapabilityRegistry.getCapabilities(platform).requiresTitle) {
         _titleControllers[platform] = TextEditingController(text: payload.title ?? '');
       }
-      if (platform == SocialPlatform.reddit) {
-        _metaControllers[platform] = TextEditingController(text: payload.subreddit ?? 'socialmedia');
-      }
       _statuses[platform] = 'ready';
     }
   }
 
   Set<SocialPlatform> _getAvailablePlatforms(UserAssistedPublishPackage p) {
     final s = <SocialPlatform>{};
-    if (p.xPayload != null) s.add(SocialPlatform.x);
-    if (p.redditPayload != null) s.add(SocialPlatform.reddit);
     s.addAll(p.platformPayloads.keys);
-    if (s.isEmpty) s.add(SocialPlatform.x); // fallback
+    if (s.isEmpty) s.add(SocialPlatform.instagram);
     return s;
   }
 
@@ -135,10 +112,7 @@ class _CentralizedManualPublishSheetState extends ConsumerState<CentralizedManua
             platform: platform,
             status: status,
             externalUrl: externalUrl,
-            platformMeta: {
-              if (platform == 'reddit' && _metaControllers[SocialPlatform.reddit] != null)
-                'subreddit': _metaControllers[SocialPlatform.reddit]!.text.trim(),
-            },
+            platformMeta: {},
           );
     } catch (_) {
       // Backend status update is non-blocking for mobile user flow
@@ -163,7 +137,6 @@ class _CentralizedManualPublishSheetState extends ConsumerState<CentralizedManua
     final cap = PlatformCapabilityRegistry.getCapabilities(platform);
     final text = _controllers[platform]?.text.trim() ?? '';
     final title = _titleControllers[platform]?.text.trim();
-    final subreddit = _metaControllers[platform]?.text.trim();
 
     if (cap.requiresTitle && (title == null || title.isEmpty)) {
       showError(context, 'Post title is required for ${platform.label}.');
@@ -182,7 +155,7 @@ class _CentralizedManualPublishSheetState extends ConsumerState<CentralizedManua
       title: title,
       mediaPath: origPayload.mediaPath,
       mimeType: origPayload.mimeType,
-      subreddit: platform == SocialPlatform.reddit ? subreddit : null,
+
       sourceContentId: widget.package.id,
       projectId: widget.package.projectId,
     );
@@ -366,7 +339,6 @@ class _CentralizedManualPublishSheetState extends ConsumerState<CentralizedManua
     final cap = PlatformCapabilityRegistry.getCapabilities(platform);
     final controller = _controllers[platform];
     final titleController = _titleControllers[platform];
-    final metaController = _metaControllers[platform];
     
     final charCount = controller?.text.runes.length ?? 0;
     final isOverLimit = charCount > cap.maxChars;
@@ -445,27 +417,7 @@ class _CentralizedManualPublishSheetState extends ConsumerState<CentralizedManua
           ],
           SizedBox(height: 12),
           
-          if (platform == SocialPlatform.reddit && metaController != null) ...[
-            TextField(
-              controller: metaController,
-              style: TextStyle(fontSize: 13, color: AppTheme.textPrimary),
-              decoration: InputDecoration(
-                prefixText: 'r/ ',
-                prefixStyle: TextStyle(color: Color(0xFFFF4500), fontWeight: FontWeight.bold),
-                labelText: 'Target Subreddit',
-                labelStyle: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
-                filled: true,
-                fillColor: AppTheme.surfaceElevated,
-                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide(color: AppTheme.borderSubtle),
-                ),
-              ),
-            ),
-            SizedBox(height: 10),
-          ],
+
 
           if (cap.requiresTitle && titleController != null) ...[
             TextField(
@@ -551,42 +503,19 @@ class _CentralizedManualPublishSheetState extends ConsumerState<CentralizedManua
   }
 }
 
-/// Dialog asking the user for confirmation when returning from an external platform app.
-class PostPublishReturnDialog extends StatelessWidget {
-  const PostPublishReturnDialog({
-    super.key,
-    required this.platform,
-    required this.onConfirm,
-  });
-
-  final String platform;
-  final Future<void> Function(String status) onConfirm;
-
+/// Bottom sheet asking the user for confirmation when returning from an external platform app.
+class PostPublishReturnDialog {
   static Future<void> show(
     BuildContext context, {
     required String platform,
     required Future<void> Function(String status) onConfirm,
   }) {
-    return showDialog<void>(
+    return AppBottomSheet.show<void>(
       context: context,
-      barrierDismissible: false,
-      builder: (ctx) => PostPublishReturnDialog(
-        platform: platform,
-        onConfirm: onConfirm,
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      backgroundColor: AppTheme.surfaceElevated,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      title: Text('Did you publish on $platform?'),
-      content: Text(
-        '180 Workspace cannot independently verify posts published through external apps. Please let us know if your post went live.',
-        style: TextStyle(fontSize: 13, color: AppTheme.textSecondary, height: 1.4),
-      ),
+      isDismissible: false,
+      enableDrag: false,
+      title: 'Did you publish on $platform?',
+      icon: Icon(Icons.send_rounded, color: AppTheme.primary, size: 22),
       actions: [
         TextButton(
           onPressed: () async {
@@ -595,6 +524,7 @@ class PostPublishReturnDialog extends StatelessWidget {
           },
           child: Text('Cancel', style: TextStyle(color: AppTheme.textMuted)),
         ),
+        const SizedBox(width: 8),
         TextButton(
           onPressed: () async {
             Navigator.pop(context);
@@ -602,18 +532,23 @@ class PostPublishReturnDialog extends StatelessWidget {
           },
           child: Text('Not yet', style: TextStyle(color: AppTheme.accentBlue)),
         ),
+        const SizedBox(width: 8),
         FilledButton(
           style: FilledButton.styleFrom(
             backgroundColor: AppTheme.success,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           ),
           onPressed: () async {
             Navigator.pop(context);
             await onConfirm('user_confirmed');
           },
-          child: Text('Yes, I posted'),
+          child: const Text('Yes, I posted'),
         ),
       ],
+      child: Text(
+        '180 Workspace cannot independently verify posts published through external apps. Please let us know if your post went live.',
+        style: TextStyle(fontSize: 14, color: AppTheme.textSecondary, height: 1.5),
+      ),
     );
   }
 }

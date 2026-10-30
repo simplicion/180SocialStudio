@@ -167,4 +167,5 @@ List<RouteBase> extraRoutes() => [
       ),
       GoRoute(path: '/oauth-callback', builder: (_, s) => OAuthCallbackScreen(query: s.uri.queryParameters)),
       GoRoute(path: '/oauth/callback', builder: (_, s) => OAuthCallbackScreen(query: s.uri.queryParameters)),
+      GoRoute(path: '/callback', builder: (_, s) => OAuthCallbackScreen(query: s.uri.queryParameters)),
     ];

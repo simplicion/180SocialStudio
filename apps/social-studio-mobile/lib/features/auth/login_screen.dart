@@ -92,9 +92,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           final userInfo = data['user'];
           if (userInfo is Map) {
             try {
+              final userMap = Map<String, dynamic>.from(userInfo);
+              final userName = userMap['name'] ?? userMap['displayName'] ?? (userMap['email'] != null ? userMap['email'].toString().split('@')[0] : 'My');
               final meMap = {
-                'user': Map<String, dynamic>.from(userInfo),
-                'company': data['company'] ?? {'id': '180_creator_space', 'name': '180 Social Studio Creator Space'},
+                'user': userMap,
+                'company': data['company'] ?? {
+                  'id': userMap['companyId'] ?? 'workspace_${userMap['id'] ?? 'user'}',
+                  'name': "$userName's Studio",
+                },
                 'entitlements': {
                   'subscriptionStatus': 'active',
                   'isPaidPlan': true,

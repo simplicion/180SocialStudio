@@ -2,14 +2,12 @@ import { PublishError } from './errors';
 import { linkedInApiVersion } from './linkedin-version';
 
 /** Canonical platform ids used by accounts, variants and publishers. `twitter` is an alias of `x`. */
-export type PublishPlatform = 'instagram' | 'facebook' | 'youtube' | 'linkedin' | 'x' | 'threads';
-export const PUBLISH_PLATFORMS: PublishPlatform[] = ['instagram', 'facebook', 'youtube', 'linkedin', 'x', 'threads'];
+export type PublishPlatform = 'instagram' | 'facebook' | 'youtube' | 'linkedin';
+export const PUBLISH_PLATFORMS: PublishPlatform[] = ['instagram', 'facebook', 'youtube', 'linkedin'];
 
 export function normalizePlatform(raw: unknown): PublishPlatform | null {
     const v = String(raw ?? '').toLowerCase().trim();
-    if (v === 'twitter' || v === 'x') return 'x';
     if (v === 'youtube_shorts' || v === 'youtube-shorts' || v === 'youtube') return 'youtube';
-    if (v === 'threads' || v === 'thread') return 'threads';
     if (v.startsWith('insta')) return 'instagram';
     if (v === 'facebook' || v === 'fb') return 'facebook';
     if (v === 'linkedin') return 'linkedin';
@@ -25,10 +23,8 @@ export interface AppCredentials {
 const CREDENTIAL_ENV: Record<PublishPlatform, { id: string[]; secret: string[] }> = {
     instagram: { id: ['INSTAGRAM_APP_ID', 'META_APP_ID'], secret: ['INSTAGRAM_APP_SECRET', 'META_APP_SECRET'] },
     facebook: { id: ['META_APP_ID'], secret: ['META_APP_SECRET'] },
-    threads: { id: ['THREADS_APP_ID', 'META_APP_ID'], secret: ['THREADS_APP_SECRET', 'META_APP_SECRET'] },
     youtube: { id: ['YOUTUBE_CLIENT_ID', 'GOOGLE_CLIENT_ID'], secret: ['YOUTUBE_CLIENT_SECRET', 'GOOGLE_CLIENT_SECRET'] },
     linkedin: { id: ['LINKEDIN_CLIENT_ID'], secret: ['LINKEDIN_CLIENT_SECRET'] },
-    x: { id: ['X_CLIENT_ID', 'TWITTER_CLIENT_ID'], secret: ['X_CLIENT_SECRET', 'TWITTER_CLIENT_SECRET'] },
 };
 
 /**

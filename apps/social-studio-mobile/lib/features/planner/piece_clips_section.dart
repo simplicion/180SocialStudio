@@ -93,19 +93,13 @@ class PieceClipsSection extends ConsumerWidget {
   }
 
   Future<void> _rename(BuildContext context, WidgetRef ref, VaultItem c) async {
-    final ctl = TextEditingController(text: c.name);
-    final name = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Rename clip'),
-        content: TextField(controller: ctl, autofocus: true, maxLength: 80, decoration: fieldDecoration('Clip name')),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, ctl.text.trim()), child: const Text('Save')),
-        ],
-      ),
+    final name = await AppBottomSheet.prompt(
+      context,
+      title: 'Rename clip',
+      initial: c.name,
+      label: 'Clip name',
+      maxLength: 80,
     );
-    ctl.dispose();
     if (name == null || name.isEmpty || name == c.name) return;
     await ref.read(vaultItemsProvider.notifier).updateItem(c.copyWith(name: name));
   }
@@ -165,7 +159,12 @@ class PieceClipsSection extends ConsumerWidget {
               clip: clips[i],
               canUp: i > 0,
               canDown: i < clips.length - 1,
-              onPlay: () => showDialog<void>(context: context, builder: (_) => _ClipPlayerDialog(clip: clips[i])),
+              onPlay: () => AppBottomSheet.show<void>(
+                context: context,
+                title: clips[i].name,
+                icon: Icon(Icons.movie_rounded, color: AppTheme.accent, size: 22),
+                builder: (_) => _ClipPlayerSheet(clip: clips[i]),
+              ),
               onRename: () => _rename(context, ref, clips[i]),
               onRetake: () => _retake(context, ref, clips[i], clips),
               onDelete: () => _delete(context, ref, clips[i], clips),
@@ -252,15 +251,15 @@ class _ClipTile extends StatelessWidget {
   }
 }
 
-class _ClipPlayerDialog extends StatefulWidget {
-  const _ClipPlayerDialog({required this.clip});
+class _ClipPlayerSheet extends StatefulWidget {
+  const _ClipPlayerSheet({required this.clip});
   final VaultItem clip;
 
   @override
-  State<_ClipPlayerDialog> createState() => _ClipPlayerDialogState();
+  State<_ClipPlayerSheet> createState() => _ClipPlayerSheetState();
 }
 
-class _ClipPlayerDialogState extends State<_ClipPlayerDialog> {
+class _ClipPlayerSheetState extends State<_ClipPlayerSheet> {
   VideoPlayerController? _c;
   Object? _error;
 
@@ -288,14 +287,34 @@ class _ClipPlayerDialogState extends State<_ClipPlayerDialog> {
   @override
   Widget build(BuildContext context) {
     final c = _c;
-    return AlertDialog(
-      title: Text(widget.clip.name),
-      content: _error != null
-          ? Text('This clip cannot be played: ${errorText(_error!)}')
-          : c == null
-              ? const SizedBox(height: 120, child: Center(child: Icon(Icons.hourglass_top_rounded)))
-              : AspectRatio(aspectRatio: c.value.aspectRatio, child: VideoPlayer(c)),
-      actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (_error != null)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 24),
+            child: Text('This clip cannot be played: ${errorText(_error!)}', style: TextStyle(color: AppTheme.error)),
+          )
+        else if (c == null)
+          const SizedBox(height: 180, child: Center(child: CircularProgressIndicator()))
+        else
+          ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: AspectRatio(aspectRatio: c.value.aspectRatio, child: VideoPlayer(c)),
+          ),
+        const SizedBox(height: 16),
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            minimumSize: const Size.fromHeight(46),
+            backgroundColor: AppTheme.primary,
+            foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Close'),
+        ),
+      ],
     );
   }
 }

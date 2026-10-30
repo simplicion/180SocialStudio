@@ -9,65 +9,56 @@ import '../../data/models/platform.dart';
 import '../../data/models/user_assisted_publish_package.dart';
 import 'clipboard_assist_service.dart';
 import 'platform_capability_registry.dart';
-import 'user_assisted_publishers.dart';
 
-/// Centralized service handling manual pre-filled publishing across all 9 platforms.
-///
-/// This provides a unified handoff pipeline:
-/// 1. Validates character limits, required fields (title, caption), and media existence.
-/// 2. Performs clipboard assist (auto-copies caption/title to device clipboard).
-/// 3. Hands off to native Sharesheet with video/image attachment or opens native/web composer.
+enum HandoffMode {
+  nativeApp,
+  nativeShare,
+  webCompose,
+  clipboardOnly,
+}
+
+class UserAssistedHandoffResult {
+  const UserAssistedHandoffResult({
+    required this.success,
+    required this.mode,
+    required this.message,
+    this.error,
+  });
+
+  final bool success;
+  final HandoffMode mode;
+  final String message;
+  final String? error;
+}
+
 class CentralizedManualPublisher {
   CentralizedManualPublisher._();
 
   static const MethodChannel _appLauncher = MethodChannel('com.workspace180.socialmanager/app_launcher');
 
-  /// Android target packages to launch the platform app directly (skipping the OS share modal)
+  /// Android target packages to launch the platform app directly
   static String? getTargetAndroidPackage(SocialPlatform platform) {
     switch (platform) {
       case SocialPlatform.youtube:
         return 'com.google.android.youtube';
-      case SocialPlatform.pinterest:
-        return 'com.pinterest';
       case SocialPlatform.instagram:
         return 'com.instagram.android';
-      case SocialPlatform.threads:
-        return 'com.instagram.barcelona';
       case SocialPlatform.facebook:
         return 'com.facebook.katana';
       case SocialPlatform.linkedin:
         return 'com.linkedin.android';
-      case SocialPlatform.x:
-        return 'com.twitter.android';
-      case SocialPlatform.reddit:
-        return 'com.reddit.frontpage';
-      case SocialPlatform.tiktok:
-        return 'com.zhiliaoapp.musically';
       default:
         return null;
     }
   }
 
-  static String? getFallbackAndroidPackage(SocialPlatform platform) {
-    if (platform == SocialPlatform.tiktok) {
-      return 'com.ss.android.ugc.trill';
-    }
-    return null;
-  }
-
-  /// Validates text requirements, character limits, and media files for any platform.
+  /// Validates text requirements, character limits, and media files for supported platforms.
   static List<String> validate(UniversalPlatformPayload payload) {
     final issues = <String>[];
     final text = payload.fullText.trim();
     final p = payload.platform;
 
     // Platform-specific title validation
-    if (p == SocialPlatform.reddit && (payload.title == null || payload.title!.trim().isEmpty)) {
-      issues.add('Post title is required for Reddit.');
-    }
-    if (p == SocialPlatform.reddit && payload.title != null && payload.title!.runes.length > 300) {
-      issues.add('Reddit post title cannot exceed 300 characters.');
-    }
     if (p == SocialPlatform.youtube && (payload.title == null || payload.title!.trim().isEmpty)) {
       issues.add('Video title is required for YouTube.');
     }
@@ -78,20 +69,17 @@ class CentralizedManualPublisher {
     }
 
     // Platform character limits
-    if (p == SocialPlatform.x && text.runes.length > 280) {
-      issues.add('Post text exceeds standard limit of 280 characters (${text.runes.length} chars). It may require X Premium.');
-    }
-    if (p == SocialPlatform.threads && text.runes.length > 500) {
-      issues.add('Post text exceeds Threads limit of 500 characters (${text.runes.length} chars).');
-    }
-    if (p == SocialPlatform.tiktok && text.runes.length > 2200) {
-      issues.add('Post text exceeds TikTok limit of 2,200 characters.');
-    }
     if (p == SocialPlatform.instagram && text.runes.length > 2200) {
       issues.add('Caption exceeds Instagram limit of 2,200 characters.');
     }
     if (p == SocialPlatform.linkedin && text.runes.length > 3000) {
       issues.add('Post text exceeds LinkedIn limit of 3,000 characters.');
+    }
+    if (p == SocialPlatform.facebook && text.runes.length > 63206) {
+      issues.add('Post text exceeds Facebook limit of 63,206 characters.');
+    }
+    if (p == SocialPlatform.youtube && text.runes.length > 5000) {
+      issues.add('Description exceeds YouTube limit of 5,000 characters.');
     }
 
     // Media file existence check
@@ -105,13 +93,7 @@ class CentralizedManualPublisher {
     return issues;
   }
 
-  /// Executes centralized manual handoff for any platform.
-  ///
-  /// Flow:
-  /// 1. Copies caption/title to clipboard with contextual toast.
-  /// 2. If [preferWeb] is true, opens official web compose URL with prefilled parameters.
-  /// 3. Otherwise, invokes native device Sharesheet with video/image attached.
-  /// 4. Gracefully falls back to web compose if native Sharesheet encounters an error.
+  /// Executes centralized manual handoff for supported platforms.
   static Future<UserAssistedHandoffResult> publish({
     required BuildContext context,
     required UniversalPlatformPayload payload,
@@ -121,19 +103,11 @@ class CentralizedManualPublisher {
     final shareText = payload.fullText;
 
     // 1. Dual handoff: Copy text to clipboard
-    if (p == SocialPlatform.reddit) {
-      await ClipboardAssistService.copyRedditTitleAndBody(
-        title: payload.title ?? '',
-        body: payload.caption,
-        context: context,
-      );
-    } else {
-      await ClipboardAssistService.copyCaption(
-        shareText,
-        context: context,
-        platformLabel: p.label,
-      );
-    }
+    await ClipboardAssistService.copyCaption(
+      shareText,
+      context: context,
+      platformLabel: p.label,
+    );
 
     // 2. Web fallback if requested
     if (preferWeb) {
@@ -141,7 +115,6 @@ class CentralizedManualPublisher {
         p,
         text: shareText,
         title: payload.title,
-        subreddit: payload.subreddit,
       );
       final launched = await launchUrl(url, mode: LaunchMode.externalApplication).catchError((_) => false);
       if (launched) {
@@ -158,13 +131,13 @@ class CentralizedManualPublisher {
       );
     }
 
-    // 3. Direct Native App Handoff (bypasses generic Android Share Sheet chooser)
+    // 3. Direct Native App Handoff
     final hasMedia = !kIsWeb &&
         payload.mediaPath != null &&
         payload.mediaPath!.isNotEmpty &&
         File(payload.mediaPath!).existsSync();
 
-    final fullShareContent = (payload.title != null && payload.title!.isNotEmpty && p != SocialPlatform.x)
+    final fullShareContent = (payload.title != null && payload.title!.isNotEmpty)
         ? '${payload.title}\n\n$shareText'
         : shareText;
 
@@ -173,16 +146,9 @@ class CentralizedManualPublisher {
       if (targetPackage != null) {
         try {
           final isInstalled = await _appLauncher.invokeMethod<bool>('isAppInstalled', {'package': targetPackage}) ?? false;
-          final fallbackPkg = getFallbackAndroidPackage(p);
-          final activePkg = isInstalled
-              ? targetPackage
-              : (fallbackPkg != null && (await _appLauncher.invokeMethod<bool>('isAppInstalled', {'package': fallbackPkg}) ?? false))
-                  ? fallbackPkg
-                  : null;
-
-          if (activePkg != null) {
+          if (isInstalled) {
             await _appLauncher.invokeMethod('launchDirectShare', {
-              'package': activePkg,
+              'package': targetPackage,
               'title': payload.title ?? '',
               'text': shareText,
               'mediaPath': hasMedia ? payload.mediaPath : null,
@@ -197,12 +163,11 @@ class CentralizedManualPublisher {
           }
         } catch (e) {
           debugPrint('[CentralizedManualPublisher] Direct package handoff error: $e');
-          // If direct package launch fails, proceed below to sharesheet / web fallback
         }
       }
     }
 
-    // 4. Native Device Sharesheet handoff (Fallback or iOS)
+    // 4. Native Device Sharesheet handoff
     try {
       if (hasMedia) {
         await SharePlus.instance.share(
@@ -223,12 +188,10 @@ class CentralizedManualPublisher {
         message: 'Content handed off to ${p.label}.',
       );
     } catch (e) {
-      // Fallback to web compose if native share throws an exception
       final url = PlatformCapabilityRegistry.getWebComposeUrl(
         p,
         text: shareText,
         title: payload.title,
-        subreddit: payload.subreddit,
       );
       final launched = await launchUrl(url, mode: LaunchMode.externalApplication).catchError((_) => false);
       if (launched) {

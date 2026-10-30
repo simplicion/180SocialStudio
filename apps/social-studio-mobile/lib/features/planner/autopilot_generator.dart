@@ -41,8 +41,7 @@ class _AutopilotGeneratorState extends ConsumerState<AutopilotGenerator> {
   late final Set<String> _platforms = {
     for (final a in widget.project.socialAccounts)
       for (final id in _platformIds.keys)
-        if (a.platform.id.toLowerCase().startsWith(id.substring(0, 4)) ||
-            (id == 'twitter' && a.platform.id.toLowerCase() == 'x'))
+        if (a.platform.id.toLowerCase().startsWith(id.substring(0, 4)))
           id,
   };
 
@@ -109,28 +108,54 @@ class _AutopilotGeneratorState extends ConsumerState<AutopilotGenerator> {
       'copy': 'Captions', 'craft': 'Platform Craft', 'critic': 'Quality review',
     };
     final usd = jDouble(r['outputCeilingUsd']);
-    await showDialog<void>(
+    await AppBottomSheet.show<void>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('AI usage for this plan'),
-        content: SingleChildScrollView(
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('${jInt(budget['pieces']) ?? 0} pieces across ${jInt(budget['platforms']) ?? 0} platform(s), up to ${jInt(budget['calls']) ?? 0} AI calls.', style: TextStyle(fontWeight: FontWeight.w600)),
-            SizedBox(height: 12),
-            for (final a in jList(budget['agents'], (m) => m))
-              Padding(
-                padding: EdgeInsets.only(bottom: 6),
-                child: Row(children: [
-                  Expanded(child: Text('${names[jStr(a['agent'])] ?? jStrOr(a['agent'], '')}${jBool(a['conditional']) ? ' (only if needed)' : ''}', style: TextStyle(fontSize: 13))),
-                  Text('${jBool(a['conditional']) ? 'up to ' : ''}${jInt(a['calls']) ?? 0}', style: TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
-                ]),
-              ),
-            SizedBox(height: 8),
-            Text('Output ceiling: ${jInt(budget['maxOutputTokens']) ?? 0} tokens${usd == null ? '' : ' (up to \$${usd.toStringAsFixed(2)} of output)'}. Real usage is usually lower; the finished calendar records what was used.',
-                style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
-          ]),
+      title: 'AI usage for this plan',
+      icon: Icon(Icons.auto_awesome_rounded, color: AppTheme.primary, size: 22),
+      actions: [
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppTheme.primary,
+            foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Close'),
         ),
-        actions: [TextButton(onPressed: () => Navigator.of(ctx).pop(), child: Text('Close'))],
+      ],
+      builder: (ctx) => Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '${jInt(budget['pieces']) ?? 0} pieces across ${jInt(budget['platforms']) ?? 0} platform(s), up to ${jInt(budget['calls']) ?? 0} AI calls.',
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 12),
+          for (final a in jList(budget['agents'], (m) => m))
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '${names[jStr(a['agent'])] ?? jStrOr(a['agent'], '')}${jBool(a['conditional']) ? ' (only if needed)' : ''}',
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ),
+                  Text(
+                    '${jBool(a['conditional']) ? 'up to ' : ''}${jInt(a['calls']) ?? 0}',
+                    style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+                  ),
+                ],
+              ),
+            ),
+          const SizedBox(height: 8),
+          Text(
+            'Output ceiling: ${jInt(budget['maxOutputTokens']) ?? 0} tokens${usd == null ? '' : ' (up to \$${usd.toStringAsFixed(2)} of output)'}. Real usage is usually lower; the finished calendar records what was used.',
+            style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+          ),
+        ],
       ),
     );
   }
@@ -673,8 +698,11 @@ class _AutopilotGeneratorState extends ConsumerState<AutopilotGenerator> {
           ErrorView(error: _pollError!, compact: true, onRetry: _poll),
         ],
         SizedBox(height: 16),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
+        Wrap(
+          alignment: WrapAlignment.center,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 8,
+          runSpacing: 4,
           children: [
             FilledButton.tonalIcon(
               onPressed: () {
@@ -684,7 +712,6 @@ class _AutopilotGeneratorState extends ConsumerState<AutopilotGenerator> {
               icon: const Icon(Icons.arrow_downward_rounded, size: 16),
               label: const Text('Run in background'),
             ),
-            const SizedBox(width: 8),
             TextButton(
               onPressed: () => context.go('/planner'),
               child: const Text('Back to Planner'),

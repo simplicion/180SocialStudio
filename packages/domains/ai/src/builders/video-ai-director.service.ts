@@ -66,6 +66,22 @@ import {
 import type { AIClient } from "../kernel/ai-provider.service";
 import { ContextResolver } from "./context-resolver";
 import { CreativePlanner, requestedFeatures } from "./creative-planner";
+import {
+  DirectorConversation,
+  DirectorPhase,
+  MediaGist,
+  agreedPlanPrompt,
+  deterministicCalmPlan,
+  deterministicRecommendation,
+  didNotUnderstandReply,
+  doneReply,
+  followUpChips,
+  isAffirmative,
+  isOpenEnded,
+  planFromHistory,
+  startsWithAgreement,
+  tidyReply,
+} from "./director-conversation";
 import crypto from "crypto";
 
 export class VideoAIDirectorService implements IUniversalBuilder<EditIR> {
@@ -351,7 +367,9 @@ export class VideoAIDirectorService implements IUniversalBuilder<EditIR> {
       } as AIClient;
     };
 
-    let outcome: { plan: any; plannerSource: PlannerSource; plannerReason: string; brandWatermark?: "add" | "remove" | "keep"; preserve?: any };
+    let outcome: { plan: any; plannerSource: PlannerSource; plannerReason: string; brandWatermark?: "add" | "remove" | "keep"; preserve?: any; conversation?: DirectorConversation };
+    let agreedToPlan = false;
+    let plannerPrompt = prompt;
     let plannerContextSections: string[] = [];
     let proposal: ReturnType<typeof buildGreetingProposal> | null = null;
     let sfx: SfxSuggestion[] = [];
@@ -389,8 +407,12 @@ export class VideoAIDirectorService implements IUniversalBuilder<EditIR> {
       if (contextSections.length) contextSections.push(`(SOURCE times equal timeline times until cuts are made; map them through the main clips above.)`, ``);
       contextSections.push(...mediaContextSections(media));
       if (opts.memoryContext?.length) contextSections.push(`## Project memory (this project only)`, ...opts.memoryContext, ``);
+      // "yes" / "do it" to the plan the director proposed last turn: the planner gets the plan itself.
+      const lastPlan = planFromHistory(request.history);
+      agreedToPlan = lastPlan.length > 0 && (isAffirmative(prompt) || startsWithAgreement(prompt));
+      plannerPrompt = agreedToPlan ? agreedPlanPrompt(prompt, lastPlan) : prompt;
       const planned = await CreativePlanner.planWithSource({
-        prompt,
+        prompt: plannerPrompt,
         timelineContext,
         mediaGraph: graph,
         companyId: opts.companyId,
@@ -403,6 +425,11 @@ export class VideoAIDirectorService implements IUniversalBuilder<EditIR> {
       });
       outcome = planned;
       plannerContextSections = contextSections;
+      if (planned.plannerSource === "deterministic" && !agreedToPlan) {
+        // No LLM (or it failed): keep the recommend -> confirm -> execute flow with rule-based replies.
+        const talk = deterministicConversation(prompt, lastPlan, gistOf(media), planned.plan.operations.length > 0);
+        if (talk) outcome = { ...planned, plan: { ...planned.plan, operations: [], explanation: talk.reply }, conversation: talk };
+      }
       if (planned.preserve) {
         const extra = {
           lockedRanges: (planned.preserve.lockedRanges || []).map((r) => [Math.round(r.startSec * 1000), Math.round(r.endSec * 1000)] as [number, number]),
@@ -489,7 +516,7 @@ export class VideoAIDirectorService implements IUniversalBuilder<EditIR> {
       if (canUseLlm) {
         const lockedNow = mapLockedRanges(baseIR, finalIR, constraints.lockedRanges);
         const repair = await CreativePlanner.planWithSource({
-          prompt: buildRepairInstruction(prompt, issues),
+          prompt: buildRepairInstruction(plannerPrompt, issues),
           checkCoverage: false,
           timelineContext: ContextResolver.resolveTimelineContext({ editIR: finalIR, userConstraints: toUserConstraints(constraints, lockedNow) }),
           mediaGraph: graphFromMobileMedia(media, finalIR),
@@ -516,7 +543,7 @@ export class VideoAIDirectorService implements IUniversalBuilder<EditIR> {
       const repairPlan = dropInvalid({ ...repairPlanRaw, constraints: { ...repairPlanRaw.constraints, ...toUserConstraints(constraints, lockedNow) } }, finalIR);
       const repaired = EditIRCompiler.compile(finalIR, repairPlan, []);
       // A repair must not take away what the creator asked for (a real run deleted the requested title).
-      const lost = requestedFeatures(prompt, words.length > 0).filter((f) => featureCount(finalIR, f) > 0 && featureCount(repaired.updatedEditIR, f) === 0);
+      const lost = requestedFeatures(plannerPrompt, words.length > 0).filter((f) => featureCount(finalIR, f) > 0 && featureCount(repaired.updatedEditIR, f) === 0);
       if (lost.length) {
         repairRounds++;
         warnings.push(`critic repair round ${repairRounds} would have removed the requested ${lost.join(", ")} and was discarded`);
@@ -673,30 +700,70 @@ export class VideoAIDirectorService implements IUniversalBuilder<EditIR> {
     delete (editIR as any).watermark;
     if (watermark) editIR.watermark = watermark;
 
+    // The chat reply: short, friendly, no jargon. Technical detail stays in appliedOperations / warnings.
     let summary: string;
+    let phase: DirectorPhase;
+    let quickReplies: string[] = [];
+    let proposedPlan: string[] = [];
+    const talk = outcome.conversation;
+    const plannedOps = planToCompile.operations.length ? (outcome.plan.operations as CreativeOperation[]) : [];
     if (intent === "greet" && proposal) {
-      summary = greetingReply(proposal, editIR.durationMs / 1000);
+      // Plain-language steps for the plan card (no hex codes); the full wording stays in the details.
+      const steps = proposal.steps.slice(0, 8).map((st) => tidyReply(st.charAt(0).toUpperCase() + st.slice(1)).replace(/\s*#[0-9a-f]{6}\b/gi, ""));
+      proposedPlan = steps;
+      phase = steps.length ? "confirm" : "chat";
+      const detail = greetingReply(proposal, editIR.durationMs / 1000);
+      const who = ctx.piece?.headline ? `"${tidyReply(ctx.piece.headline).slice(0, 60)}"` : "this one";
+      summary = steps.length
+        ? `Hey! I had a look at ${who}. Here's what I'd do. Want me to go ahead?`
+        : `Hey! I had a look at ${who}. What would you like to change?`;
+      quickReplies = steps.length ? [] : ["Cut the pauses", "Add captions", "Make it punchy"];
+      // The full proposal (brand colours, script notes) stays available as details.
+      warnings.unshift(detail);
+    } else if (appliedOperations.length > 0) {
+      phase = "done";
+      summary = outcome.plannerSource === "llm" ? tidyReply(talk?.reply || outcome.plan.explanation || "") || doneReply(plannedOps) : doneReply(plannedOps);
+      const t = finalIR.tracks;
+      quickReplies = talk?.quickReplies.length
+        ? talk.quickReplies
+        : followUpChips({
+            captions: t.captionTrack.filter((c) => c.role !== "title").length,
+            titles: t.captionTrack.filter((c) => c.role === "title").length,
+            music: t.audioTracks.some((a) => a.type === "BGM" && a.clips.length > 0),
+            zooms: t.cameraTrack.length,
+          });
+      if (brandApplied.length) warnings.push(`brand: ${brandApplied.join(", ")}`);
+    } else if (talk) {
+      summary = talk.reply;
+      phase = talk.phase === "done" ? "chat" : talk.phase;
+      quickReplies = talk.quickReplies;
+      proposedPlan = talk.proposedPlan;
+    } else if (plannedOps.length > 0 || rejectedOperations.length > 0) {
+      phase = "gather";
+      summary = "I tried, but couldn't make that change work on this video. Want to try it a different way?";
+      quickReplies = ["Show me options", "Never mind"];
     } else {
-      summary = outcome.plan.explanation;
-      if (outcome.plannerSource === "deterministic") {
-        summary = appliedOperations.length > 0
-          ? `Applied ${appliedOperations.length} change(s) with the offline rule-based director: ${appliedOperations.slice(0, 4).join("; ")}${appliedOperations.length > 4 ? "; ..." : ""}`
-          : `The offline rule-based director could not map this request to an edit. (${outcome.plannerReason})`;
-      }
-      if (brandApplied.length) summary += ` Brand: ${brandApplied.join(", ")}.`;
+      const fallback = didNotUnderstandReply(words.length > 0);
+      phase = fallback.phase;
+      summary = outcome.plannerSource === "llm" ? tidyReply(outcome.plan.explanation || "") || fallback.reply : fallback.reply;
+      quickReplies = fallback.quickReplies;
     }
-    if (rejectedOperations.length > 0) {
-      summary += ` ${rejectedOperations.length} requested change(s) could not be applied.`;
+    if (appliedOperations.length > 0 && rejectedOperations.length > 0) {
+      summary += rejectedOperations.length === 1 ? " One part didn't work out, it's in the details." : ` ${rejectedOperations.length} parts didn't work out, they're in the details.`;
     }
     if (violations.length > 0) {
-      summary += ` ${violations.length} change(s) were skipped to respect what you asked to keep.`;
+      summary += " I left alone the parts you asked me to keep.";
+    }
+    if (outcome.plannerSource === "deterministic" && intent === "edit" && !outcome.plannerReason.startsWith("LLM_TIMEOUT")) {
+      warnings.push(`planned by the offline rule-based director: ${outcome.plannerReason}`);
     }
 
     const autonomy: AutonomyPolicy = normalizeAutonomy(opts.autonomy || ctx.brand?.autonomy);
     const decision = decideAutoApply({
       editing: autonomy.editing,
       operationTypes: outcome.plan.operations.map((o: any) => o.type),
-      plannerRequiresConfirmation: outcome.plannerSource === "llm" ? !!outcome.plan.requiresConfirmation : false,
+      // The creator already said yes to this plan in the chat: that is the confirmation.
+      plannerRequiresConfirmation: outcome.plannerSource === "llm" && !agreedToPlan ? !!outcome.plan.requiresConfirmation : false,
       violations: violations.length,
       isGreeting: intent === "greet",
     });
@@ -707,6 +774,9 @@ export class VideoAIDirectorService implements IUniversalBuilder<EditIR> {
       plannerReason: outcome.plannerReason,
       summary,
       reply: summary,
+      phase,
+      quickReplies,
+      proposedPlan,
       operations: allOperations,
       appliedOperations,
       rejectedOperations: rejectedOperations,
@@ -912,7 +982,14 @@ export interface MobileDirectResult {
   plannerSource: PlannerSource;
   plannerReason: string;
   summary: string;
+  /** The chat message: short and friendly (1-4 sentences). */
   reply: string;
+  /** Where the conversation is: recommend -> gather -> confirm -> done (edits applied) | chat. */
+  phase: DirectorPhase;
+  /** 0-3 one-tap answers for the creator. */
+  quickReplies: string[];
+  /** confirm / recommend: the steps the director will do once the creator agrees (nothing applied yet). */
+  proposedPlan: string[];
   operations: CreativeOperation[];
   appliedOperations: string[];
   rejectedOperations: string[];
@@ -1062,4 +1139,38 @@ function featureCount(ir: EditIR, feature: string): number {
     default:
       return -1;
   }
+}
+
+/** What the director "sees" for rule-based replies. */
+function gistOf(media: MobileAIDirectRequest["media"]): MediaGist {
+  const clean = (l: string) => (/^[a-z][a-z &'-]{0,38}$/i.test(l) ? l.toLowerCase() : null);
+  const counts = new Map<string, number>();
+  for (const span of media.labels || []) for (const l of span.labels) {
+    const c = clean(l);
+    if (c) counts.set(c, (counts.get(c) || 0) + 1);
+  }
+  return {
+    durationMs: media.durationMs,
+    width: media.width,
+    height: media.height,
+    words: media.transcript?.words?.length || 0,
+    silences: media.silences?.length || 0,
+    faces: media.faces?.length || 0,
+    labels: Array.from(counts.entries()).sort((a, b) => b[1] - a[1]).map(([l]) => l).filter((l) => !/^(person|people|human)$/.test(l)),
+  };
+}
+
+/**
+ * Rule-based conversation when there is no LLM: open requests get a recommendation (with a plan to say yes to),
+ * "calmer" swaps the plan, a bare "thanks / looks good" is answered, and a request with no edit is asked again.
+ * Null = let the rule-based edit through.
+ */
+function deterministicConversation(prompt: string, lastPlan: string[], gist: MediaGist, hasOps: boolean): DirectorConversation | null {
+  if (isOpenEnded(prompt)) return deterministicRecommendation(gist);
+  if (lastPlan.length && prompt.length <= 60 && /\b(calm|calmer|chill|subtle|simple|clean|slower|softer|less)\b/i.test(prompt)) return deterministicCalmPlan(gist);
+  if (isAffirmative(prompt) || /^(thanks|thank you|thx|ty|nice|cool|love it|looks great|great job)\b/i.test(prompt.trim())) {
+    return { reply: "Glad you like it! Anything else you'd like to tweak?", phase: "chat", quickReplies: ["Add music", "Bigger captions", "All good"], proposedPlan: [] };
+  }
+  if (!hasOps) return didNotUnderstandReply(gist.words > 0);
+  return null;
 }

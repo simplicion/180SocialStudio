@@ -58,6 +58,7 @@ public class MediaEnginePlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
 
             let overlayPaths = args["overlayPaths"] as? [String: String] ?? [:]
             let musicPaths = args["musicPaths"] as? [String: String] ?? [:]
+            let fontPaths = args["fontPaths"] as? [String: String] ?? [:]
             let watermarkPath = args["watermarkPath"] as? String
             let sfxPaths = args["sfxPaths"] as? [String: String] ?? [:]
 
@@ -67,6 +68,7 @@ public class MediaEnginePlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
                 assetPaths: assetPaths,
                 overlayPaths: overlayPaths,
                 musicPaths: musicPaths,
+                fontPaths: fontPaths,
                 watermarkPath: watermarkPath,
                 sfxPaths: sfxPaths,
                 outputPath: outputPath,
@@ -77,17 +79,17 @@ public class MediaEnginePlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
                         "progress": progress
                     ])
                 },
-                onComplete: { [weak self] path, warnings in
-                    self?.activeRenderers.removeValue(forKey: jobId)
-                    self?.emitEvent([
-                        "jobId": jobId,
-                        "state": "completed",
-                        "outputPath": path,
-                        "warnings": warnings
-                    ])
+                onComplete: { [weak self] verified in
+                    // Same payload as Android: the Dart RenderResult reads every one of these keys.
+                    var event = verified
+                    event["jobId"] = jobId
+                    event["state"] = "completed"
+                    event["progress"] = 1.0
+                    self?.emitEvent(event)
+                    DispatchQueue.main.async { self?.activeRenderers.removeValue(forKey: jobId) }
                 },
                 onError: { [weak self] code, message in
-                    self?.activeRenderers.removeValue(forKey: jobId)
+                    DispatchQueue.main.async { self?.activeRenderers.removeValue(forKey: jobId) }
                     self?.emitEvent([
                         "jobId": jobId,
                         "state": "failed",
@@ -137,7 +139,8 @@ public class MediaEnginePlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
             result([]) // Fallback to speech transcript timing on iOS
 
         case "detectBeats":
-            result([]) // Fallback to stock BPM metadata on iOS
+            // Not analysed on iOS yet: no beats (the shape MediaEngineService.detectBeats expects).
+            result(["beatsMs": [Int](), "bpm": NSNull()])
 
         default:
             result(FlutterMethodNotImplemented)
@@ -183,7 +186,12 @@ public class MediaEnginePlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
             "durationMs": durationMs,
             "rotation": rotation,
             "fps": fps,
-            "hasAudio": hasAudio
+            // Keys VideoMetadata.fromMap reads (hasVideo defaulted to false without it).
+            "frameRate": fps,
+            "hasVideo": true,
+            "hasAudio": hasAudio,
+            "isHdr": false,
+            "fileSizeBytes": ((try? FileManager.default.attributesOfItem(atPath: path))?[.size] as? NSNumber)?.int64Value ?? 0
         ])
     }
 
@@ -237,9 +245,16 @@ public class MediaEnginePlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
     }
 
     private func stopVoiceRecording(result: @escaping FlutterResult) {
-        audioRecorder?.stop()
+        guard let rec = audioRecorder else {
+            result(FlutterError(code: "NOT_RECORDING", message: "No voice recording is in progress", details: nil))
+            return
+        }
+        let url = rec.url
+        rec.stop()
         audioRecorder = nil
-        result(nil)
+        let durationMs = Int((AVURLAsset(url: url).duration.seconds * 1000).rounded())
+        // MediaEngineService.stopVoiceRecording reads {path, durationMs}.
+        result(["path": url.path, "durationMs": max(0, durationMs)])
     }
 
     private func cancelVoiceRecording(result: @escaping FlutterResult) {

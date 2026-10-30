@@ -11,7 +11,7 @@ export type HookType = (typeof HOOK_TYPES)[number];
 export const CONTENT_FORMATS = ['reel', 'carousel', 'static', 'text'] as const;
 export type ContentFormat = (typeof CONTENT_FORMATS)[number];
 
-export const AUTOPILOT_PLATFORMS = ['instagram', 'facebook', 'tiktok', 'youtube', 'linkedin', 'x'] as const;
+export const AUTOPILOT_PLATFORMS = ['instagram', 'facebook', 'youtube', 'linkedin'] as const;
 export type AutopilotPlatform = (typeof AUTOPILOT_PLATFORMS)[number];
 
 export const PSYCHOLOGICAL_JOBS = [
@@ -58,7 +58,7 @@ export type ContentMixConfig = z.infer<typeof ContentMixConfigSchema>;
 
 export const StrategySlotSchema = z.object({
     day: z.number().int().min(1).max(31),
-    platforms: z.array(platformSchema).min(1).max(6),
+    platforms: z.array(platformSchema).min(1).max(4),
     format: z.enum(CONTENT_FORMATS),
     pillar: nonEmpty(80),
     topic: nonEmpty(200),

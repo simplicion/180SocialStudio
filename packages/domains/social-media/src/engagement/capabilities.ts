@@ -7,9 +7,6 @@
  * | facebook  | yes          | yes          | private reply within 7 days (pages_messaging); DMs in the 24 h window |
  * | youtube   | no           | yes          | no DMs                                                          |
  * | linkedin  | yes (page)   | yes (page)   | no DMs                                                          |
- * | x         | paid tier    | paid tier    | paid tier (X_API_TIER=paid|basic|pro|enterprise)                 |
- * | tiktok    | no           | yes          | no DMs                                                          |
- * | threads   | no           | yes          | no DMs                                                          |
  *
  * The dispatcher asks this module before every action and logs the reason when an action is skipped.
  */
@@ -29,12 +26,8 @@ export interface PlatformCapabilities {
     note?: string;
 }
 
-const X_PAID_TIERS = ['paid', 'basic', 'pro', 'enterprise'];
-const xPaid = () => X_PAID_TIERS.includes(String(process.env.X_API_TIER || '').trim().toLowerCase());
-
 export function canonicalEngagementPlatform(p: string): string {
     const v = String(p || '').toLowerCase().trim();
-    if (v === 'twitter') return 'x';
     if (v.startsWith('insta')) return 'instagram';
     if (v === 'youtube_shorts') return 'youtube';
     return v;
@@ -50,12 +43,6 @@ export function platformCapabilities(platform: string): PlatformCapabilities {
             return { like: false, reply: true, dm: false, note: 'YouTube allows comment replies only; there are no DMs.' };
         case 'linkedin':
             return { like: true, reply: true, dm: false, note: 'LinkedIn pages can reply to and like comments; there is no DM API.' };
-        case 'x': {
-            const paid = xPaid();
-            return { like: paid, reply: paid, dm: paid, messagingWindowHours: undefined, note: paid ? undefined : 'X engagement needs a paid API tier (set X_API_TIER).' };
-        }
-        case 'threads':
-            return { like: false, reply: true, dm: false, note: 'Threads allows public replies only.' };
         default:
             return { like: false, reply: false, dm: false, note: `Engagement is not supported on ${platform}.` };
     }

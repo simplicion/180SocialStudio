@@ -26,6 +26,7 @@ import {
 } from "@workspace/video-contracts";
 import { VideoAIDirectorService } from "../src/builders/video-ai-director.service";
 import { missingRequestedOperations } from "../src/builders/creative-planner";
+import { conversationFromText, isAffirmative, isOpenEnded, planFromHistory, historyText, tidyReply } from "../src/builders/director-conversation";
 import type { AIClient, ToolCallResponse } from "../src/kernel/ai-provider.service";
 
 // ---------------------------------------------------------------------------------------------
@@ -198,7 +199,9 @@ test("repair retry exhausted: falls back to deterministic and says why", async (
   assert.equal(calls.length, 2);
   assert.equal(res.plannerSource, "deterministic");
   assert.match(res.plannerReason, /failed validation after 1 repair attempt/);
-  assert.match(res.summary, /offline rule-based director/);
+  // The chat reply stays friendly; the fallback is labelled in the details (warnings), not in the bubble.
+  assert.ok(res.warnings.some((w) => /offline rule-based director/.test(w)));
+  assert.doesNotMatch(res.summary, /rule-based|LLM|validation/);
 });
 
 test("unknown tool names are rejected by validation (not executed)", async () => {
@@ -248,7 +251,7 @@ test("conversation history is included in the prompt", async () => {
     ],
   });
   assert.match(calls[0].prompt, /Creator: add yellow captions/);
-  assert.match(calls[0].prompt, /Director: Added yellow word-by-word captions\./);
+  assert.match(calls[0].prompt, /You: Added yellow word-by-word captions\./);
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -472,7 +475,8 @@ test("honesty: ops that cannot apply are rejected, not reported as done", async 
   const { res } = await runLLM("duck the music", [tc("duckAudio", {}), tc("styleCaption", { preset: "BOLD_CENTER" })]);
   assert.equal(res.appliedOperations.length, 0);
   assert.equal(res.rejectedOperations.length, 2);
-  assert.match(res.summary, /2 requested change\(s\) could not be applied/);
+  assert.match(res.summary, /couldn't make that change work/);
+  assert.notEqual(res.phase, "done");
 });
 
 test("captions: a named creator template with a named colour reaches the phone as that template", async () => {
@@ -981,12 +985,16 @@ test("greet: brand-aware proposal that requires confirmation, opens on the hook,
   assert.equal(res.requiresConfirmation, true);
   assert.equal(res.llmCalls, 0);
   assert.equal(res.plannerSource, "deterministic");
-  assert.match(res.reply, /^Day 3 "Stop doing cardio first": I can /);
-  assert.match(res.reply, /open on your hook/);
-  assert.match(res.reply, /#FFC400/);
-  assert.match(res.reply, /logo watermark/);
-  assert.match(res.reply, /Apply\?/);
-  assert.match(res.reply, /retention/, "missing script part is flagged");
+  // Short chat reply + the plan as steps; the full proposal (brand colour, script notes) is in the details.
+  assert.match(res.reply, /^Hey! I had a look at "Stop doing cardio first"/);
+  assert.ok(!res.proposedPlan.some((s) => /#[0-9A-F]{6}/i.test(s)), "no hex codes in the plan card");
+  assert.ok(res.reply.length < 160, "greeting is short");
+  assert.equal(res.phase, "confirm");
+  assert.ok(res.proposedPlan.some((s) => /open on your hook/i.test(s)));
+  assert.ok(res.proposedPlan.some((s) => /logo watermark/i.test(s)));
+  const detail = res.warnings.join(" ");
+  assert.match(detail, /#FFC400/);
+  assert.match(detail, /retention/, "missing script part is flagged");
   assert.ok(res.proposal && res.proposal.steps.length >= 4);
   assertInvariantsLoose(res.editIR);
   const a = res.scriptAlignment!;
@@ -1094,7 +1102,9 @@ test("LLM timeout: a hung planner call becomes a labelled deterministic fallback
   assert.equal(res.plannerSource, "deterministic");
   assert.match(res.plannerReason, /^LLM_TIMEOUT: LLM call \(claude/);
   assert.ok(res.warnings.some((w) => /AI planner timed out/.test(w)));
-  assert.match(res.reply, /offline rule-based director/);
+  assert.equal(res.phase, "done");
+  assert.match(res.reply, /^Done! I cut the pauses/);
+  assert.doesNotMatch(res.reply, /rule-based|LLM/);
 });
 
 test("brand rendering: the style agent uses resolveBrandRendering values and names the defaults", async () => {
@@ -1261,4 +1271,83 @@ test("cleanFillers also cuts phrase fillers ('you know') next to um / uh", async
   } as any);
   assert.ok(res.appliedOperations.some((a) => /filler word "you know"/.test(a)), JSON.stringify(res.appliedOperations));
   assertInvariants(res.editIR);
+});
+
+// ---------------------------------------------------------------------------------------------
+// Conversation: recommend -> confirm -> execute, short friendly replies
+// ---------------------------------------------------------------------------------------------
+
+const chat = (args: Record<string, any>) => tc("reply_to_creator", args);
+
+test("conversation: 'edit this video' without an LLM recommends a direction and edits nothing", async () => {
+  const res = await director.directMobile(mobileRequest("edit this video"), { llmClient: null });
+  assert.equal(res.phase, "recommend");
+  assert.equal(res.appliedOperations.length, 0);
+  assert.ok(res.proposedPlan.length >= 2);
+  assert.ok(res.quickReplies.length >= 2 && res.quickReplies.length <= 3);
+  assert.match(res.reply, /^Got it, this looks like/);
+  assert.ok(res.reply.length < 220, "short reply");
+  assert.ok(!res.reply.includes("\n"));
+});
+
+test("conversation: 'yes' to the plan in history executes it without a second confirmation", async () => {
+  const first = await director.directMobile(mobileRequest("edit this video"), { llmClient: null });
+  const history = [
+    { role: "user" as const, content: "edit this video" },
+    { role: "assistant" as const, content: historyText(first.reply, first.proposedPlan) },
+  ];
+  const res = await director.directMobile(mobileRequest("Yes, do it", { history }), { llmClient: null });
+  assert.equal(res.phase, "done");
+  assert.ok(res.appliedOperations.length > 0);
+  assert.equal(res.requiresConfirmation, false);
+  assert.ok(res.editIR.captions.length > 0, "captions from the plan");
+  assert.ok(res.editIR.durationMs < FIX.durationMs, "pauses cut");
+  assert.match(res.reply, /^Done! /);
+  assert.ok(res.quickReplies.length > 0);
+});
+
+test("conversation: with an LLM, 'yes' sends the agreed plan to the planner", async () => {
+  const history = [
+    { role: "user" as const, content: "make it punchy" },
+    { role: "assistant" as const, content: historyText("Here's what I'll do. Good to go?", ["Cut the pauses", "Bold yellow captions"]) },
+  ];
+  const { client, calls } = mockClient([{ text: "", toolCalls: [tc("removeSilences", {}), tc("autoCaptions", { highlightColor: "#FFE600" }), chat({ reply: "Done! Cut the pauses and added yellow captions.", phase: "done", quickReplies: ["Bigger captions", "Add music"] }), finish("Done.")] }]);
+  const res = await director.directMobile(mobileRequest("yes", { history }), { llmClient: client });
+  assert.match(calls[0].prompt, /The creator agreed to your plan[\s\S]*1\. Cut the pauses\\n2\. Bold yellow captions/);
+  assert.ok(calls[0].tools.some((t: any) => t.function.name === "reply_to_creator"));
+  assert.equal(res.phase, "done");
+  assert.equal(res.reply, "Done! Cut the pauses and added yellow captions.");
+  assert.deepEqual(res.quickReplies, ["Bigger captions", "Add music"]);
+  assert.equal(res.requiresConfirmation, false);
+  assert.ok(res.appliedOperations.length >= 2);
+});
+
+test("conversation: a proposal from the LLM never applies edits, even if it also called edit tools", async () => {
+  const { res } = await runLLM("make it good", [
+    tc("removeSilences", {}),
+    chat({ reply: "Here's what I'll do. Good to go?", phase: "confirm", proposedPlan: ["Trim the dead air", "Add captions", "Title card 'Gym Truth'"], quickReplies: ["Do it", "Change something"] }),
+  ]);
+  assert.equal(res.phase, "confirm");
+  assert.equal(res.appliedOperations.length, 0);
+  assert.equal(res.editIR.durationMs, FIX.durationMs);
+  assert.deepEqual(res.proposedPlan, ["Trim the dead air", "Add captions", "Title card 'Gym Truth'"]);
+  assert.deepEqual(res.quickReplies, ["Do it", "Change something"]);
+});
+
+test("conversation: JSON written as text (even slightly broken) is parsed; markdown walls are tidied", async () => {
+  const { res } = await turn("hey", '```json\n{"reply": "Hey! This looks like a gym talk, about 30s. Fast and bold, or calm?", "phase": "recommend", "quickReplies": ["Fast & bold", "Calm",]}\n```');
+  assert.equal(res.phase, "recommend");
+  assert.equal(res.reply, "Hey! This looks like a gym talk, about 30s. Fast and bold, or calm?");
+  assert.deepEqual(res.quickReplies, ["Fast & bold", "Calm"]);
+  assert.equal(tidyReply("## Plan\n**Bold** move:\n- cut\n- zoom"), "Plan Bold move: cut zoom");
+  assert.equal(conversationFromText("Sure thing!")?.phase, "chat");
+});
+
+test("conversation helpers: affirmatives, open requests and plans in history", () => {
+  for (const y of ["yes", "Yes, do it", "do it", "go ahead!", "sounds good", "haan kar do", "👍", "ok"]) assert.ok(isAffirmative(y), y);
+  for (const n of ["yes but no music", "add captions", "remove the title"]) assert.ok(!isAffirmative(n), n);
+  for (const o of ["edit this video", "Edit this video please", "make it better", "hi", "help"]) assert.ok(isOpenEnded(o), o);
+  for (const o of ["add captions", "make captions bigger", "remove the title"]) assert.ok(!isOpenEnded(o), o);
+  assert.deepEqual(planFromHistory([{ role: "assistant", content: historyText("Good to go?", ["A", "B"]) }]), ["A", "B"]);
+  assert.deepEqual(planFromHistory([{ role: "assistant", content: "Plan:\n1. A" }, { role: "assistant", content: "Done!" }]), []);
 });

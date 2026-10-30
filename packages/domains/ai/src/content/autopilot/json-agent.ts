@@ -1,4 +1,7 @@
-import type { ZodType } from 'zod';
+import type { ZodType, ZodTypeDef } from 'zod';
+
+/** Schemas may preprocess/coerce, so only their output type matters here (their input is whatever the model sent). */
+type OutputSchema<T> = ZodType<T, ZodTypeDef, unknown>;
 import { jsonrepair } from 'jsonrepair';
 import { AgentRole, AutopilotError, AutopilotLLM, UsageMeter } from './llm';
 
@@ -7,7 +10,7 @@ export interface JsonAgentCall<T> {
     role: AgentRole;
     system: string;
     prompt: string;
-    schema: ZodType<T>;
+    schema: OutputSchema<T>;
     maxTokens: number;
     meter?: UsageMeter;
     /** Optional hook to normalize/repair raw data before schema validation. */
@@ -40,6 +43,10 @@ export function extractJson(text: string): unknown {
     // Isolate JSON starting from first [ or {
     let jsonTarget = candidate;
     const firstBracket = candidate.search(/[[{]/);
+    // Prose with no object or array in it is a refusal or an apology, not JSON. jsonrepair would happily turn
+    // "sorry, I cannot do that" into ["sorry","I cannot do that"], and the repair-pass normalizers would then fill a
+    // whole batch with defaults, so a model that produced nothing would look like a successful run.
+    if (firstBracket === -1) throw new Error('no JSON found in reply');
     if (firstBracket !== -1 && !candidate.startsWith('{') && !candidate.startsWith('[')) {
         jsonTarget = candidate.slice(firstBracket);
     }
@@ -103,7 +110,7 @@ export interface ValidationResult<T> {
 
 function validate<T>(
     text: string,
-    schema: ZodType<T>,
+    schema: OutputSchema<T>,
     check?: (v: T) => string[],
     normalize?: (raw: any, opts?: { attempt: number }) => any,
     attempt: number = 1,

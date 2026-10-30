@@ -167,7 +167,7 @@ class _ConversationListState extends ConsumerState<ConversationList> {
           ),
           SizedBox(width: 8),
           ChoiceChip(label: Text('All channels'), selected: _platform == null, onSelected: (_) => setState(() => _platform = null)),
-          for (final p in SocialPlatform.connectable)
+          for (final p in SocialPlatform.messagingPlatforms)
             Padding(
               padding: EdgeInsets.only(left: 8),
               child: ChoiceChip(

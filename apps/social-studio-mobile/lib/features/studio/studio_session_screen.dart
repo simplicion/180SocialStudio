@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -449,9 +450,12 @@ class _StudioSessionScreenState extends ConsumerState<StudioSessionScreen> {
     final path = c.previewPathForAsset(asset);
     if (path != null) {
       _ensureActiveSlot(path).then((p) {
-        if (mounted && !_playing) {
-          p?.seekTo(Duration(milliseconds: c.sourcePositionMs));
-        }
+        if (p == null || !mounted || _playing) return;
+        if (_activeAsset != asset) setState(() => _activeAsset = asset);
+        // Only seek when the frame shown is not already the one under the playhead (a drag on the preview notifies
+        // every frame without moving the playhead).
+        final target = c.sourcePositionMs;
+        if ((p.value.position.inMilliseconds - target).abs() > 20) p.seekTo(Duration(milliseconds: target));
       });
     }
   }
@@ -682,14 +686,17 @@ class _StudioSessionScreenState extends ConsumerState<StudioSessionScreen> {
     if (_playing) _togglePlay();
   }
 
-  void _edit(MobileEditIr Function(MobileEditIr) op, {String? done}) {
+  /// Applies a manual edit; an invalid one changes nothing and says why. True when it was applied.
+  bool _edit(MobileEditIr Function(MobileEditIr) op, {String? done}) {
     _stop();
     try {
       c.apply(op);
-      if (done != null) showInfo(context, done);
     } catch (e) {
-      showError(context, e);
+      if (mounted) showError(context, e);
+      return false;
     }
+    if (done != null && mounted) showInfo(context, done);
+    return true;
   }
 
   Future<void> _openTool(StudioTool tool) async {
@@ -852,8 +859,26 @@ class _StudioSessionScreenState extends ConsumerState<StudioSessionScreen> {
           ),
           title: Text('Studio'),
           actions: [
-            IconButton(tooltip: 'Undo', onPressed: c.canUndo ? c.undo : null, icon: Icon(Icons.undo_rounded)),
-            IconButton(tooltip: 'Redo', onPressed: c.canRedo ? c.redo : null, icon: Icon(Icons.redo_rounded)),
+            IconButton(
+              tooltip: 'Undo',
+              onPressed: c.canUndo
+                  ? () {
+                      _stop();
+                      c.undo();
+                    }
+                  : null,
+              icon: Icon(Icons.undo_rounded),
+            ),
+            IconButton(
+              tooltip: 'Redo',
+              onPressed: c.canRedo
+                  ? () {
+                      _stop();
+                      c.redo();
+                    }
+                  : null,
+              icon: Icon(Icons.redo_rounded),
+            ),
             if (ir != null)
               TextButton.icon(
                 onPressed: () => _saveDraft(),
@@ -905,7 +930,22 @@ class _StudioSessionScreenState extends ConsumerState<StudioSessionScreen> {
                       onEdit: _edit,
                       onOpenTool: _openTool,
                     ),
-                    _ToolBar(onTool: _openTool),
+                    if (c.selectedClip case final sel? when sel < ir.clips.length)
+                      _ClipActions(
+                        index: sel,
+                        count: ir.clips.length,
+                        onTool: _openTool,
+                        onSplit: () => _edit((ir) => TimelineOps.split(ir, c.playheadMs)),
+                        onMove: (to) {
+                          if (_edit((ir) => TimelineOps.moveClip(ir, sel, to))) c.select(to);
+                        },
+                        onClose: () => c.select(null),
+                      ),
+                    _ToolBar(onTool: (t) {
+                      // The toolbar's Text button adds a new title; tapping a text on the preview or timeline edits it.
+                      if (t == StudioTool.text) c.clearItemSelection();
+                      _openTool(t);
+                    }),
                   ]),
       ),
     );
@@ -936,8 +976,6 @@ class _Empty extends StatelessWidget {
       );
 }
 
-/// Source frame at the playhead, cropped/letterboxed like the export, with text and zoom
-/// indicators. It is a guide, not a frame-accurate render: Export produces the real video.
 /// Source frame at the playhead, cropped/letterboxed like the export, with text and zoom
 /// indicators. It is a guide, not a frame-accurate render: Export produces the real video.
 class _Preview extends StatelessWidget {
@@ -1088,10 +1126,13 @@ class _Preview extends StatelessWidget {
                 // Draggable text / captions on top of the preview canvas
                 for (final cap in captions)
                   _DraggableCaption(
+                    key: ValueKey('cap_${cap.id}'),
                     caption: cap,
                     t: t,
+                    canvasWidth: ir.canvas.width,
                     controller: controller,
-                    onTap: () => onOpenTool(cap.kind == 'text' ? StudioTool.text : StudioTool.captions),
+                    // Tapping a title or a caption edits that one (text, style, timing, position).
+                    onTap: () => onOpenTool(StudioTool.text),
                   ),
               ]),
             ),
@@ -1350,82 +1391,6 @@ class _BrollOverlayVideoState extends State<_BrollOverlayVideo> {
       );
 }
 
-/// CapCut-style draggable text overlay on top of the preview canvas
-class _DraggableCaption extends StatefulWidget {
-  const _DraggableCaption({
-    required this.caption,
-    required this.t,
-    required this.controller,
-    required this.onTap,
-  });
-
-  final EditIrCaption caption;
-  final int t;
-  final StudioController controller;
-  final VoidCallback onTap;
-
-  @override
-  State<_DraggableCaption> createState() => _DraggableCaptionState();
-}
-
-class _DraggableCaptionState extends State<_DraggableCaption> {
-  bool _active = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final posX = (widget.caption.style['positionX'] as num?)?.toDouble() ?? 0.5;
-    final posY = (widget.caption.style['positionY'] as num?)?.toDouble() ?? (widget.caption.kind == 'text' ? 0.25 : 0.72);
-
-    return LayoutBuilder(builder: (context, constraints) {
-      return Align(
-        alignment: Alignment(posX * 2 - 1, posY * 2 - 1),
-        child: GestureDetector(
-          onTap: () {
-            widget.controller.selectTrackItem(widget.caption.id, TrackKind.captions);
-            widget.onTap();
-          },
-          onPanStart: (_) => setState(() => _active = true),
-          onPanUpdate: (d) {
-            if (constraints.maxWidth <= 0 || constraints.maxHeight <= 0) return;
-            final nextX = (posX + d.delta.dx / constraints.maxWidth).clamp(0.05, 0.95);
-            final nextY = (posY + d.delta.dy / constraints.maxHeight).clamp(0.05, 0.95);
-            widget.controller.applyWithoutHistory((ir) => TimelineOps.updateCaptionPosition(ir, widget.caption.id, positionX: nextX, positionY: nextY));
-          },
-          onPanEnd: (_) {
-            setState(() => _active = false);
-            widget.controller.apply((ir) => TimelineOps.updateCaptionPosition(ir, widget.caption.id, positionX: posX, positionY: posY));
-          },
-          onPanCancel: () => setState(() => _active = false),
-          child: Container(
-            padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: _active
-                ? BoxDecoration(
-                    border: Border.all(color: AppTheme.primary, width: 1.5),
-                    borderRadius: BorderRadius.circular(8),
-                    color: Colors.black.withValues(alpha: 0.2),
-                  )
-                : null,
-            child: _withMotion(constraints, _CaptionPreview(caption: widget.caption, t: widget.t, previewWidth: constraints.maxWidth)),
-          ),
-        ),
-      );
-    });
-  }
-
-  /// In / out / loop motion, identical to the Android renderer (text_motion.dart).
-  Widget _withMotion(BoxConstraints box, Widget child) {
-    final m = textMotionAt(widget.caption.style, widget.caption.startMs, widget.caption.endMs, widget.t);
-    if (identical(m, TextMotion.none)) return child;
-    return Transform.translate(
-      offset: Offset(m.dx * box.maxWidth, m.dy * box.maxHeight),
-      child: Transform.rotate(
-        angle: m.rotationDeg * math.pi / 180,
-        child: Transform.scale(scale: m.scale, child: Opacity(opacity: m.opacity, child: child)),
-      ),
-    );
-  }
-}
-
 class _CroppedVideo extends StatelessWidget {
   const _CroppedVideo({this.player, required this.clip, this.filter, this.stillPath, this.stillSize});
   final VideoPlayerController? player;
@@ -1478,121 +1443,284 @@ class _CroppedVideo extends StatelessWidget {
   }
 }
 
-class _CaptionPreview extends StatelessWidget {
-  const _CaptionPreview({required this.caption, required this.t, this.previewWidth = 360.0});
+/// One title / caption as the preview draws it (draggable), on its own for tests.
+@visibleForTesting
+Widget captionPreviewLayer({
+  Key? key,
+  required EditIrCaption caption,
+  required int t,
+  required int canvasWidth,
+  required StudioController controller,
+  VoidCallback? onTap,
+}) =>
+    _DraggableCaption(key: key, caption: caption, t: t, canvasWidth: canvasWidth, controller: controller, onTap: onTap ?? () {});
+
+/// CapCut-style draggable text overlay on top of the preview canvas. Laid out like the export: the text block is
+/// centred on (positionX, positionY) of the canvas and wraps at maxWidthFraction of its width.
+class _DraggableCaption extends StatefulWidget {
+  const _DraggableCaption({
+    super.key,
+    required this.caption,
+    required this.t,
+    required this.canvasWidth,
+    required this.controller,
+    required this.onTap,
+  });
+
   final EditIrCaption caption;
   final int t;
-  final double previewWidth;
+
+  /// Width of the edit canvas in canvas pixels (the unit of fontSizePx, strokeWidthPx and the background box).
+  final int canvasWidth;
+  final StudioController controller;
+  final VoidCallback onTap;
+
+  @override
+  State<_DraggableCaption> createState() => _DraggableCaptionState();
+}
+
+class _DraggableCaptionState extends State<_DraggableCaption> {
+  bool _active = false;
+
+  /// Where the drag started: the finger (global) and the text's position then.
+  ({Offset finger, double x, double y})? _dragFrom;
+
+  void _endDrag() {
+    _dragFrom = null;
+    if (!_active) return;
+    setState(() => _active = false);
+    // The whole drag is one undo step back to where the text was before it.
+    widget.controller.endLiveEdit();
+  }
+
+  @override
+  void dispose() {
+    // Removed mid-drag (e.g. its time range ended): still record the drag as one undo step.
+    // After the frame: the tree is locked while widgets are disposed.
+    if (_active) scheduleMicrotask(widget.controller.endLiveEdit);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final st = widget.caption.style;
+    final posX = (st['positionX'] as num?)?.toDouble() ?? 0.5;
+    final posY = (st['positionY'] as num?)?.toDouble() ?? 0.72;
+    final maxWidthFraction = ((st['maxWidthFraction'] as num?)?.toDouble() ?? 0.86).clamp(0.1, 1.0);
+
+    return LayoutBuilder(builder: (context, box) {
+      final w = box.maxWidth, h = box.maxHeight;
+      if (!w.isFinite || !h.isFinite || w <= 0 || h <= 0) return const SizedBox.shrink();
+      // Canvas pixels → preview pixels, exactly as the renderer scales canvas pixels to its frame.
+      final scale = EditIrCaption.canvasPxScale(w, widget.canvasWidth);
+      return Stack(clipBehavior: Clip.none, children: [
+        Positioned(
+          left: posX * w,
+          top: posY * h,
+          child: FractionalTranslation(
+            translation: const Offset(-0.5, -0.5),
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              // Start at the touch-down point: the text then follows the finger exactly (no lag by the drag slop).
+              dragStartBehavior: DragStartBehavior.down,
+              onTap: () {
+                widget.controller.selectTrackItem(widget.caption.id, widget.caption.kind == 'text' ? TrackKind.text : TrackKind.captions);
+                widget.onTap();
+              },
+              onPanStart: (d) {
+                widget.controller.beginLiveEdit();
+                _dragFrom = (finger: d.globalPosition, x: posX, y: posY);
+                setState(() => _active = true);
+              },
+              onPanUpdate: (d) {
+                final from = _dragFrom;
+                if (from == null) return;
+                final moved = d.globalPosition - from.finger;
+                widget.controller.applyWithoutHistory((ir) => TimelineOps.updateCaptionPosition(
+                      ir,
+                      widget.caption.id,
+                      positionX: (from.x + moved.dx / w).clamp(0.05, 0.95),
+                      positionY: (from.y + moved.dy / h).clamp(0.05, 0.95),
+                    ));
+              },
+              onPanEnd: (_) => _endDrag(),
+              onPanCancel: _endDrag,
+              child: DecoratedBox(
+                position: DecorationPosition.foreground,
+                decoration: BoxDecoration(
+                  border: _active ? Border.all(color: AppTheme.primary, width: 1.5) : null,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: _withMotion(
+                  Size(w, h),
+                  _CaptionPreview(caption: widget.caption, t: widget.t, scale: scale, maxTextWidth: maxWidthFraction * w),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ]);
+    });
+  }
+
+  /// In / out / loop motion, identical to the Android renderer (text_motion.dart): moved, then rotated and scaled
+  /// about the block's centre.
+  Widget _withMotion(Size canvas, Widget child) {
+    final m = textMotionAt(widget.caption.style, widget.caption.startMs, widget.caption.endMs, widget.t);
+    if (identical(m, TextMotion.none)) return child;
+    return Transform.translate(
+      offset: Offset(m.dx * canvas.width, m.dy * canvas.height),
+      child: Transform.rotate(
+        angle: m.rotationDeg * math.pi / 180,
+        child: Transform.scale(scale: m.scale, child: Opacity(opacity: m.opacity, child: child)),
+      ),
+    );
+  }
+}
+
+/// Contract colour (#RRGGBB or #RRGGBBAA) → Flutter colour, [fallback] when missing or malformed.
+Color _contractColor(Object? v, Color fallback) {
+  if (v is! String) return fallback;
+  final h = v.trim().replaceFirst('#', '');
+  if (h.length != 6 && h.length != 8) return fallback;
+  final n = int.tryParse(h.length == 6 ? 'FF$h' : h.substring(6) + h.substring(0, 6), radix: 16);
+  return n == null ? fallback : Color(n);
+}
+
+/// One caption or title drawn like the export (VideoEffects.kt CaptionOverlay): font, size, outline, shadow / glow,
+/// background box and per-word highlight / pop / box / reveal. Canvas-pixel sizes are multiplied by [scale].
+class _CaptionPreview extends StatelessWidget {
+  const _CaptionPreview({required this.caption, required this.t, required this.scale, required this.maxTextWidth});
+  final EditIrCaption caption;
+  final int t;
+
+  /// Preview pixels per canvas pixel.
+  final double scale;
+
+  /// Lines wrap at this width (maxWidthFraction of the preview canvas).
+  final double maxTextWidth;
 
   @override
   Widget build(BuildContext context) {
     final st = caption.style;
-    final scale = (previewWidth > 0 ? previewWidth / 360.0 : 1.0).clamp(0.5, 3.0);
-
-    Color col2(Object? v, Color d) {
-      if (v is! String) return d;
-      final h = v.replaceFirst('#', '');
-      if (h.length != 6 && h.length != 8) return d;
-      final n = int.tryParse(h.length == 6 ? 'FF$h' : h.substring(6) + h.substring(0, 6), radix: 16);
-      return n == null ? d : Color(n);
-    }
-
-    Color col(String k, Color d) => col2(st[k], d);
-
     final upper = st['uppercase'] == true;
-    final text = col('textColor', Colors.white);
-    final hi = col('highlightColor', Color(0xFFFFE600));
+    final text = _contractColor(st['textColor'], Colors.white);
+    final hi = _contractColor(st['highlightColor'], caption.kind == 'text' ? text : const Color(0xFFFFE600));
+    final strokeColor = _contractColor(st['strokeColor'], Colors.black);
+    final anim = (st['animation'] as String?) ?? (caption.kind == 'text' ? 'none' : 'word_pop');
+    final fontSize = math.max(1.0, ((st['fontSizePx'] as num?)?.toDouble() ?? 72) * scale);
+    final strokeW = ((st['strokeWidthPx'] as num?)?.toDouble() ?? 0) * scale;
     final bgSpec = st['background'];
-    final bg = bgSpec is Map ? col2(bgSpec['color'], Colors.black.withValues(alpha: 0.7)) : null;
+    final bg = bgSpec is Map ? _contractColor(bgSpec['color'], const Color(0xB3000000)) : null;
+    final bgPad = bgSpec is Map ? ((bgSpec['paddingPx'] as num?)?.toDouble() ?? 16) * scale : 0.0;
+    final bgRadius = bgSpec is Map ? ((bgSpec['radiusPx'] as num?)?.toDouble() ?? 16) * scale : 0.0;
 
-    final anim = (st['animation'] as String?) ?? 'none';
-    final elapsedMs = (t - caption.startMs).clamp(0, caption.endMs - caption.startMs);
-    final textStr = caption.text;
-
-    // Typewriter (enter motion): the same character count as the renderer.
-    String renderedText = textStr;
+    // Typewriter (enter motion): the same character count as the renderer, cut at that point.
+    var words = caption.displayWords;
     final reveal = textMotionAt(st, caption.startMs, caption.endMs, t).reveal;
-    if (reveal < 1 && textStr.isNotEmpty) {
-      renderedText = textStr.substring(0, (textStr.length * reveal).ceil().clamp(0, textStr.length));
+    if (reveal < 1) {
+      var left = (words.fold<int>(0, (n, w) => n + (w.text == EditIrCaption.lineBreak ? 0 : w.text.length)) * reveal).ceil();
+      final shown = <EditIrWord>[];
+      for (final w in words) {
+        if (left <= 0) break;
+        if (w.text == EditIrCaption.lineBreak) {
+          shown.add(w);
+          continue;
+        }
+        final take = math.min(left, w.text.length);
+        left -= take;
+        shown.add(take == w.text.length
+            ? w
+            : EditIrWord(text: w.text.substring(0, take), startMs: w.startMs, endMs: w.endMs, highlight: w.highlight, color: w.color, scale: w.scale));
+      }
+      words = shown;
     }
+    if (words.isEmpty) return const SizedBox.shrink();
 
-    final rawSize = (st['fontSizePx'] as num?)?.toDouble() ?? (caption.kind == 'text' ? 24 : 18);
-    final baseSize = rawSize * scale;
-    // word_pop: only the word being spoken grows (by its `scale`, eased over 120 ms), exactly like the export.
-    double popOf(EditIrWord w) {
-      if (anim != 'word_pop' || t < w.startMs || t >= w.endMs) return 1;
-      final p = ((t - w.startMs) / 120).clamp(0.0, 1.0);
-      final eased = 1 - math.pow(1 - p, 3);
-      return 1 + (w.scale - 1) * eased;
-    }
-
-    bool spoken(EditIrWord w) => t >= w.startMs && t < w.endMs;
-    // Same rules as the Android renderer (VideoEffects.styleFor).
+    bool active(EditIrWord w) => t >= w.startMs && t < w.endMs;
+    // Same rules as the renderer's styleFor().
     Color wordColor(EditIrWord w) {
-      if (anim == 'none') return text;
-      // word_box: the box carries the highlight, so the spoken word keeps the text colour.
-      if (anim == 'word_box') return spoken(w) || !w.highlight ? text : hi;
-      return spoken(w) || (anim == 'karaoke' && t >= w.endMs) || w.highlight ? hi : text;
+      final activeColor = _contractColor(w.color, hi);
+      final resting = w.highlight ? activeColor : text;
+      return switch (anim) {
+        'word_pop' => active(w) ? activeColor : resting,
+        'karaoke' => active(w) ? activeColor : (t >= w.endMs ? hi : resting),
+        'word_box' => active(w) ? text : resting,
+        'word_reveal' => active(w) ? activeColor : resting,
+        _ => resting,
+      };
     }
 
-    final spans = caption.words.isEmpty || caption.kind == 'text'
-        ? [TextSpan(text: upper ? renderedText.toUpperCase() : renderedText)]
-        : [
-            for (final w in caption.words)
-              if (anim == 'word_reveal' && t < w.startMs)
-                // Not spoken yet: keeps its room in the line but is not drawn.
-                TextSpan(
-                  text: '${upper ? w.text.toUpperCase() : w.text} ',
-                  style: TextStyle(color: Colors.transparent, shadows: const []),
-                )
-              else if (anim == 'word_box') ...[
-                TextSpan(
-                  text: upper ? w.text.toUpperCase() : w.text,
-                  style: TextStyle(color: wordColor(w), background: spoken(w) ? (Paint()..color = hi) : null),
-                ),
-                TextSpan(text: ' '),
-              ] else
-                TextSpan(
-                  text: '${upper ? w.text.toUpperCase() : w.text} ',
-                  style: TextStyle(fontSize: baseSize * popOf(w), color: wordColor(w)),
-                ),
-          ];
+    double pop(EditIrWord w) {
+      if (anim != 'word_pop' || !active(w)) return 1;
+      final p = ((t - w.startMs) / 120).clamp(0.0, 1.0);
+      return 1 + (math.max(1.0, w.scale) - 1) * (1 - math.pow(1 - p, 3));
+    }
 
-    Widget textWidget = Container(
-      padding: bg == null ? null : EdgeInsets.symmetric(horizontal: 8 * scale, vertical: 4 * scale),
-      decoration: bg == null ? null : BoxDecoration(color: bg, borderRadius: BorderRadius.circular(8 * scale)),
-      child: Text.rich(
-        TextSpan(children: spans),
-        textAlign: TextAlign.center,
-        style: CaptionFonts.textStyle(
-          st,
-          color: text,
-          fontSize: baseSize,
-          shadows: [
-            if (st['glow'] == true) Shadow(blurRadius: 16 * scale, color: hi),
-            if (st['shadow'] == true || (st['strokeWidthPx'] as num? ?? 0) > 0) ...[
-              Shadow(blurRadius: 4 * scale, color: Colors.black),
-              Shadow(blurRadius: 1 * scale, color: Colors.black),
-            ],
-          ],
-        ),
-      ),
+    // The outline layer and the fill layer share one layout; only the paint differs.
+    List<InlineSpan> spans({required bool outline}) {
+      final out = <InlineSpan>[];
+      for (var i = 0; i < words.length; i++) {
+        final w = words[i];
+        if (w.text == EditIrCaption.lineBreak) {
+          out.add(const TextSpan(text: '\n'));
+          continue;
+        }
+        final hidden = anim == 'word_reveal' && t < w.startMs;
+        final label = upper ? w.text.toUpperCase() : w.text;
+        final size = fontSize * pop(w);
+        final boxed = anim == 'word_box' && active(w) && !outline;
+        final Paint? stroke = outline
+            ? (Paint()
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = strokeW * 2
+              ..strokeJoin = StrokeJoin.round
+              ..color = hidden ? Colors.transparent : strokeColor)
+            : null;
+        out.add(TextSpan(
+          text: label,
+          style: TextStyle(
+            fontSize: size,
+            color: outline ? null : (hidden ? Colors.transparent : wordColor(w)),
+            foreground: stroke,
+            background: boxed ? (Paint()..color = _contractColor(w.color, hi)) : null,
+            shadows: outline || hidden ? const [] : null,
+          ),
+        ));
+        final next = i + 1 < words.length ? words[i + 1] : null;
+        if (next != null && next.text != EditIrCaption.lineBreak) out.add(const TextSpan(text: ' '));
+      }
+      return out;
+    }
+
+    final shadows = <Shadow>[
+      if (st['glow'] == true)
+        Shadow(blurRadius: fontSize * 0.25, color: hi)
+      else if (st['shadow'] != false)
+        Shadow(blurRadius: 6 * scale, offset: Offset(0, 4 * scale), color: const Color(0xA0000000)),
+    ];
+    final base = CaptionFonts.textStyle(st, fontSize: fontSize, shadows: shadows).copyWith(height: 1.1);
+
+    Widget layer({required bool outline}) => Text.rich(
+          TextSpan(children: spans(outline: outline)),
+          textAlign: TextAlign.center,
+          style: outline ? base.copyWith(shadows: const []) : base,
+        );
+
+    Widget textBlock = ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: math.max(fontSize, maxTextWidth)),
+      child: strokeW > 0
+          ? Stack(alignment: Alignment.center, children: [layer(outline: true), layer(outline: false)])
+          : layer(outline: false),
     );
-
-    // Apply CapCut motion animations
-    if (anim == 'fade_in') {
-      final alpha = (elapsedMs / 300).clamp(0.0, 1.0);
-      textWidget = Opacity(opacity: alpha, child: textWidget);
-    } else if (anim == 'slide_up') {
-      final p = (elapsedMs / 300).clamp(0.0, 1.0);
-      final dy = (1.0 - p) * 20;
-      textWidget = Transform.translate(offset: Offset(0, dy), child: textWidget);
-    } else if (anim == 'pulse') {
-      final s = 1.0 + 0.05 * math.sin(t / 200);
-      textWidget = Transform.scale(scale: s, child: textWidget);
+    if (bg != null) {
+      textBlock = Container(
+        padding: EdgeInsets.all(bgPad),
+        decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(bgRadius)),
+        child: textBlock,
+      );
     }
-
-    return textWidget;
+    return textBlock;
   }
 }
 
@@ -1648,6 +1776,62 @@ class _TranscriptChip extends StatelessWidget {
         Expanded(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: color))),
         if (c.transcriptState == TranscriptState.failed && (c.meta?.hasAudio ?? false))
           TextButton(onPressed: c.transcribe, child: Text('Retry')),
+      ]),
+    );
+  }
+}
+
+/// Quick actions for the clip selected on the timeline (CapCut's clip bar): split at the playhead, trim, speed,
+/// duplicate, move earlier / later and delete, all on that clip.
+class _ClipActions extends StatelessWidget {
+  const _ClipActions({
+    required this.index,
+    required this.count,
+    required this.onTool,
+    required this.onSplit,
+    required this.onMove,
+    required this.onClose,
+  });
+  final int index;
+  final int count;
+  final ValueChanged<StudioTool> onTool;
+  final VoidCallback onSplit;
+  final ValueChanged<int> onMove;
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget action(String label, IconData icon, VoidCallback? onTap, {Color? color}) => InkWell(
+          onTap: onTap,
+          child: SizedBox(
+            width: 60,
+            child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+              Icon(icon, size: 20, color: onTap == null ? AppTheme.textMuted : (color ?? AppTheme.textPrimary)),
+              SizedBox(height: 2),
+              Text(label, maxLines: 1, style: TextStyle(fontSize: 10, color: onTap == null ? AppTheme.textMuted : AppTheme.textSecondary)),
+            ]),
+          ),
+        );
+    return Container(
+      height: 52,
+      decoration: BoxDecoration(color: AppTheme.surfaceElevated, border: Border(top: BorderSide(color: AppTheme.primary.withValues(alpha: 0.5)))),
+      child: Row(children: [
+        Padding(
+          padding: EdgeInsets.only(left: 12, right: 4),
+          child: Text('Clip ${index + 1}', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.primary)),
+        ),
+        Expanded(
+          child: ListView(scrollDirection: Axis.horizontal, children: [
+            action('Split', Icons.content_cut_rounded, onSplit),
+            action('Trim', Icons.straighten_rounded, () => onTool(StudioTool.trim)),
+            action('Speed', Icons.speed_rounded, () => onTool(StudioTool.speed)),
+            action('Copy', Icons.copy_all_rounded, () => onTool(StudioTool.duplicate)),
+            action('Earlier', Icons.arrow_back_rounded, index == 0 ? null : () => onMove(index - 1)),
+            action('Later', Icons.arrow_forward_rounded, index >= count - 1 ? null : () => onMove(index + 1)),
+            action('Delete', Icons.delete_outline_rounded, count < 2 ? null : () => onTool(StudioTool.delete), color: AppTheme.error),
+          ]),
+        ),
+        IconButton(tooltip: 'Deselect clip', onPressed: onClose, icon: Icon(Icons.close_rounded, size: 18)),
       ]),
     );
   }

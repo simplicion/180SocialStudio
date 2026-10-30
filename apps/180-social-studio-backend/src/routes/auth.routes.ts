@@ -122,44 +122,195 @@ router.post('/google', async (req: Request, res: Response) => {
 
 // POST /oauth/token & POST /token (Handles token exchange for PKCE authorization code)
 router.post(['/oauth/token', '/token'], async (req: Request, res: Response) => {
-    try {
-        const identityServer = process.env.IDENTITY_SERVER_URL || 'http://localhost:4003';
-        const forwardRes = await fetch(`${identityServer}/api/oauth/token`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(req.body),
-        });
-        if (forwardRes.ok) {
-            const data = await forwardRes.json();
-            return res.json(data);
+    const identityServer = process.env.IDENTITY_SERVER_URL || 'https://api.180core.cloud';
+    const clientId = req.body.client_id || process.env['180_CLIENT_ID'] || process.env.CLIENT_ID;
+    const clientSecret = req.body.client_secret || process.env['180_CLIENT_SECRET'] || process.env.CLIENT_SECRET;
+
+    const payload = {
+        grant_type: req.body.grant_type || 'authorization_code',
+        client_id: clientId,
+        client_secret: clientSecret,
+        code: req.body.code,
+        redirect_uri: req.body.redirect_uri,
+        code_verifier: req.body.code_verifier,
+    };
+
+    const candidateEndpoints = [
+        `${identityServer}/api/v1/auth/token`,
+        `${identityServer}/api/oauth/token`,
+        `${identityServer}/oauth/token`,
+    ];
+
+    let lastError: any = null;
+    let forwardRes: any = null;
+    let data: any = null;
+
+    for (const ep of candidateEndpoints) {
+        try {
+            forwardRes = await fetch(ep, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            const text = await forwardRes.text();
+            try {
+                data = JSON.parse(text);
+            } catch {
+                data = { raw: text };
+            }
+            if (forwardRes.ok) {
+                break;
+            } else {
+                lastError = data;
+            }
+        } catch (e: any) {
+            console.warn(`[oauth/token] Failed attempt on ${ep}:`, e.message);
+            lastError = { error: 'network_error', message: e.message };
         }
-    } catch (e: any) {
-        console.warn('[oauth/token] Identity server forward fallback:', e.message);
     }
 
-    // Resilient fallback for standalone dev mode
-    const tokens = mintTokens({
-        id: 'creator_' + Date.now(),
-        email: 'creator@180workspace.com',
-        name: '180 Creator',
-        role: 'creator',
-    });
-    return res.json({
-        access_token: tokens.accessToken,
-        token_type: 'Bearer',
-        expires_in: tokens.expiresIn,
-        refresh_token: tokens.refreshToken,
-        id_token: tokens.accessToken,
-    });
+    if (!forwardRes || !forwardRes.ok || !data) {
+        console.warn('[oauth/token] 180 Core token exchange failed:', lastError);
+        return res.status(forwardRes?.status || 400).json(lastError || { error: 'invalid_grant', error_description: 'Failed to exchange authorization code' });
+    }
+
+    // Attempt to hydrate real user profile if missing from token exchange response
+    const accessToken = data.access_token || data.token;
+    if (accessToken && (!data.user || !data.user.email)) {
+        try {
+            const userinfoRes = await fetch(`${identityServer}/api/v1/auth/userinfo`, {
+                headers: { Authorization: `Bearer ${accessToken}` },
+            });
+            if (userinfoRes.ok) {
+                const uiData: any = await userinfoRes.json();
+                data.user = uiData.user || uiData;
+            }
+        } catch (uiErr: any) {
+            console.warn('[oauth/token] Userinfo lookup notice:', uiErr.message);
+        }
+    }
+
+    // Sync real user and company into Prisma DB
+    if (data.user) {
+        try {
+            const db = prisma as any;
+            const uId = data.user.id || data.user.sub || 'user_' + Date.now();
+            const uEmail = data.user.email;
+            const uName = data.user.name || data.user.displayName || (uEmail ? uEmail.split('@')[0] : 'User');
+            const coName = data.user.company?.name || `${uName}'s Studio`;
+
+            let company = await db.company.findFirst();
+            if (!company) {
+                company = await db.company.create({
+                    data: {
+                        name: coName,
+                        slug: uName.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-studio',
+                    },
+                });
+            } else if (company.name === '180 Social Studio Creator Space' || company.name === 'default_creator_company') {
+                company = await db.company.update({
+                    where: { id: company.id },
+                    data: { name: coName },
+                });
+            }
+
+            if (uEmail) {
+                await db.user.upsert({
+                    where: { email: uEmail },
+                    update: {
+                        name: uName,
+                        photoUrl: data.user.avatarUrl || data.user.picture,
+                        companyId: company.id,
+                    },
+                    create: {
+                        id: uId,
+                        email: uEmail,
+                        name: uName,
+                        photoUrl: data.user.avatarUrl || data.user.picture,
+                        companyId: company.id,
+                        role: data.user.role || 'creator',
+                    },
+                });
+            }
+
+            data.company = {
+                id: company.id,
+                _id: company.id,
+                name: company.name,
+                companyName: company.name,
+                slug: company.slug,
+            };
+        } catch (syncErr: any) {
+            console.warn('[oauth/token] DB sync notice:', syncErr.message);
+        }
+    }
+
+    return res.json(data);
 });
 
 // GET /api/auth/me
 router.get('/me', protect, async (req: AuthenticatedRequest, res: Response) => {
     try {
-        const userId = req.user?.id || 'creator_user';
-        const companyId = req.user?.companyId;
         const db = prisma as any;
+        const identityServer = process.env.IDENTITY_SERVER_URL || 'https://api.180core.cloud';
 
+        let userId = req.user?.id;
+        let email = req.user?.email;
+        let name = req.user?.name;
+        let role = req.user?.role || 'creator';
+        let avatarUrl: string | undefined;
+
+        // If email or name is missing, attempt to fetch userinfo from 180 Core using the incoming Bearer token
+        const authHeader = req.headers.authorization;
+        if ((!email || !name || name === 'Creator') && authHeader) {
+            try {
+                const userinfoRes = await fetch(`${identityServer}/api/v1/auth/userinfo`, {
+                    headers: { Authorization: authHeader }
+                });
+                if (userinfoRes.ok) {
+                    const uiData: any = await userinfoRes.json();
+                    const profile = uiData.user || uiData;
+                    if (profile) {
+                        userId = profile.id || profile.sub || userId;
+                        email = profile.email || email;
+                        name = profile.name || profile.displayName || (profile.firstName ? `${profile.firstName} ${profile.lastName || ''}`.trim() : name);
+                        avatarUrl = profile.avatarUrl || profile.picture;
+                        role = profile.role || role;
+                    }
+                }
+            } catch (e: any) {
+                console.warn('[auth/me] 180 Core userinfo fetch notice:', e.message);
+            }
+        }
+
+        // Check if user exists in database
+        let dbUser: any = null;
+        if (email || userId) {
+            try {
+                dbUser = await db.user.findFirst({
+                    where: {
+                        OR: [
+                            ...(email ? [{ email }] : []),
+                            ...(userId ? [{ id: userId }] : []),
+                        ]
+                    }
+                });
+            } catch (_) {}
+        }
+
+        if (dbUser) {
+            userId = dbUser.id;
+            email = dbUser.email || email;
+            name = dbUser.name || name;
+            avatarUrl = dbUser.photoUrl || dbUser.avatarUrl || avatarUrl;
+            role = dbUser.role || role;
+        }
+
+        const displayName = name || (email ? email.split('@')[0] : 'User');
+        const displayEmail = email || `${userId || 'user'}@180workspace.com`;
+        const defaultWorkspaceName = `${displayName}'s Studio`;
+
+        let companyId = dbUser?.companyId || req.user?.companyId;
         let company: any = null;
         try {
             if (companyId) {
@@ -173,28 +324,63 @@ router.get('/me', protect, async (req: AuthenticatedRequest, res: Response) => {
         }
 
         if (!company) {
-            company = {
-                id: companyId || 'default_creator_company',
-                name: '180 Social Studio Creator Space',
-                companyName: '180 Social Studio Creator Space',
-                slug: 'creator-space',
-            };
+            try {
+                company = await db.company.create({
+                    data: {
+                        id: companyId || undefined,
+                        name: defaultWorkspaceName,
+                        slug: displayName.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-studio',
+                    },
+                });
+            } catch {
+                company = {
+                    id: companyId || 'default_workspace',
+                    name: defaultWorkspaceName,
+                    companyName: defaultWorkspaceName,
+                    slug: 'workspace',
+                };
+            }
+        } else if (company.name === '180 Social Studio Creator Space' || company.name === 'default_creator_company') {
+            try {
+                company = await db.company.update({
+                    where: { id: company.id },
+                    data: { name: defaultWorkspaceName },
+                });
+            } catch (_) {}
+        }
+
+        // Upsert user in database if not present
+        if (!dbUser && email) {
+            try {
+                await db.user.create({
+                    data: {
+                        id: userId || 'user_' + Date.now(),
+                        email,
+                        name: displayName,
+                        photoUrl: avatarUrl,
+                        role,
+                        companyId: company.id,
+                    }
+                });
+            } catch (_) {}
         }
 
         const userObj = {
-            id: userId,
-            email: req.user?.email || 'creator@180workspace.com',
-            name: req.user?.name || req.user?.email?.split('@')[0] || '180 Creator',
-            role: req.user?.role || 'creator',
+            id: userId || 'user_active',
+            email: displayEmail,
+            name: displayName,
+            role,
             companyId: company.id,
+            imageUrl: avatarUrl,
+            photoUrl: avatarUrl,
         };
 
         const companyObj = {
             _id: company.id,
             id: company.id,
-            companyName: company.name || company.companyName || '180 Social Studio Creator Space',
-            name: company.name || company.companyName || '180 Social Studio Creator Space',
-            slug: company.slug || 'creator-space',
+            companyName: company.name || company.companyName || defaultWorkspaceName,
+            name: company.name || company.companyName || defaultWorkspaceName,
+            slug: company.slug || 'workspace',
         };
 
         return res.json({
@@ -208,6 +394,7 @@ router.get('/me', protect, async (req: AuthenticatedRequest, res: Response) => {
             name: userObj.name,
             role: userObj.role,
             companyId: company.id,
+            imageUrl: avatarUrl,
 
             // Entitlements required by Flutter Entitlement model
             entitlements: {

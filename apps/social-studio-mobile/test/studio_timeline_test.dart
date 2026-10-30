@@ -11,6 +11,7 @@ import 'package:social_studio_mobile/core/storage/key_value_store.dart';
 import 'package:social_studio_mobile/core/storage/token_store.dart';
 import 'package:social_studio_mobile/features/director/ai_director_service.dart';
 import 'package:social_studio_mobile/features/studio/studio_controller.dart';
+import 'package:social_studio_mobile/features/studio/studio_session_screen.dart' show captionPreviewLayer;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:social_studio_mobile/core/providers.dart';
@@ -296,5 +297,118 @@ void main() {
     final sfx = c.ir!.audio.sfx.single;
     expect((sfx.timelineStartMs, sfx.durationMs, sfx.credit), (3000, 800, 'CC BY — Jo'));
     expect(c.mediaCredits['https://cdn.test/whoosh.mp3'], 'CC BY — Jo');
+  });
+
+  /// Opens [tool] from a button, as the editor's toolbar does.
+  Future<void> openTool(WidgetTester tester, StudioTool tool) async {
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      theme: ThemeData.dark(useMaterial3: true),
+      home: Builder(
+        builder: (ctx) => Scaffold(
+          body: Center(
+            child: ElevatedButton(
+              onPressed: () => showStudioTool(ctx, tool, c, onEdit: (op, {done}) => c.apply(op)),
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      ),
+    ));
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('Text tool adds a title, then edits the selected one (text, size, length) in one undo step', (tester) async {
+    c.seek(1000);
+    await openTool(tester, StudioTool.text);
+    expect(find.text('Add text'), findsOneWidget);
+    await tester.enterText(find.byType(TextField).first, 'My hook');
+    final add = find.text('Add text to video');
+    await tester.scrollUntilVisible(add, 200, scrollable: find.byType(Scrollable).first);
+    await tester.tap(add);
+    await tester.pumpAndSettle();
+    final title = c.ir!.captions.single;
+    expect((title.kind, title.text, title.startMs, title.endMs), ('text', 'My hook', 1000, 4000));
+    expect(title.style['fontSizePx'], 88, reason: 'canvas pixels, from the title preset');
+    expect(title.style['highlightColor'], title.style['textColor']);
+
+    c.selectTrackItem(title.id, TrackKind.text);
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    expect(find.text('Edit text'), findsOneWidget);
+    await tester.enterText(find.byType(TextField).first, 'Better hook');
+    await tester.tap(find.text('Black').first); // highlight box
+    final update = find.text('Update text');
+    await tester.scrollUntilVisible(update, 200, scrollable: find.byType(Scrollable).first);
+    await tester.tap(update);
+    await tester.pumpAndSettle();
+    final edited = c.ir!.captions.single;
+    expect(edited.id, title.id);
+    expect(edited.text, 'Better hook');
+    expect((edited.style['background'] as Map)['color'], '#000000B3', reason: 'contract #RRGGBBAA');
+    expect(edited.style['preset'], 'TITLE', reason: 'keys the sheet does not show are kept');
+
+    c.undo();
+    expect(c.ir!.captions.single.text, 'My hook');
+  });
+
+  testWidgets('Captions tool adds a typed caption at the playhead without a transcript', (tester) async {
+    expect(c.transcriptState, TranscriptState.failed);
+    c.seek(2000);
+    await openTool(tester, StudioTool.captions);
+    await tester.enterText(find.byType(TextField).first, 'typed by hand');
+    await tester.tap(find.text('Add'));
+    await tester.pumpAndSettle();
+    final cap = c.ir!.captions.single;
+    expect((cap.kind, cap.text, cap.startMs), ('caption', 'typed by hand', 2000));
+    expect(cap.words, hasLength(3));
+  });
+
+  testWidgets('preview draws a title centred on its position at canvas scale; dragging moves it, one undo step', (tester) async {
+    c.apply((ir) => TimelineOps.addText(ir, 'Big title', startMs: 0, durationMs: 3000, style: {
+          ...TimelineOps.captionStyle('TITLE', positionY: 0.25),
+          'strokeWidthPx': 6,
+          'background': {'color': '#000000B3', 'paddingPx': 16, 'radiusPx': 16},
+        }));
+    c.apply((ir) => TimelineOps.addCaption(ir, 'spoken words here', startMs: 0, durationMs: 2000));
+    tester.view.physicalSize = const Size(360, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: ListenableBuilder(
+          listenable: c,
+          builder: (_, _) => SizedBox(
+            width: 360,
+            height: 640,
+            child: Stack(fit: StackFit.expand, children: [
+              for (final cap in c.ir!.captions)
+                captionPreviewLayer(key: ValueKey(cap.id), caption: cap, t: 500, canvasWidth: c.ir!.canvas.width, controller: c),
+            ]),
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    // The title (fill + outline layers) is centred on (0.5, 0.25) of the 360×640 preview.
+    final title = find.text('Big title').last;
+    expect(title, findsWidgets);
+    final centre = tester.getCenter(title);
+    expect(centre.dx, closeTo(180, 2));
+    expect(centre.dy, closeTo(160, 3));
+    // 88 canvas px on a 1080 canvas shown 360 wide: about 29 logical px, not 88.
+    expect(tester.getSize(title).height, lessThan(60));
+
+    final id = c.ir!.captions.firstWhere((x) => x.kind == 'text').id;
+    await tester.drag(title, const Offset(0, 64));
+    await tester.pumpAndSettle();
+    double y() => (c.ir!.captions.firstWhere((x) => x.id == id).style['positionY'] as num).toDouble();
+    expect(y(), closeTo(0.35, 0.03));
+    c.undo();
+    expect(y(), 0.25);
   });
 }

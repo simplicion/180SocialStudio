@@ -34,7 +34,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       if (uri.scheme == 'workspace180' || uri.scheme == 'one80' || uri.scheme == '180social') {
         final path = [if (uri.host.isNotEmpty) uri.host, ...uri.pathSegments].join('/');
         final query = uri.hasQuery ? '?${uri.query}' : '';
-        if (path.startsWith('oauth/callback') || path.startsWith('oauth-callback')) {
+        if (path.startsWith('oauth/callback') || path.startsWith('oauth-callback') || path.startsWith('callback')) {
           return '/oauth-callback$query';
         }
         return '/$path$query';
@@ -42,7 +42,7 @@ final routerProvider = Provider<GoRouter>((ref) {
 
       final loc = state.matchedLocation;
       if (loc.startsWith('/review/')) return null; // public client portal, no login
-      if (loc == '/oauth-callback' || loc.startsWith('/oauth-callback') || loc == '/oauth/callback' || loc.startsWith('/oauth/callback')) {
+      if (loc == '/oauth-callback' || loc.startsWith('/oauth-callback') || loc == '/oauth/callback' || loc.startsWith('/oauth/callback') || loc == '/callback' || loc.startsWith('/callback')) {
         return null; // OAuth callback processing
       }
       final session = ref.read(sessionProvider);

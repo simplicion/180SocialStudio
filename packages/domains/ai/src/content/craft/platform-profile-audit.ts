@@ -59,7 +59,7 @@ function boolRule(id: string, name: string, max: number, priority: number, pick:
 
 const keywordIn = (text: string, i: PlatformProfileInput) => !i.keyword || text.toLowerCase().includes(i.keyword.toLowerCase());
 
-const RULES: Record<Exclude<CraftPlatform, 'instagram' | 'tiktok'>, Rule[]> = {
+const RULES: Record<Exclude<CraftPlatform, 'instagram'>, Rule[]> = {
     linkedin: [
         textRule('headline', 'Headline says who you help and the outcome', 20, 1, (i) => i.bio, (t, i) => {
             if (!t) return [0, 'Headline is empty.'];
@@ -86,27 +86,6 @@ const RULES: Record<Exclude<CraftPlatform, 'instagram' | 'tiktok'>, Rule[]> = {
         boolRule('banner', 'Banner states the offer', 10, 6, (i) => i.hasBanner, 'Custom banner set.', 'Add a banner with one line: what you do, for whom, and where to start.'),
         boolRule('custom_url', 'Custom profile URL', 5, 7, (i) => i.hasCustomUrl, 'Custom URL set.', 'Claim linkedin.com/in/yourname instead of the default with numbers.'),
         textRule('link', 'Website / newsletter link', 15, 8, (i) => i.linkUrl, (t) => t ? [15, 'A link is set.'] : [0, 'Add a link to your offer, booking page or newsletter.']),
-    ],
-    x: [
-        textRule('name', 'Display name with keyword', 10, 1, (i) => i.displayName, (t, i) => {
-            if (!t) return [0, 'Display name is empty.'];
-            if (t.length > 50) return [3, 'Display name is over 50 characters.'];
-            return keywordIn(t, i) || /[|•·-]/.test(t) ? [10, 'Name carries a searchable descriptor.'] : [5, 'Add a short descriptor: "Name | what you post about".'];
-        }),
-        textRule('bio', 'Bio: who it is for, what they get, proof', 30, 2, (i) => i.bio, (t, i) => {
-            if (!t) return [0, 'Bio is empty.'];
-            if (t.length > 160) return [8, `Bio is ${t.length}/160 characters.`];
-            const score = (OUTCOME_RE.test(t) ? 12 : 0) + (PROOF_RE.test(t) ? 10 : 0) + (keywordIn(t, i) ? 8 : 0);
-            return [score, score >= 30 ? 'Bio names the audience, the benefit and proof.' : 'Write the bio as: what you post about + who it helps + one proof point. Drop emoji lists and job titles.'];
-        }),
-        (i) => i.featuredCount === undefined ? null : {
-            id: 'pinned', name: 'Pinned post', maxPoints: 20, priorityOrder: 3,
-            awardedPoints: i.featuredCount > 0 ? 20 : 0,
-            feedback: i.featuredCount > 0 ? 'A post is pinned.' : 'Pin your best-performing thread or your offer; it is the first thing profile visitors read.',
-        },
-        boolRule('photo', 'Profile photo', 10, 4, (i) => i.hasProfilePhoto, 'Profile photo set.', 'Add a clear face photo.'),
-        boolRule('header', 'Header image', 10, 5, (i) => i.hasBanner, 'Header image set.', 'Add a header that says what you post about or shows proof.'),
-        textRule('link', 'Link', 20, 6, (i) => i.linkUrl, (t) => t ? [20, 'A link is set.'] : [0, 'Add one link (newsletter, offer or booking page).']),
     ],
     youtube: [
         textRule('channel_name', 'Channel name is searchable', 10, 1, (i) => i.displayName, (t, i) =>
@@ -162,7 +141,7 @@ function gradeOf(score: number): ProfileAuditReport['grade'] {
 }
 
 export function auditPlatformProfile(platform: CraftPlatform, input: PlatformProfileInput): ProfileAuditReport & { platform: CraftPlatform; scoredFields: number } {
-    if (platform === 'instagram' || platform === 'tiktok') {
+    if (platform === 'instagram') {
         const report = ProfileAuditor.audit({
             handle: input.handle,
             nameField: input.displayName ?? '',

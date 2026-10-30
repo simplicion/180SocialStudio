@@ -51,39 +51,35 @@ void main() {
   });
 
   group('Publishing Validation Layer', () {
-    test('XUserAssistedPublisher validates text length and empty checks', () {
-      // Empty text
-      final empty = XUserAssistedPublisher.validate(
-        XPublishPayload(text: '   '),
+    test('CentralizedManualPublisher validates text length and empty checks', () {
+      final empty = CentralizedManualPublisher.validate(
+        UniversalPlatformPayload(platform: SocialPlatform.instagram, caption: '   '),
       );
-      expect(empty, contains('Post text cannot be empty for X.'));
+      expect(empty, contains('Post content cannot be empty for Instagram.'));
 
-      // Standard text (<= 280 chars)
-      final valid = XUserAssistedPublisher.validate(
-        XPublishPayload(text: 'Valid short tweet within standard limits'),
+      final valid = CentralizedManualPublisher.validate(
+        UniversalPlatformPayload(platform: SocialPlatform.instagram, caption: 'Valid post caption'),
       );
       expect(valid, isEmpty);
 
-      // Long text (> 280 chars)
-      final longText = 'A' * 281;
-      final overLimit = XUserAssistedPublisher.validate(
-        XPublishPayload(text: longText),
+      final longText = 'A' * 2201;
+      final overLimit = CentralizedManualPublisher.validate(
+        UniversalPlatformPayload(platform: SocialPlatform.instagram, caption: longText),
       );
-      expect(overLimit.any((issue) => issue.contains('280 characters')), isTrue);
+      expect(overLimit.any((issue) => issue.contains('2,200 characters')), isTrue);
     });
   });
 
   group('Platform Capability Registry', () {
-    test('X is identified as user-assisted platform', () {
-      final xCap = PlatformCapabilityRegistry.getCapabilities(SocialPlatform.x);
-      expect(xCap.userAssistedPublishing, isTrue);
-      expect(xCap.apiPublishing, isFalse);
-      expect(xCap.requiresExternalPostButton, isTrue);
+    test('Instagram is identified with supported capabilities', () {
+      final cap = PlatformCapabilityRegistry.getCapabilities(SocialPlatform.instagram);
+      expect(cap.userAssistedPublishing, isTrue);
+      expect(cap.apiPublishing, isTrue);
     });
 
     test('Builds official web fallback URLs accurately', () {
-      final xUrl = PlatformCapabilityRegistry.getXWebComposeUrl(text: 'Hello World & Friends');
-      expect(xUrl.toString(), 'https://x.com/intent/post?text=Hello%20World%20%26%20Friends');
+      final url = PlatformCapabilityRegistry.getWebComposeUrl(SocialPlatform.instagram, text: 'Hello World');
+      expect(url.toString(), 'https://www.instagram.com/');
     });
   });
 
@@ -122,20 +118,19 @@ void main() {
       expect(recordedStatus, 'user_confirmed');
     });
 
-    testWidgets('CentralizedManualPublishSheet displays X section', (tester) async {
+    testWidgets('CentralizedManualPublishSheet displays Instagram section', (tester) async {
       final package = UserAssistedPublishPackage(
         id: 'post_test_ui',
         projectId: 'proj_ui',
         title: 'Test Discussion Title',
         caption: 'This is the test copy for publishing.',
         platformPayloads: {
-          SocialPlatform.x: UniversalPlatformPayload(
-            platform: SocialPlatform.x,
+          SocialPlatform.instagram: UniversalPlatformPayload(
+            platform: SocialPlatform.instagram,
             caption: 'This is the test copy for publishing.',
           ),
         },
-        xPayload: XPublishPayload(text: 'This is the test copy for publishing.'),
-      );
+              );
 
       await tester.pumpWidget(
         ProviderScope(
@@ -149,7 +144,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Finish Publishing'), findsOneWidget);
-      expect(find.text('Post on X'), findsWidgets);
+      expect(find.text('Post on Instagram'), findsWidgets);
       expect(find.text('180 Workspace never automatically clicks the final platform Post button. You review and confirm publication in the native app.'), findsOneWidget);
     });
   });

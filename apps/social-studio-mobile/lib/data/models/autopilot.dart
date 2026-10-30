@@ -544,7 +544,6 @@ class BrandConsciousness {
     'facebook': 'Facebook',
     'youtube': 'YouTube',
     'linkedin': 'LinkedIn',
-    'twitter': 'X',
   };
 
   static const fieldLabels = {

@@ -3,9 +3,7 @@
  * Every function either succeeds against the provider or throws; nothing is reported as sent otherwise.
  */
 import { InstagramPublisher } from '../adapters/meta.adapter';
-import { YouTubeAdapter } from '../adapters/youtube.adapter';
 import { LinkedInAdapter } from '../adapters/linkedin.adapter';
-import { ThreadsAdapter } from '../adapters/threads.adapter';
 import { META_GRAPH_VERSION, metaGraphUrl } from '../publishing/config';
 import { PublishError } from '../publishing/errors';
 import { expectOk, providerFetch } from '../publishing/http';
@@ -16,7 +14,6 @@ export interface ActionAccount {
 }
 
 const graph = (path: string, token?: string, platform?: string) => metaGraphUrl(path, token, platform);
-const xApi = () => (process.env.X_API_BASE_URL?.trim() || 'https://api.x.com').replace(/\/+$/, '');
 
 async function post(platform: string, url: string, token: string, body: Record<string, any>, what: string) {
     const res = await providerFetch(platform, url, {
@@ -42,9 +39,6 @@ export async function likeComment(platform: string, account: ActionAccount, comm
         case 'linkedin':
             await LinkedInAdapter.likeComment(commentId, account.platformAccountId, token);
             return;
-        case 'x':
-            await post('x', `${xApi()}/2/users/${encodeURIComponent(account.platformAccountId)}/likes`, token, { tweet_id: commentId }, 'X like');
-            return;
         default:
             throw unsupported(platform, 'Liking comments');
     }
@@ -62,17 +56,8 @@ export async function replyToComment(platform: string, account: ActionAccount, c
         case 'facebook':
             await post('facebook', graph(`${commentId}/comments`), token, { message: text }, 'Facebook reply to comment');
             return;
-        case 'youtube':
-            await YouTubeAdapter.replyToComment(commentId, text, token);
-            return;
         case 'linkedin':
             await LinkedInAdapter.replyToComment(commentId, account.platformAccountId, text, token);
-            return;
-        case 'threads':
-            await ThreadsAdapter.replyToThread(account.platformAccountId, commentId || mediaId || '', text, token);
-            return;
-        case 'x':
-            await post('x', `${xApi()}/2/tweets`, token, { text, reply: { in_reply_to_tweet_id: commentId } }, 'X reply');
             return;
         default:
             throw unsupported(platform, 'Replying to comments');
@@ -88,9 +73,6 @@ export async function sendPrivateReply(platform: string, account: ActionAccount,
         case 'facebook':
             await post('facebook', graph(`${account.platformAccountId}/messages`), token, { recipient: { comment_id: commentId }, message: { text } }, 'Facebook private reply');
             return;
-        case 'x':
-            await sendDirectMessage(platform, account, recipientId, text, token);
-            return;
         default:
             throw unsupported(platform, 'Private replies');
     }
@@ -103,9 +85,6 @@ export async function sendDirectMessage(platform: string, account: ActionAccount
             return;
         case 'facebook':
             await post('facebook', graph(`${account.platformAccountId}/messages`), token, { recipient: { id: recipientId }, messaging_type: 'RESPONSE', message: { text } }, 'Facebook message');
-            return;
-        case 'x':
-            await post('x', `${xApi()}/2/dm_conversations/with/${encodeURIComponent(recipientId)}/messages`, token, { text }, 'X direct message');
             return;
         default:
             throw unsupported(platform, 'Direct messages');

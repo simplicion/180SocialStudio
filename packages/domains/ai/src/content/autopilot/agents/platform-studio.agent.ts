@@ -140,7 +140,7 @@ export async function runPlatformDraftAgent(params: {
         hashtags,
         copyLint,
         voice: TextHumanizer.detect(allText),
-        ...(params.platform === 'x' && copyLint.weightedLength > 280 ? { thread: splitIntoThread(caption) } : {}),
+
         unverifiedFigures: inventedFigures(allText, `${idea}\n${params.brandContext}`),
     };
 }

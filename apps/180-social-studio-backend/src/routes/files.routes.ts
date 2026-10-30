@@ -29,7 +29,7 @@ const upload = multer({
 router.get('/presigned-url', protect, (req: AuthenticatedRequest, res: Response) => {
     try {
         const key = (req.query.key as string) || `uploads/${Date.now()}_media`;
-        const baseUrl = process.env.API_BASE_URL || `http://localhost:${process.env.PORT || 4005}`;
+        const baseUrl = process.env.API_BASE_URL || `http://localhost:${process.env.PORT || 4007}`;
         const publicUrl = `${baseUrl}/uploads/${path.basename(key)}`;
         const uploadUrl = `${baseUrl}/api/files/upload-direct?key=${encodeURIComponent(key)}`;
 
@@ -51,7 +51,7 @@ router.post('/upload', protect, upload.single('file'), (req: AuthenticatedReques
             return res.status(400).json({ success: false, error: 'No file uploaded' });
         }
 
-        const baseUrl = process.env.API_BASE_URL || `http://localhost:${process.env.PORT || 4005}`;
+        const baseUrl = process.env.API_BASE_URL || `http://localhost:${process.env.PORT || 4007}`;
         const fileUrl = `${baseUrl}/uploads/${req.file.filename}`;
 
         return res.json({
@@ -82,7 +82,7 @@ router.put('/upload-direct', (req: Request, res: Response) => {
         req.pipe(writeStream);
 
         writeStream.on('finish', () => {
-            const baseUrl = process.env.API_BASE_URL || `http://localhost:${process.env.PORT || 4005}`;
+            const baseUrl = process.env.API_BASE_URL || `http://localhost:${process.env.PORT || 4007}`;
             const fileUrl = `${baseUrl}/uploads/${filename}`;
             return res.status(200).json({ success: true, url: fileUrl, fileUrl });
         });

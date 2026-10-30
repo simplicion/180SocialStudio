@@ -62,12 +62,11 @@ const str = (v: unknown, name: string, max = 20000): string => {
     return v;
 };
 
-/** SocialAccount.platform values for a craft platform (X accounts are stored as "twitter"). */
-const accountPlatforms = (p: CraftPlatform): string[] => (p === 'x' ? ['twitter', 'x'] : [p]);
+const accountPlatforms = (p: CraftPlatform): string[] => [p];
 
 export function parsePlatform(input: unknown): CraftPlatform {
     const p = toCraftPlatform(input);
-    if (!p) throw bad('Unknown platform. Use instagram, linkedin, youtube, x, facebook or tiktok.');
+    if (!p) throw bad('Unknown platform. Use instagram, linkedin, youtube, or facebook.');
     return p;
 }
 

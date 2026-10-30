@@ -22,6 +22,14 @@ import {
   describeEditStyle,
 } from "@workspace/video-contracts";
 import { AIProviderService, AIClient, AISettings } from "../kernel/ai-provider.service";
+import {
+  CHAT_TOOL_NAME,
+  DIRECTOR_PERSONA,
+  DirectorConversation,
+  buildChatToolDefinition,
+  conversationFromText,
+  parseConversation,
+} from "./director-conversation";
 
 export interface PlanGenerationParams {
   prompt: string;
@@ -67,11 +75,15 @@ export interface PlannerOutcome {
   preserve?: { lockedRanges?: Array<{ startSec: number; endSec: number }>; lockedTracks?: string[] };
   /** Untrusted inputs in this prompt that contained instruction-like text (neutralised). */
   injectionFlags?: string[];
+  /** What the model said to the creator (`reply_to_creator`, or a text-only answer). */
+  conversation?: DirectorConversation;
 }
 
 const MAX_TRANSCRIPT_WORDS = 2500;
 const SPOKEN_LINE_PAUSE_SEC = 0.6;
 const MAX_HISTORY_TURNS = 12;
+/** Phases in which the director only proposes: edits are never applied before the creator agrees. */
+const PROPOSAL_PHASES = new Set(["recommend", "gather", "confirm"]);
 
 /**
  * What the creator explicitly asked for, as tool families. A plan that skips one of these is sent back to the model
@@ -161,7 +173,7 @@ export class CreativePlanner {
       return this.deterministicOutcome(params, `LLM provider "${client.provider}" does not support tool calling`, 0);
     }
 
-    const tools = buildDirectorToolDefinitions();
+    const tools = [...buildDirectorToolDefinitions(), buildChatToolDefinition()];
     const basePrompt = this.buildPrompt(params);
     const options: any = { max_tokens: 16000, temperature: 0.2 };
     if (model) options.model = model;
@@ -175,16 +187,20 @@ export class CreativePlanner {
       return this.deterministicOutcome(params, llmFailureReason("LLM call", label, err), 1);
     }
 
-    const firstCalls = first?.toolCalls || [];
-    if (firstCalls.length === 0) {
-      const text = (first?.text || "").trim();
-      if (!text) return this.deterministicOutcome(params, `LLM (${label}) returned an empty response`, 1);
-      // A text-only answer is a legitimate conversational reply (greeting, clarifying question).
+    const split = splitChatCalls(first?.toolCalls || []);
+    const firstCalls = split.calls;
+    let conversation = split.conversation;
+    // A chat turn (recommendation, question, plan to confirm, small talk): nothing is edited until the creator
+    // agrees, so edit calls next to a proposal are dropped.
+    if (firstCalls.length === 0 || (conversation && PROPOSAL_PHASES.has(conversation.phase))) {
+      conversation = conversation || conversationFromText(first?.text || "") || undefined;
+      if (!conversation) return this.deterministicOutcome(params, `LLM (${label}) returned an empty response`, 1);
       return {
-        plan: this.buildPlan(params, [], text, false),
+        plan: this.buildPlan(params, [], conversation.reply, false),
         plannerSource: "llm",
-        plannerReason: `${label} replied without edits (conversational turn)`,
+        plannerReason: `${label} replied without edits (conversational turn: ${conversation.phase})`,
         llmAttempts: 1,
+        conversation,
       };
     }
 
@@ -202,7 +218,9 @@ export class CreativePlanner {
       } catch (err: any) {
         return this.deterministicOutcome(params, llmFailureReason("LLM repair call", label, err), 2);
       }
-      const retry = validateDirectorToolCalls(second?.toolCalls || []);
+      const secondSplit = splitChatCalls(second?.toolCalls || []);
+      if (secondSplit.conversation) conversation = secondSplit.conversation;
+      const retry = validateDirectorToolCalls(secondSplit.calls);
       if (retry.errors.length > 0 || (retry.operations.length === 0 && !retry.finish)) {
         const errs = retry.errors.length > 0 ? retry.errors : ["no tool calls in repair response"];
         return this.deterministicOutcome(
@@ -223,10 +241,12 @@ export class CreativePlanner {
       const prompt = this.buildCoveragePrompt(basePrompt, calls, missing);
       try {
         const third = await withTimeout(client.generateWithTools(prompt, tools, options), timeoutMs, "LLM coverage call");
-        const retry = validateDirectorToolCalls(third?.toolCalls || []);
+        const thirdSplit = splitChatCalls(third?.toolCalls || []);
+        const retry = validateDirectorToolCalls(thirdSplit.calls);
         const stillMissing = missingRequestedOperations(params.prompt, retry.operations.map((o: any) => o.type), hasTranscript);
         if (retry.errors.length === 0 && retry.operations.length > 0 && stillMissing.length < missing.length) {
           validation = retry;
+          if (thirdSplit.conversation) conversation = thirdSplit.conversation;
           coverageNote = `, completed ${missing.length - stillMissing.length} skipped request(s)`;
         } else {
           coverageNote = ", coverage retry not better";
@@ -237,7 +257,9 @@ export class CreativePlanner {
       attempts += 1;
     }
 
-    const summary = validation.finish?.summary || this.summarizeOperations(validation.operations);
+    // After edits the chat reply is the "done" report; finish_edit.summary stays the fallback.
+    if (conversation && validation.operations.length > 0) conversation = { ...conversation, phase: "done", proposedPlan: [] };
+    const summary = conversation?.reply || validation.finish?.summary || this.summarizeOperations(validation.operations);
     return {
       plan: this.buildPlan(params, validation.operations, summary, validation.finish?.requiresConfirmation ?? false),
       plannerSource: "llm",
@@ -246,6 +268,7 @@ export class CreativePlanner {
       repairedErrors,
       brandWatermark: validation.finish?.brandWatermark,
       preserve: validation.finish?.preserve,
+      ...(conversation ? { conversation } : {}),
     };
   }
 
@@ -331,34 +354,14 @@ export class CreativePlanner {
     const lines: string[] = [];
 
     lines.push(
-      `You are the AI Director inside 180 Social Studio, an elite autonomous video directing and editing engine. You edit the creator's video by CALLING TOOLS with deep cinematic consciousness, editorial mastery, and viral retention intelligence. Each tool call is one timeline operation; the server validates every argument and applies them deterministically.`,
-      ``,
-      `## AI Director Consciousness & Editorial Mastery:`,
-      `1. THE 3-SECOND RETENTION HOOK:`,
-      `   - Short-form attention drops 65% in the first 3 seconds.`,
-      `   - Eliminate dead air or throat-clearing at t=0 immediately (start tight on the first spoken syllable).`,
-      `   - Introduce a visual pattern interrupt in the first 1.5s: punch-in zoom (addZoom 1.2x on speaker face), bold kinetic title, or a curiosity cutaway.`,
-      `   - Punctuate the hook with an acoustic whoosh, riser, or pop using addSoundEffect or autoSoundDesign.`,
-      ``,
-      `2. PACING RHYTHM & PATTERN INTERRUPTS:`,
-      `   - Human visual habituation occurs after 2.5-3 seconds. Never leave the frame completely static for longer than 4 seconds.`,
-      `   - Conscious rhythm: Alternate between Main Camera -> Punch-in Zoom on key phrases -> Context B-roll Overlay -> Highlighted Captions -> Title Callouts.`,
-      `   - For high-energy styles (MrBeast, Hormozi): cut silences > 0.4s, add dynamic zooms on punchlines, kinetic captions with highlight colors, frequent sound design.`,
-      `   - For documentary / educational styles (Vox, Ali Abdaal): cleaner cuts, elegant lower thirds, atmospheric B-roll, calm color look, subtle background music.`,
-      ``,
-      `3. 4-TIER AUDIO MIXING & SOUND DESIGN:`,
-      `   - Tier 1: Voice (clear, prioritised dialog, untouched or normalized).`,
-      `   - Tier 2: Background Music (addBackgroundMusic with duckUnderSpeech=true; music must duck -18dB to -22dB beneath speech so voice is never masked).`,
-      `   - Tier 3: Audio Punctuation (whoosh on zooms/cuts, pops on title reveals, sub-bass drops on revelations via autoSoundDesign or addSoundEffect).`,
-      `   - Tier 4: Ambient Atmosphere (continuity under B-roll cutaways).`,
-      ``,
-      `4. B-ROLL & VISUAL SOURCING CONSCIOUSNESS:`,
-      `   - You have access to vast global multi-provider media archives: Pexels 4K, Pixabay HD Videos & Vectors, NASA Public Domain Archive (Earth/Space/Technology/Science), Wikimedia Commons, and FreePD.`,
-      `   - Use insertBroll with vivid, specific stockQuery terms (e.g. 'drone skyline sunset', 'spacewalk earth orbit', 'laptop keyboard typing code', 'cyberpunk neon crowd').`,
-      `   - Keep B-roll overlays aligned with spoken concepts (cutaways should visually demonstrate or metaphorically amplify what the speaker is explaining).`,
-      ``,
-      `5. FRAMING & SAFE ZONES:`,
-      `   - When reframing to 9:16 (TikTok/Reels/Shorts), keep faces and captions centered within the middle 60% vertical safe zone, avoiding top status bar and bottom platform UI overlays.`,
+      DIRECTOR_PERSONA,
+      `## Editing craft (how you edit; never recite this to the creator)`,
+      `- Hook: start tight on the first spoken word; a pattern interrupt in the first 1.5s (punch-in zoom, bold title or cutaway) works well.`,
+      `- Pacing: on energetic edits avoid a static frame for more than ~4s; alternate the main shot, punch-in zooms on key phrases, B-roll that shows what is being said, highlighted captions.`,
+      `- High-energy styles (MrBeast, Hormozi): cut pauses over 0.4s, zooms on punchlines, kinetic captions, sound design. Calm / educational styles (Vox, Ali Abdaal): cleaner cuts, clean captions, atmospheric B-roll, subtle music.`,
+      `- Audio: voice first; background music via addBackgroundMusic with duckUnderSpeech=true (about -18 to -22 dB under speech); whooshes and pops sparingly.`,
+      `- B-roll: insertBroll with a vivid, specific stockQuery that matches what is being said ('laptop keyboard typing code', 'drone skyline sunset').`,
+      `- 9:16: keep faces and captions in the middle safe zone, away from the platform UI at the top and bottom.`,
       ``,
       `Rules:`,
       `- All times are SECONDS on the CURRENT timeline described below (0 .. ${ctx.projectDurationSec.toFixed(2)}). Never go past the end.`,
@@ -368,8 +371,9 @@ export class CreativePlanner {
       `- Prefer removeSilences over many removeRange calls for pauses, and autoCaptions for captions.`,
       `- Colours are #RRGGBB (yellow = #FFE600, cyan = #00E5FF, white = #FFFFFF).`,
       `- A named caption look (MrBeast, Hormozi, Ali Abdaal, neon, cinematic ...) is a template: set autoCaptions.template, or styleCaption.preset when captions already exist. Add highlightColor only when a colour is named ("MrBeast captions with red highlights" -> template MRBEAST_HYPE, highlightColor #EF4444).`,
-      `- If something is impossible (e.g. captions without a transcript), do NOT fake it: skip that tool and say so in finish_edit.`,
-      `- Finish with exactly one finish_edit call containing a short, specific summary of what you changed.`,
+      `- If something is impossible (e.g. captions without a transcript), do NOT fake it: skip that tool and say so briefly in your reply.`,
+      `- When you edit: call the edit tools, then ${CHAT_TOOL_NAME} (phase "done": 1-2 casual sentences on what you actually did, quickReplies for likely tweaks), then exactly one finish_edit with the same short summary.`,
+      `- When you only talk (recommend / gather / confirm / chat): call ONLY ${CHAT_TOOL_NAME}. No edit tools, no finish_edit.`,
       `- When the creator asks to keep something unchanged ("don't touch the music", "keep the first 10 seconds"), put it in finish_edit.preserve and do not edit it.`,
       `- ${UNTRUSTED_DATA_POLICY}`,
       ``
@@ -431,13 +435,13 @@ export class CreativePlanner {
     const history = (params.history || []).slice(-MAX_HISTORY_TURNS);
     if (history.length) {
       lines.push(`## Conversation so far (oldest first)`);
-      for (const t of history) lines.push(`${t.role === "user" ? "Creator" : "Director"}: ${truncate(t.content, 600)}`);
+      for (const t of history) lines.push(`${t.role === "user" ? "Creator" : "You"}: ${truncate(t.content, 900)}`);
       lines.push(``);
     }
 
     if (params.contextSections?.length) lines.push(...params.contextSections);
 
-    lines.push(`## Creator's request`);
+    lines.push(`## Creator's latest message (reply to it following the conversation flow above)`);
     lines.push(JSON.stringify(params.prompt));
     return lines.join("\n");
   }
@@ -521,4 +525,15 @@ export class CreativePlanner {
 
 function truncate(s: string, n: number): string {
   return s.length > n ? `${s.slice(0, n)}…` : s;
+}
+
+/** Separates the `reply_to_creator` call (the conversation) from the edit / finish_edit calls. */
+function splitChatCalls(calls: Array<{ name: string; args: any }>): { calls: Array<{ name: string; args: any }>; conversation?: DirectorConversation } {
+  let conversation: DirectorConversation | undefined;
+  const rest: Array<{ name: string; args: any }> = [];
+  for (const c of calls) {
+    if (c?.name === CHAT_TOOL_NAME) conversation = parseConversation(c.args) || conversation;
+    else rest.push(c);
+  }
+  return { calls: rest, conversation };
 }

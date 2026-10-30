@@ -70,8 +70,8 @@ void main() {
   });
 
   test('simulated variants are detected from the server markers', () {
-    final sim = PostVariant.fromJson({'platform': 'threads', 'publishStatus': 'published', 'externalId': 'sim_threads_1', 'externalUrl': 'https://www.threads.net/@x/post/1'});
-    final real = PostVariant.fromJson({'platform': 'threads', 'publishStatus': 'published', 'externalId': '1789', 'lastError': 'Posted, but the first comment failed'});
+    final sim = PostVariant.fromJson({'platform': 'instagram', 'publishStatus': 'published', 'externalId': 'sim_threads_1', 'externalUrl': 'https://www.threads.net/@x/post/1'});
+    final real = PostVariant.fromJson({'platform': 'instagram', 'publishStatus': 'published', 'externalId': '1789', 'lastError': 'Posted, but the first comment failed'});
     expect(sim.isSimulated, isTrue);
     expect(real.isSimulated, isFalse);
     expect(real.isFailed, isFalse);

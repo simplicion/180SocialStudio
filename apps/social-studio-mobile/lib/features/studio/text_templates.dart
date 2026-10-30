@@ -2,12 +2,30 @@ import 'timeline_ops.dart';
 
 /// Brand look applied on top of a template (only what the user set; null keeps the template's value).
 class BrandLook {
-  const BrandLook({this.font, this.primaryColor, this.accentColor});
+  /// Brand colours are normalised to the contract's `#RRGGBB` ([hex6]): templates append an alpha to them, and the
+  /// renderer rejects (fails the whole export on) anything that is not `#RRGGBB` / `#RRGGBBAA`.
+  BrandLook({this.font, String? primaryColor, String? accentColor})
+      : primaryColor = hex6(primaryColor),
+        accentColor = hex6(accentColor);
+
+  const BrandLook._none()
+      : font = null,
+        primaryColor = null,
+        accentColor = null;
+
   final String? font;
   final String? primaryColor;
   final String? accentColor;
 
-  static const none = BrandLook();
+  static const none = BrandLook._none();
+
+  /// `#RRGGBB` from a CSS-style colour (`#RGB`, `#RRGGBB`, `#RRGGBBAA`, with or without `#`); null when it is not one.
+  static String? hex6(String? v) {
+    var h = v?.trim().replaceFirst('#', '') ?? '';
+    if (h.length == 3) h = h.split('').map((c) => '$c$c').join();
+    if ((h.length != 6 && h.length != 8) || int.tryParse(h, radix: 16) == null) return null;
+    return '#${h.substring(0, 6).toUpperCase()}';
+  }
 }
 
 /// A ready-made text style. Built only from caption-style fields the renderers already draw

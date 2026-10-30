@@ -88,7 +88,7 @@ model SocialAccount {
   id                  String               @id @default(uuid())
   companyId           String
   projectId           String?
-  platform            String               // "instagram", "facebook", "linkedin", "tiktok", "youtube", "x", "pinterest"
+  platform            String               // "instagram", "facebook", "youtube", "linkedin"
   platformAccountId   String
   accountName         String
   username            String
@@ -215,7 +215,7 @@ model SocialPost {
 model SocialPostVariant {
   id                  String               @id @default(uuid())
   postId              String
-  platform            String               // "instagram", "facebook", "linkedin", "tiktok", "youtube", "x"
+  platform            String               // "instagram", "facebook", "youtube", "linkedin"
   customContent       String               @db.Text
   customMediaUrls     String[]             @default([])
   firstComment        String?              @db.Text

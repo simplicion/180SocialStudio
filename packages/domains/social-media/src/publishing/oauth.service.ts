@@ -287,9 +287,7 @@ export class SocialOAuthService {
                           ? 'No Facebook Pages were shared with the app.'
                           : platform === 'youtube'
                             ? 'This Google account has no YouTube channel.'
-                            : platform === 'threads'
-                              ? 'No Threads account was found for this user.'
-                              : 'No publishable account was found.';
+                            : 'No publishable account was found.';
                 return fail('no_accounts', hint);
             }
 

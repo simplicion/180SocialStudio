@@ -1366,7 +1366,7 @@ class _Header extends StatelessWidget {
         Row(children: [
           Expanded(
             child: Text(
-              project.name,
+              'Overview',
               style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
             ),
           ),

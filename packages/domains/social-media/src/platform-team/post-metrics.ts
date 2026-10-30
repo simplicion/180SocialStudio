@@ -87,14 +87,6 @@ export async function fetchPostMetrics(
         return { ...out, views: n(s.viewCount), likes: n(s.likeCount), comments: n(s.commentCount) };
     }
 
-    if (platform === 'x') {
-        const base = (process.env.X_API_BASE_URL?.trim() || 'https://api.x.com').replace(/\/+$/, '');
-        const r = await fetchJson('x', `${base}/2/tweets/${id}?tweet.fields=public_metrics`, token, 'X post metrics');
-        const m = r.data?.public_metrics;
-        if (!m) throw new SocialDomainError('POST_NOT_FOUND', 404, 'X did not return metrics for this post.');
-        return { ...out, views: n(m.impression_count), likes: n(m.like_count), comments: n(m.reply_count), shares: (n(m.retweet_count) ?? 0) + (n(m.quote_count) ?? 0), saves: n(m.bookmark_count) };
-    }
-
     if (platform === 'linkedin') {
         const headers = { 'LinkedIn-Version': linkedInApiVersion(), 'X-Restli-Protocol-Version': '2.0.0' };
         const social = await fetchJson('linkedin', `https://api.linkedin.com/rest/socialActions/${id}`, token, 'LinkedIn post reactions', headers);
@@ -121,7 +113,7 @@ export async function fetchPostMetrics(
 }
 
 const asObj = (v: unknown): Record<string, any> => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, any>) : {});
-const accountPlatforms = (platform: string): string[] => (normalizePlatform(platform) === 'x' ? ['twitter', 'x'] : [platform]);
+const accountPlatforms = (platform: string): string[] => [normalizePlatform(platform)];
 const isRealExternalId = (id: unknown) => typeof id === 'string' && !!id && !/^(sim_|container:|fbvideo:|pending)/i.test(id);
 
 export interface MilestoneAchieved {

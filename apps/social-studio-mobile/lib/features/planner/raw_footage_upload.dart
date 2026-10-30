@@ -9,19 +9,30 @@ import '../../core/widgets/common.dart';
 Future<void> uploadRawFootage(BuildContext context, WidgetRef ref, String pieceId, String path) async {
   final progress = ValueNotifier<double?>(null);
   final nav = Navigator.of(context, rootNavigator: true);
-  showDialog<void>(
+  AppBottomSheet.show<void>(
     context: context,
-    barrierDismissible: false,
-    builder: (_) => AlertDialog(
-      backgroundColor: AppTheme.surfaceElevated,
-      title: Text('Uploading footage'),
-      content: ValueListenableBuilder<double?>(
-        valueListenable: progress,
-        builder: (_, v, _) => Column(mainAxisSize: MainAxisSize.min, children: [
-          LinearProgressIndicator(value: v, minHeight: 6),
-          SizedBox(height: 8),
-          Text(v == null ? 'Starting…' : '${(v * 100).round()}%'),
-        ]),
+    isDismissible: false,
+    enableDrag: false,
+    showCloseButton: false,
+    title: 'Uploading footage',
+    icon: Icon(Icons.cloud_upload_rounded, color: AppTheme.primary, size: 22),
+    builder: (_) => ValueListenableBuilder<double?>(
+      valueListenable: progress,
+      builder: (_, v, _) => Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(value: v, minHeight: 6),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            v == null ? 'Starting…' : '${(v * 100).round()}% completed',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+          ),
+        ],
       ),
     ),
   );

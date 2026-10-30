@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
 
 import '../../core/native_engine/edit_ir.dart';
@@ -78,8 +79,12 @@ class _LayerPlacementState extends State<LayerPlacement> {
           width: size.width,
           height: size.height,
           child: GestureDetector(
+            dragStartBehavior: DragStartBehavior.down,
             onTap: widget.onTap,
-            onPanStart: (_) => setState(() => _dragging = true),
+            onPanStart: (_) {
+              widget.controller.beginLiveEdit();
+              setState(() => _dragging = true);
+            },
             onPanUpdate: (d) {
               if (canvas.width <= 0 || canvas.height <= 0) return;
               final nx = (pose.x + d.delta.dx / canvas.width).clamp(-0.4, 1.4);
@@ -91,11 +96,16 @@ class _LayerPlacementState extends State<LayerPlacement> {
                   ? TimelineOps.setLayerKeyframe(ir, o.id, widget.playheadMs, x: nx, y: ny)
                   : TimelineOps.updateOverlay(ir, o.id, layer: layer.copyWith(x: nx, y: ny)));
             },
+            // The whole drag is one undo step back to where the layer was before it.
             onPanEnd: (_) {
               setState(() => _dragging = false);
-              widget.controller.apply((ir) => TimelineOps.updateOverlay(ir, o.id, layer: layer));
+              widget.controller.endLiveEdit();
             },
-            onPanCancel: () => setState(() => _dragging = false),
+            onPanCancel: () {
+              if (!_dragging) return;
+              setState(() => _dragging = false);
+              widget.controller.endLiveEdit();
+            },
             child: Transform.rotate(
               angle: pose.rotation * 3.141592653589793 / 180,
               child: Opacity(

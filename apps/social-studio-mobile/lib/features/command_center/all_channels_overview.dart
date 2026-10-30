@@ -641,6 +641,7 @@ class _AllChannelsOverviewState extends ConsumerState<AllChannelsOverview> {
               ),
               const SizedBox(width: 8),
               const Expanded(
+                flex: 3,
                 child: Text(
                   '24-Hour AI Agent Intelligence Pulse',
                   style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
@@ -648,7 +649,8 @@ class _AllChannelsOverviewState extends ConsumerState<AllChannelsOverview> {
                 ),
               ),
               const SizedBox(width: 8),
-              StatusChip(label: '24h Monitor Active', color: AppTheme.success),
+              // Flexible so the chip ellipsizes on narrow phones instead of pushing the row off-screen.
+              Flexible(flex: 2, child: StatusChip(label: '24h Monitor Active', color: AppTheme.success)),
             ],
           ),
           const SizedBox(height: 8),
@@ -980,12 +982,16 @@ class _AllChannelsOverviewState extends ConsumerState<AllChannelsOverview> {
                   children: [
                     Row(
                       children: [
-                        Text(
-                          hasAchievedMilestone ? '🎉 $milestoneLabel!' : '🚀 Creator Viral Goal',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w800,
-                            fontSize: 14,
-                            color: hasAchievedMilestone ? const Color(0xFFE5A93C) : AppTheme.textPrimary,
+                        Flexible(
+                          child: Text(
+                            hasAchievedMilestone ? '🎉 $milestoneLabel!' : '🚀 Creator Viral Goal',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 14,
+                              color: hasAchievedMilestone ? const Color(0xFFE5A93C) : AppTheme.textPrimary,
+                            ),
                           ),
                         ),
                         const SizedBox(width: 6),

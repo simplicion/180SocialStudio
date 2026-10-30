@@ -22,16 +22,8 @@ class ProjectSwitcher extends ConsumerWidget {
       child: Padding(
         padding: EdgeInsets.symmetric(vertical: 6),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Container(
-            padding: EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: AppTheme.primary.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(Icons.business_rounded, color: AppTheme.primary, size: 16),
-          ),
-          SizedBox(width: 10),
           Flexible(child: Text(name, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700))),
+          SizedBox(width: 4),
           Icon(Icons.expand_more_rounded, color: AppTheme.textSecondary),
         ]),
       ),

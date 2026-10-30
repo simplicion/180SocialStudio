@@ -159,6 +159,9 @@ class ImageLayersOverlay(
     private val dst = RectF()
 
     override fun onDraw(canvas: Canvas, presentationTimeUs: Long) {
+        // CanvasOverlay reuses one bitmap for every frame and never clears it: without this, a sticker stayed on
+        // screen after its end and a moving (keyframed) one left a trail of copies.
+        canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
         val tMs = presentationTimeUs / 1000.0
         val w = canvas.width.toFloat()
         val h = canvas.height.toFloat()
@@ -168,7 +171,7 @@ class ImageLayersOverlay(
             if (tMs < ov.timelineStartMs || tMs >= ov.timelineEndMs) continue
             val layer = ov.layer ?: continue
             val path = overlayPaths[ov.id] ?: continue
-            val bmp = getBitmap(ov.id, path) ?: continue
+            val bmp = getBitmap(ov.id, path, canvas.width, canvas.height) ?: continue
             if (bmp.isRecycled) continue
 
             val pose = LayerMotion.at(layer, tMs - ov.timelineStartMs, ov.opacity)
@@ -210,28 +213,116 @@ class ImageLayersOverlay(
         }
     }
 
-    private fun getBitmap(id: String, path: String): Bitmap? {
+    /**
+     * The layer's picture, upright (EXIF orientation applied, like the preview's Image.file and Media3's photo
+     * decoder) and decoded at no more than about twice the canvas size so a 48 MP photo does not exhaust memory.
+     */
+    private fun getBitmap(id: String, path: String, canvasW: Int, canvasH: Int): Bitmap? {
         bitmaps[id]?.let { if (!it.isRecycled) return it }
         val file = File(path)
         if (!file.isFile) return null
         return try {
-            val bmp = BitmapFactory.decodeFile(file.absolutePath)
-            if (bmp != null) bitmaps[id] = bmp
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeFile(file.absolutePath, bounds)
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+            val limit = 2 * max(canvasW, canvasH).coerceAtLeast(1)
+            var sample = 1
+            while (max(bounds.outWidth, bounds.outHeight) / (sample * 2) >= limit) sample *= 2
+            val decoded = BitmapFactory.decodeFile(file.absolutePath, BitmapFactory.Options().apply { inSampleSize = sample }) ?: return null
+            val bmp = upright(decoded, file.absolutePath)
+            bitmaps[id] = bmp
             bmp
         } catch (_: Throwable) {
             null
         }
     }
+
+    private fun upright(bmp: Bitmap, path: String): Bitmap {
+        val orientation = try {
+            android.media.ExifInterface(path).getAttributeInt(android.media.ExifInterface.TAG_ORIENTATION, android.media.ExifInterface.ORIENTATION_NORMAL)
+        } catch (_: Exception) {
+            android.media.ExifInterface.ORIENTATION_NORMAL
+        }
+        val m = Matrix()
+        when (orientation) {
+            android.media.ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> m.setScale(-1f, 1f)
+            android.media.ExifInterface.ORIENTATION_ROTATE_180 -> m.setRotate(180f)
+            android.media.ExifInterface.ORIENTATION_FLIP_VERTICAL -> m.setScale(1f, -1f)
+            android.media.ExifInterface.ORIENTATION_TRANSPOSE -> { m.setRotate(90f); m.postScale(-1f, 1f) }
+            android.media.ExifInterface.ORIENTATION_ROTATE_90 -> m.setRotate(90f)
+            android.media.ExifInterface.ORIENTATION_TRANSVERSE -> { m.setRotate(-90f); m.postScale(-1f, 1f) }
+            android.media.ExifInterface.ORIENTATION_ROTATE_270 -> m.setRotate(-90f)
+            else -> return bmp
+        }
+        val out = Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, m, true)
+        if (out !== bmp) bmp.recycle()
+        return out
+    }
+}
+
+/** Marker token for a hard line break typed into a title ("\n"). */
+internal const val LINE_BREAK = "\n"
+
+/**
+ * The words a caption draws, in order (mirrors `EditIrCaption.displayWords` in edit_ir.dart):
+ *  - a title (`kind: text`) draws its `text`, word by word, for its whole time range (its `words` are only a copy
+ *    of the text, which goes stale when the text is edited);
+ *  - a speech caption draws its timed `words`, unless its `text` was edited so it no longer matches them: then the
+ *    new text is drawn, re-timed across the caption by character count (a correction with the same word count keeps
+ *    each word's own timing and emphasis);
+ *  - a caption without words draws its text for its whole range.
+ * Typed line breaks become [LINE_BREAK] tokens.
+ */
+internal fun displayWords(cap: IrCaption): List<IrWord> {
+    fun norm(s: String) = s.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }.joinToString(" ")
+    fun tokens(text: String): List<String> {
+        val out = mutableListOf<String>()
+        text.replace("\r\n", "\n").split('\n').forEachIndexed { i, line ->
+            if (i > 0) out.add(LINE_BREAK)
+            out.addAll(line.split(Regex("\\s+")).filter { it.isNotEmpty() })
+        }
+        while (out.firstOrNull() == LINE_BREAK) out.removeAt(0)
+        while (out.lastOrNull() == LINE_BREAK) out.removeAt(out.size - 1)
+        return out
+    }
+    fun static(text: String) = tokens(text).map { IrWord(it, cap.startMs, cap.endMs, false, null, 1.0) }
+
+    val spoken = cap.words.filter { it.text.isNotBlank() }
+    if (cap.kind == "text") return static(cap.text.ifBlank { spoken.joinToString(" ") { it.text } })
+    if (spoken.isEmpty()) return static(cap.text)
+    if (cap.text.isBlank() || norm(cap.text) == norm(spoken.joinToString(" ") { it.text })) return spoken
+    // The text was edited after transcription: draw what the user typed.
+    val parts = tokens(cap.text)
+    val words = parts.filter { it != LINE_BREAK }
+    if (words.size == spoken.size) {
+        var i = 0
+        return parts.map { p -> if (p == LINE_BREAK) IrWord(p, cap.startMs, cap.endMs, false, null, 1.0) else spoken[i++].copy(text = p) }
+    }
+    val total = words.sumOf { it.length }.coerceAtLeast(1)
+    val span = (cap.endMs - cap.startMs).toDouble()
+    val pop = spoken.maxOf { it.scale }
+    var done = 0
+    return parts.map { p ->
+        if (p == LINE_BREAK) return@map IrWord(p, cap.startMs, cap.endMs, false, null, 1.0)
+        val s = cap.startMs + (span * done / total).toLong()
+        done += p.length
+        val e = (cap.startMs + (span * done / total).toLong()).coerceIn(s + 1, cap.endMs)
+        IrWord(p, s, e, false, null, pop)
+    }
 }
 
 /**
  * Renders captions and titles (contract §3.4) with per-word timing: word_pop, karaoke, word_box, word_reveal, none.
- * Scaled relative to the reference design width (360dp) to guarantee 1:1 WYSIWYG parity with the Flutter preview.
+ *
+ * Units: `fontSizePx`, `strokeWidthPx` and the background `paddingPx` / `radiusPx` are canvas pixels (contract §3.4),
+ * so they are scaled by frameWidth / [canvasWidth] (1 at the canvas size the overlay is drawn at). A preview drawn
+ * W logical pixels wide must scale them by W / canvas.width to match the export.
  */
 @UnstableApi
 class CaptionOverlay(
     private val captions: List<IrCaption>,
     private val typefaceFor: (family: String, weight: Int) -> Typeface,
+    private val canvasWidth: Int,
 ) : CanvasOverlay(/* useInputFrameSize= */ true) {
 
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
@@ -246,6 +337,23 @@ class CaptionOverlay(
      *  overlaps its neighbours (the line does not reflow while words pop). */
     private data class Token(val word: IrWord, val text: String, val width: Float, val slot: Float)
 
+    /** Display words per caption id: the IR is immutable for the whole render, so they are worked out once. */
+    private val wordsCache = HashMap<String, List<IrWord>>()
+
+    /** [text] cut into pieces no wider than [maxWidth] (whole surrogate pairs kept together). */
+    private fun splitToWidth(text: String, maxWidth: Float): List<String> {
+        if (text.isEmpty() || fill.measureText(text) <= maxWidth) return listOf(text)
+        val out = mutableListOf<String>()
+        var rest = text
+        while (rest.isNotEmpty()) {
+            var n = fill.breakText(rest, true, maxWidth, null).coerceAtLeast(1)
+            if (n < rest.length && Character.isHighSurrogate(rest[n - 1])) n = if (n > 1) n - 1 else minOf(2, rest.length)
+            out.add(rest.substring(0, n))
+            rest = rest.substring(n)
+        }
+        return out
+    }
+
     override fun onDraw(canvas: Canvas, presentationTimeUs: Long) {
         canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
         val t = presentationTimeUs / 1000.0
@@ -258,9 +366,8 @@ class CaptionOverlay(
         val st = cap.style
         val w = canvas.width.toFloat()
         val h = canvas.height.toFloat()
-        // 1:1 WYSIWYG scale: Flutter preview renders in dp on a ~360dp viewport.
-        // Scaling by (w / 360f) ensures captions appear in the exact same proportion in the export as in the editor.
-        val scaleFactor = (w / 360f).coerceAtLeast(1f)
+        // Canvas-pixel units (contract §3.4) to this frame's pixels.
+        val scaleFactor = if (canvasWidth > 0) w / canvasWidth else 1f
         val motion = TextMotion.at(st.enter, st.exit, st.loop, cap.startMs, cap.endMs, t)
         if (motion.opacity <= 0.0) return
         val tf = typefaceFor(st.fontFamily, st.fontWeight)
@@ -270,14 +377,12 @@ class CaptionOverlay(
             p.typeface = tf
             p.textSize = size
         }
-        val allWords = cap.words.ifEmpty {
-            // A caption without word timings is still drawn, as a single static word run.
-            listOf(IrWord(cap.text, cap.startMs, cap.endMs, false, null, 1.0))
-        }
+        val allWords = wordsCache.getOrPut(cap.id) { displayWords(cap) }
         // Typewriter: the same number of characters as the preview (ceil(total * reveal)), cut at that point.
         val words = if (motion.reveal >= 1.0) allWords else {
-            var left = kotlin.math.ceil(allWords.sumOf { it.text.length } * motion.reveal).toInt()
+            var left = kotlin.math.ceil(allWords.sumOf { if (it.text == LINE_BREAK) 0 else it.text.length } * motion.reveal).toInt()
             allWords.mapNotNull { wd ->
+                if (wd.text == LINE_BREAK) return@mapNotNull if (left > 0) wd else null
                 if (left <= 0) null else {
                     val take = minOf(left, wd.text.length)
                     left -= take
@@ -286,21 +391,34 @@ class CaptionOverlay(
             }
         }
         if (words.isEmpty()) return
-        val tokens = words.map {
-            val text = if (st.uppercase) it.text.uppercase() else it.text
-            val width = fill.measureText(text)
-            val pop = if (st.animation == "word_pop") it.scale.coerceAtLeast(1.0).toFloat() else 1f
-            Token(it, text, width, width * pop)
-        }
         // The outline is drawn centred on the glyph edge, so it eats strokeWidth into the gap on each side.
         val space = fill.measureText(" ") + 2f * strokeWidth
-        val maxWidth = (st.maxWidthFraction * w).toFloat()
+        val maxWidth = (st.maxWidthFraction * w).toFloat().coerceAtLeast(size)
+        val tokens = mutableListOf<Token>()
+        for (wd in words) {
+            if (wd.text == LINE_BREAK) {
+                tokens.add(Token(wd, LINE_BREAK, 0f, 0f))
+                continue
+            }
+            val pop = if (st.animation == "word_pop") wd.scale.coerceAtLeast(1.0).toFloat() else 1f
+            // A single word wider than the line (a long title word, a URL) is broken across lines, never clipped.
+            for (piece in splitToWidth(if (st.uppercase) wd.text.uppercase() else wd.text, maxWidth / pop)) {
+                val width = fill.measureText(piece)
+                tokens.add(Token(wd, piece, width, width * pop))
+            }
+        }
 
-        // Greedy word wrap.
+        // Greedy word wrap; typed line breaks always start a new line.
         val lines = mutableListOf<MutableList<Token>>()
         var cur = mutableListOf<Token>()
         var curW = 0f
         for (tok in tokens) {
+            if (tok.text == LINE_BREAK) {
+                lines.add(cur)
+                cur = mutableListOf()
+                curW = 0f
+                continue
+            }
             val add = if (cur.isEmpty()) tok.slot else curW + space + tok.slot
             if (cur.isNotEmpty() && add > maxWidth) {
                 lines.add(cur)
@@ -316,7 +434,7 @@ class CaptionOverlay(
         val fm = fill.fontMetrics
         val lineHeight = (fm.descent - fm.ascent) * 1.1f
         val blockH = lineHeight * lines.size
-        val lineWidths = lines.map { l -> l.sumOf { it.slot.toDouble() }.toFloat() + space * (l.size - 1) }
+        val lineWidths = lines.map { l -> if (l.isEmpty()) 0f else l.sumOf { it.slot.toDouble() }.toFloat() + space * (l.size - 1) }
         val blockW = lineWidths.maxOrNull() ?: 0f
         val cx = (st.positionX * w).toFloat()
         val cy = (st.positionY * h).toFloat()

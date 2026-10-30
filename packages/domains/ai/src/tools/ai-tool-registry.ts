@@ -1,5 +1,5 @@
 import { AIRole } from '../control-plane/types/resource.types';
-export { AIRole };
+export type { AIRole };
 
 export interface ToolParameter {
     type: 'string' | 'number' | 'boolean' | 'array' | 'object';

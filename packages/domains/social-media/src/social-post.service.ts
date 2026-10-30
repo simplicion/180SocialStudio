@@ -9,7 +9,7 @@ import { getProjectBrandConsciousness } from './brand-consciousness';
 import { findDuplicateCaptions, hasSubstantiveChange, parseScheduledFor, sanitizePostUpdate } from './post-guards';
 
 export interface PostVariantInput {
-    platform: 'instagram' | 'facebook' | 'linkedin' | 'tiktok' | 'youtube' | 'twitter' | 'x' | 'threads' | 'pinterest' | 'reddit' | string;
+    platform: 'instagram' | 'facebook' | 'linkedin' | 'youtube' | string;
     customContent: string;
     customMediaUrls?: string[];
     firstComment?: string;

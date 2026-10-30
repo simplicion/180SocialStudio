@@ -1,4 +1,4 @@
-import type { AutopilotPlatform, CarouselBrief, ContentFormat, ContentMixConfig, DesignSystem, HookType, PsychologicalJob, Script, Strategy } from './schemas';
+import type { AutopilotPlatform, CarouselBrief, ContentFormat, ContentMixConfig, DesignSystem, HookType, PsychologicalJob, ResearchDigest, Script, Strategy } from './schemas';
 
 /** What every agent knows about the brand. Built from WS1's brand consciousness profile. */
 export interface AutopilotBrandContext {
@@ -83,7 +83,7 @@ export interface AutopilotPiece {
 export interface AutopilotRunResult {
     strategy: Strategy;
     pieces: AutopilotPiece[];
-    research: { researchUsed: boolean; provider?: string; error?: string; trends?: { topic: string; whyNow: string; sourceUrls: string[] }[] };
+    research: { researchUsed: boolean; provider?: string; error?: string; trends?: ResearchDigest['trends'] };
     usage: ReturnType<import('./llm').UsageMeter['totals']>;
     provider: string;
 }

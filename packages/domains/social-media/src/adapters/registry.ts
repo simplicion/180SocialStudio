@@ -2,18 +2,14 @@ import { isSimulationMode, type PublishPlatform } from '../publishing/config';
 import { FacebookPublisher, InstagramPublisher } from './meta.adapter';
 import { LinkedInPublisher } from './linkedin.adapter';
 import { SimulatedPlatformPublisher } from './simulation.adapter';
-import { ThreadsPublisher } from './threads.adapter';
-import { XPublisher } from './twitter.adapter';
 import type { PlatformPublisher } from './types';
 import { YouTubePublisher } from './youtube.adapter';
 
 const defaults = (): Record<PublishPlatform, PlatformPublisher> => ({
     instagram: new InstagramPublisher(),
     facebook: new FacebookPublisher(),
-    threads: new ThreadsPublisher(),
     youtube: new YouTubePublisher(),
     linkedin: new LinkedInPublisher(),
-    x: new XPublisher(),
 });
 
 let registry = defaults();

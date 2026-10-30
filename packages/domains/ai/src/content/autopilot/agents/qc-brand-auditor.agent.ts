@@ -125,10 +125,7 @@ export function enforceDeterministicRules(piece: AutopilotPiece, brand: Autopilo
             copy.hashtags = copy.hashtags.slice(0, rules.maxHashtags);
         }
 
-        // 3. Twitter / X 280-char fitting
-        if (platStr === 'x' && copy.caption.length > 280) {
-            copy.caption = copy.caption.slice(0, 277) + '…';
-        }
+
     }
 }
 

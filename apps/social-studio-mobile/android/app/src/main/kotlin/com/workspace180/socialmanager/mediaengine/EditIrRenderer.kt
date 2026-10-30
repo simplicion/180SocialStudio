@@ -111,7 +111,7 @@ class EditIrRenderer(
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
-    private val warnings = mutableListOf<String>()
+    private val warnings = mutableListOf<String>().apply { addAll(ir.parseWarnings) }
     private var transformer: Transformer? = null
     @Volatile private var cancelled = false
     @Volatile private var finished = false
@@ -448,7 +448,7 @@ class EditIrRenderer(
         if (fx.any { it.type == "vignette" }) compositionFx.add(OverlayEffect(listOf(VignetteOverlay(fx))))
         val imageLayers = ir.overlays.filter { it.isLayer && it.isImage }
         if (imageLayers.isNotEmpty()) compositionFx.add(OverlayEffect(listOf(ImageLayersOverlay(imageLayers, media.overlayPaths))))
-        if (ir.captions.isNotEmpty()) compositionFx.add(OverlayEffect(listOf(CaptionOverlay(ir.captions, ::typefaceFor))))
+        if (ir.captions.isNotEmpty()) compositionFx.add(OverlayEffect(listOf(CaptionOverlay(ir.captions, ::typefaceFor, ir.canvas.width))))
         watermarkOverlay()?.let { compositionFx.add(OverlayEffect(listOf(it))) }
         // Export resolution: the finished frame (captions, logo and all) is scaled last, so the layout never changes.
         if (outputSize != ir.canvas.width to ir.canvas.height) {

@@ -59,7 +59,7 @@ test("constraints from the creator's words are enforced: pauses inside 'the firs
   assert.ok(res.violations!.every((v) => /locked range 0\.0s–5\.0s/.test(v)));
   assert.equal(covered(res.editIR, 0, 5000), 5000, "every source ms of the locked range still plays");
   assert.ok(res.editIR.durationMs < fixture().durationMs, "pauses after 5 s were still removed");
-  assert.match(res.summary, /skipped to respect what you asked to keep/);
+  assert.match(res.summary, /left alone the parts you asked me to keep/);
   assert.ok(!res.critique.issues.some((i) => i.category === "CONSTRAINT"));
 });
 
@@ -175,8 +175,9 @@ test("fencing: an injection spoken in the video is fenced as data; tools and con
   assert.match(prompt, /<<<UNTRUSTED_DATA source="transcript"/);
   assert.match(prompt, /SECURITY RULE/);
   assert.ok(prompt.includes(NEUTRALISED_MARKER));
-  assert.ok(!/Ignore all previous instructions/i.test(prompt.replace(/## Creator's request[\s\S]*$/, "")));
-  assert.deepEqual(calls[0].tools.map((t: any) => t.function.name), buildDirectorToolDefinitions().map((t) => t.function.name));
+  assert.ok(!/Ignore all previous instructions/i.test(prompt.replace(/## Creator's latest message[\s\S]*$/, "")));
+  // The edit tools are unchanged; the only addition is the chat tool the director talks through.
+  assert.deepEqual(calls[0].tools.map((t: any) => t.function.name), [...buildDirectorToolDefinitions().map((t) => t.function.name), "reply_to_creator"]);
   assert.ok(res.warnings.some((w) => /instruction-like text/.test(w)));
   assert.equal(res.violations, undefined);
 });

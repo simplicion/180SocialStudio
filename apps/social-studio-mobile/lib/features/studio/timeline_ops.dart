@@ -1482,8 +1482,11 @@ class TimelineOps {
     if (t.isEmpty) {
       throw MediaEngineException('INVALID_EDIT', 'Type some text first.');
     }
-    final s = startMs.clamp(0, math.max(0, ir.durationMs - minClipMs)).toInt();
-    final e = math.min(ir.durationMs, s + math.max(durationMs, 300)).toInt();
+    // Added at (or near) the very end — where the playhead rests after playback — the title still gets its full
+    // length: it starts earlier instead of shrinking to a few invisible frames.
+    final len = math.min(ir.durationMs, math.max(durationMs, 300));
+    final s = startMs.clamp(0, math.max(0, ir.durationMs - len)).toInt();
+    final e = math.min(ir.durationMs, s + len).toInt();
     final cap = EditIrCaption(
       id: _id('txt'),
       kind: 'text',
@@ -1498,6 +1501,43 @@ class TimelineOps {
       captions: [...ir.captions, cap]
         ..sort((a, b) => a.startMs.compareTo(b.startMs)),
     );
+  }
+
+  /// A speech caption typed by hand (no transcript needed) from [startMs] for [durationMs]. Its words share the
+  /// time in proportion to their length, so word highlights still move. It takes the look of the captions already
+  /// on the video (else [style], else Bold pop) and stops where the next speech caption starts: captions never
+  /// overlap.
+  static MobileEditIr addCaption(
+    MobileEditIr ir,
+    String text, {
+    required int startMs,
+    int durationMs = 2000,
+    Map<String, dynamic>? style,
+  }) {
+    final t = text.trim();
+    if (t.isEmpty) throw MediaEngineException('INVALID_EDIT', 'Type the caption first.');
+    final speech = [for (final c in ir.captions) if (c.kind == 'caption') c];
+    final s = startMs.clamp(0, math.max(0, ir.durationMs - 300)).toInt();
+    if (speech.any((c) => s >= c.startMs && s < c.endMs)) {
+      throw MediaEngineException('INVALID_EDIT', 'There is already a caption here. Tap it to edit it, or move the playhead.');
+    }
+    final next = speech.where((c) => c.startMs > s).map((c) => c.startMs).fold<int?>(null, (a, b) => a == null ? b : math.min(a, b));
+    final e = math.min(math.min(ir.durationMs, s + math.max(durationMs, 300)), next ?? ir.durationMs).toInt();
+    if (e - s < 300) throw MediaEngineException('INVALID_EDIT', 'Not enough room before the next caption. Move the playhead.');
+    final look = style ?? speech.firstOrNull?.style ?? captionStyle('BOLD_POP');
+    final pop = look['animation'] == 'word_pop' ? 1.15 : 1.0;
+    final parts = t.split(RegExp(r'\s+'));
+    final total = parts.fold<int>(0, (n, p) => n + p.runes.length);
+    final words = <EditIrWord>[];
+    var done = 0;
+    for (final p in parts) {
+      final ws = math.min(s + ((e - s) * done / total).round(), e - 1);
+      done += p.runes.length;
+      final we = s + ((e - s) * done / total).round();
+      words.add(EditIrWord(text: p, startMs: ws, endMs: we.clamp(ws + 1, e), scale: pop));
+    }
+    final cap = EditIrCaption(id: _id('cap'), startMs: s, endMs: e, text: parts.join(' '), words: words, style: _fontFitted(look, t));
+    return _copy(ir, captions: [...ir.captions, cap]..sort((a, b) => a.startMs.compareTo(b.startMs)));
   }
 
   static MobileEditIr removeCaption(MobileEditIr ir, String id) =>
@@ -2213,12 +2253,17 @@ class TimelineOps {
         TrackKind.voice => throw MediaEngineException('INVALID_EDIT', 'Mute the voice track instead.'),
       };
 
-  /// Replaces a text item's words and/or style (text templates, font, colours).
+  /// Replaces a text item's words and/or style (text templates, font, colours). On a speech caption the new words
+  /// keep the caption's word timing (see [retextCaptions]) instead of collapsing into one static word.
   static MobileEditIr editText(MobileEditIr ir, String id, {String? text, Map<String, dynamic>? style}) {
     final t = text?.trim();
     if (t != null && t.isEmpty) throw MediaEngineException('INVALID_EDIT', 'Type some text first.');
-    return _copy(ir, captions: [
-      for (final c in ir.captions)
+    final target = ir.captions.where((c) => c.id == id).firstOrNull;
+    if (target == null) throw MediaEngineException('INVALID_EDIT', 'That text is no longer on the video.');
+    final speech = target.kind == 'caption';
+    final base = speech && t != null && t != target.text ? retextCaptions(ir, {id: t}) : ir;
+    return _copy(base, captions: [
+      for (final c in base.captions)
         c.id != id
             ? c
             : EditIrCaption(
@@ -2226,11 +2271,33 @@ class TimelineOps {
                 kind: c.kind,
                 startMs: c.startMs,
                 endMs: c.endMs,
-                text: t ?? c.text,
-                words: t == null ? c.words : [EditIrWord(text: t, startMs: c.startMs, endMs: c.endMs)],
+                text: speech ? c.text : (t ?? c.text),
+                words: speech || t == null ? c.words : [EditIrWord(text: t, startMs: c.startMs, endMs: c.endMs)],
                 style: style ?? c.style,
               ),
     ]);
+  }
+
+  /// Full-screen cutaways replace the picture, so the renderer rejects two that overlap (layers may stack). Each
+  /// cutaway that runs into the next one is cut short where the next begins (dropped when under 100 ms). Returns the
+  /// timeline and how many cutaways were shortened or dropped.
+  static (MobileEditIr, int) resolveCutawayOverlaps(MobileEditIr ir) {
+    final cut = [for (final o in ir.overlays) if (!o.isLayer) o]..sort((a, b) => a.timelineStartMs.compareTo(b.timelineStartMs));
+    final changed = <String, EditIrOverlay?>{};
+    for (var i = 0; i < cut.length - 1; i++) {
+      final a = changed.containsKey(cut[i].id) ? changed[cut[i].id] : cut[i];
+      final b = cut[i + 1];
+      if (a == null || b.timelineStartMs >= a.timelineEndMs) continue;
+      changed[a.id] = b.timelineStartMs - a.timelineStartMs < 100 ? null : a.copyWith(timelineEndMs: b.timelineStartMs);
+    }
+    if (changed.isEmpty) return (ir, 0);
+    return (
+      _copy(ir, overlays: [
+        for (final o in ir.overlays)
+          if (!changed.containsKey(o.id)) o else ?changed[o.id],
+      ]),
+      changed.length,
+    );
   }
 
   // ── Effects ────────────────────────────────────────────────────────────────

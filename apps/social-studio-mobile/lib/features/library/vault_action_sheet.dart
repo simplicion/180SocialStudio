@@ -218,63 +218,73 @@ Future<void> showCreateFolderDialog(BuildContext context, WidgetRef ref, {VaultF
   final nameController = TextEditingController(text: existing?.name ?? '');
   var selectedColor = existing?.colorValue ?? _folderColors.first;
 
-  final created = await showDialog<bool>(
+  final created = await AppBottomSheet.show<bool>(
     context: context,
+    title: isEdit ? 'Edit Folder' : 'New Folder',
+    icon: Icon(isEdit ? Icons.edit_rounded : Icons.create_new_folder_rounded, color: AppTheme.primary, size: 22),
+    actions: [
+      OutlinedButton(
+        style: OutlinedButton.styleFrom(
+          side: BorderSide(color: AppTheme.border),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+        onPressed: () => Navigator.pop(context, false),
+        child: const Text('Cancel'),
+      ),
+      const SizedBox(width: 12),
+      ElevatedButton(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppTheme.primary,
+          foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+        onPressed: () {
+          if (nameController.text.trim().isEmpty) return;
+          Navigator.pop(context, true);
+        },
+        child: Text(isEdit ? 'Save' : 'Create'),
+      ),
+    ],
     builder: (ctx) => StatefulBuilder(
-      builder: (ctx, setState) => AlertDialog(
-        backgroundColor: AppTheme.surfaceElevated,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text(isEdit ? 'Edit Folder' : 'New Folder'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            TextField(
-              controller: nameController,
-              autofocus: true,
-              decoration: fieldDecoration('Folder Name', hint: 'e.g. October Reels, Product Launch'),
-            ),
-            const SizedBox(height: 16),
-            Text('Folder Accent Color', style: Theme.of(ctx).textTheme.labelMedium),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: _folderColors.map((c) {
-                final isSelected = selectedColor == c;
-                return GestureDetector(
-                  onTap: () => setState(() => selectedColor = c),
-                  child: Container(
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      color: Color(c),
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: isSelected ? Colors.white : Colors.transparent,
-                        width: 2.5,
-                      ),
-                      boxShadow: isSelected
-                          ? [BoxShadow(color: Color(c).withValues(alpha: 0.5), blurRadius: 6)]
-                          : null,
+      builder: (ctx, setState) => Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextField(
+            controller: nameController,
+            autofocus: true,
+            decoration: fieldDecoration('Folder Name', hint: 'e.g. October Reels, Product Launch'),
+          ),
+          const SizedBox(height: 16),
+          Text('Folder Accent Color', style: Theme.of(ctx).textTheme.labelMedium),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _folderColors.map((c) {
+              final isSelected = selectedColor == c;
+              return GestureDetector(
+                onTap: () => setState(() => selectedColor = c),
+                child: Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: Color(c),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: isSelected ? Colors.white : Colors.transparent,
+                      width: 2.5,
                     ),
-                    child: isSelected
-                        ? const Icon(Icons.check, size: 16, color: Colors.white)
+                    boxShadow: isSelected
+                        ? [BoxShadow(color: Color(c).withValues(alpha: 0.5), blurRadius: 6)]
                         : null,
                   ),
-                );
-              }).toList(),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () {
-              if (nameController.text.trim().isEmpty) return;
-              Navigator.pop(ctx, true);
-            },
-            child: Text(isEdit ? 'Save' : 'Create'),
+                  child: isSelected
+                      ? const Icon(Icons.check, size: 16, color: Colors.white)
+                      : null,
+                ),
+              );
+            }).toList(),
           ),
         ],
       ),
@@ -309,77 +319,82 @@ Future<void> showCreateNoteDialog(BuildContext context, WidgetRef ref, {VaultIte
   final tagsController = TextEditingController(text: existing?.tags.join(', ') ?? '');
   var selectedCategory = existing?.noteCategory ?? VaultNoteCategory.hook;
 
-  final saved = await showDialog<bool>(
+  final saved = await AppBottomSheet.show<bool>(
     context: context,
+    title: isEdit ? 'Edit Note' : 'Create Note / Hook / Script',
+    icon: Icon(isEdit ? Icons.edit_note_rounded : Icons.note_add_rounded, color: AppTheme.primary, size: 24),
+    actions: [
+      OutlinedButton(
+        style: OutlinedButton.styleFrom(
+          side: BorderSide(color: AppTheme.border),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+        onPressed: () => Navigator.pop(context, false),
+        child: const Text('Cancel'),
+      ),
+      const SizedBox(width: 12),
+      ElevatedButton(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppTheme.primary,
+          foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+        onPressed: () {
+          if (titleController.text.trim().isEmpty && contentController.text.trim().isEmpty) return;
+          Navigator.pop(context, true);
+        },
+        child: Text(isEdit ? 'Save' : 'Create Note'),
+      ),
+    ],
     builder: (ctx) => StatefulBuilder(
-      builder: (ctx, setState) => AlertDialog(
-        backgroundColor: AppTheme.surfaceElevated,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text(isEdit ? 'Edit Note' : 'Create Note / Hook / Script'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Category', style: Theme.of(ctx).textTheme.labelMedium),
-                const SizedBox(height: 8),
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: VaultNoteCategory.values.map((cat) {
-                      final isSelected = selectedCategory == cat;
-                      return Padding(
-                        padding: const EdgeInsets.only(right: 6),
-                        child: ChoiceChip(
-                          label: Text(cat.label),
-                          selected: isSelected,
-                          selectedColor: cat.color.withValues(alpha: 0.25),
-                          labelStyle: TextStyle(
-                            color: isSelected ? cat.color : AppTheme.textSecondary,
-                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                            fontSize: 12,
-                          ),
-                          onSelected: (_) => setState(() => selectedCategory = cat),
-                        ),
-                      );
-                    }).toList(),
+      builder: (ctx, setState) => Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Category', style: Theme.of(ctx).textTheme.labelMedium),
+          const SizedBox(height: 8),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: VaultNoteCategory.values.map((cat) {
+                final isSelected = selectedCategory == cat;
+                return Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: ChoiceChip(
+                    label: Text(cat.label),
+                    selected: isSelected,
+                    selectedColor: cat.color.withValues(alpha: 0.25),
+                    labelStyle: TextStyle(
+                      color: isSelected ? cat.color : AppTheme.textSecondary,
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                      fontSize: 12,
+                    ),
+                    onSelected: (_) => setState(() => selectedCategory = cat),
                   ),
-                ),
-                const SizedBox(height: 14),
-                TextField(
-                  controller: titleController,
-                  decoration: fieldDecoration('Title', hint: 'e.g. 3-Sec Pattern Interrupt, Core Hashtags'),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: contentController,
-                  maxLines: 5,
-                  decoration: fieldDecoration(
-                    'Content / Script / Hooks',
-                    hint: selectedCategory == VaultNoteCategory.hashtag
-                        ? '#reels #growth #contentcreator'
-                        : 'Write hook ideas, keywords, or full video outline here...',
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: tagsController,
-                  decoration: fieldDecoration('Tags (comma-separated)', hint: 'viral, instagram, q4'),
-                ),
-              ],
+                );
+              }).toList(),
             ),
           ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () {
-              if (titleController.text.trim().isEmpty && contentController.text.trim().isEmpty) return;
-              Navigator.pop(ctx, true);
-            },
-            child: Text(isEdit ? 'Save' : 'Create Note'),
+          const SizedBox(height: 14),
+          TextField(
+            controller: titleController,
+            decoration: fieldDecoration('Title', hint: 'e.g. 3-Sec Pattern Interrupt, Core Hashtags'),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: contentController,
+            maxLines: 5,
+            decoration: fieldDecoration(
+              'Content / Script / Hooks',
+              hint: selectedCategory == VaultNoteCategory.hashtag
+                  ? '#reels #growth #contentcreator'
+                  : 'Write hook ideas, keywords, or full video outline here...',
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: tagsController,
+            decoration: fieldDecoration('Tags (comma-separated)', hint: 'viral, instagram, q4'),
           ),
         ],
       ),

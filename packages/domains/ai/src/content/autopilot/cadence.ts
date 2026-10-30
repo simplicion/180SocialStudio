@@ -5,7 +5,7 @@
  */
 import { AutopilotError } from './llm';
 import { PLATFORM_RULES } from './platform-rules';
-import type { AutopilotPlatform, ContentFormat, ContentMixConfig } from './schemas';
+import type { AutopilotPlatform, ContentFormat, ContentMixConfig, StrategySlot } from './schemas';
 
 export interface PlannedSlot {
     day: number;
@@ -57,7 +57,7 @@ export function describePlan(plan: PlannedSlot[]): string {
 }
 
 /** Differences between the plan and the strategist's slots, as repair instructions. Empty = exact match. */
-export function planMismatches(plan: PlannedSlot[], slots: Array<{ day: number; format: string }>): string[] {
+export function planMismatches(plan: PlannedSlot[], slots: Array<Pick<StrategySlot, 'day' | 'format'>>): string[] {
     const key = (d: number, f: string) => `${d}:${f}`;
     const want = new Map<string, number>();
     const got = new Map<string, number>();

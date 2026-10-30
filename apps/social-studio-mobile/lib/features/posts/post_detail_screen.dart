@@ -174,7 +174,6 @@ class _PostBodyState extends ConsumerState<_PostBody> {
   }
 
   Future<void> _openCentralizedManualPublishSheet() async {
-    final xVariant = p.variants.where((v) => v.platform == SocialPlatform.x).firstOrNull;
     final videoUrl = p.finalVideoUrl ?? p.mediaUrls.where((u) => u.endsWith('.mp4')).firstOrNull ?? p.mediaUrls.firstOrNull;
 
     final Map<SocialPlatform, UniversalPlatformPayload> payloads = {};
@@ -196,11 +195,6 @@ class _PostBodyState extends ConsumerState<_PostBody> {
       title: p.title,
       caption: p.content,
       platformPayloads: payloads,
-      xPayload: XPublishPayload(
-        text: xVariant?.customContent?.isNotEmpty == true ? xVariant!.customContent! : p.content,
-        mediaPath: videoUrl,
-        projectId: p.projectId,
-      ),
     );
 
     await showModalBottomSheet<void>(
@@ -230,21 +224,33 @@ class _PostBodyState extends ConsumerState<_PostBody> {
     if (!mounted) return false;
 
     if (accounts.isEmpty) {
-      final connect = await showDialog<bool>(
+      final connect = await AppBottomSheet.show<bool>(
         context: context,
-        builder: (ctx) => AlertDialog(
-          backgroundColor: AppTheme.surfaceElevated,
-          title: Text('No ${platform.label} Account Connected'),
-          content: Text(
-            'No active ${platform.label} account is connected to this project. Would you like to connect one in Workspace Settings?',
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Go to Accounts'),
+        title: 'No ${platform.label} Account Connected',
+        icon: Icon(Icons.account_circle_outlined, color: AppTheme.warning, size: 22),
+        actions: [
+          OutlinedButton(
+            style: OutlinedButton.styleFrom(
+              side: BorderSide(color: AppTheme.border),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
-          ],
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          const SizedBox(width: 12),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primary,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Go to Accounts'),
+          ),
+        ],
+        child: Text(
+          'No active ${platform.label} account is connected to this project. Would you like to connect one in Workspace Settings?',
+          style: TextStyle(fontSize: 14, color: AppTheme.textSecondary, height: 1.5),
         ),
       );
       if (connect == true && mounted && p.projectId != null) {
@@ -436,38 +442,48 @@ class _PostBodyState extends ConsumerState<_PostBody> {
                 }
                 return;
               } else {
-                // Multiple platforms need choice: show smart actionable dialog
-                await showDialog<void>(
+                // Multiple platforms need choice: show smart actionable bottom sheet
+                await AppBottomSheet.show<void>(
                   context: context,
-                  builder: (ctx) => AlertDialog(
-                    backgroundColor: AppTheme.surfaceElevated,
-                    title: const Text('Account Selection Required'),
-                    content: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('Multiple accounts are connected for these platforms. Please choose which account to use:'),
-                        const SizedBox(height: 12),
-                        for (final pl in platformsNeedingSelection)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: ElevatedButton.icon(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: pl.color.withValues(alpha: 0.15),
-                                foregroundColor: pl.color,
-                              ),
-                              icon: Icon(pl.icon, size: 18),
-                              label: Text('Select ${pl.label} Account'),
-                              onPressed: () {
-                                Navigator.pop(ctx);
-                                _pickAccountForPlatform(pl);
-                              },
-                            ),
-                          ),
-                      ],
+                  title: 'Account Selection Required',
+                  icon: Icon(Icons.switch_account_rounded, color: AppTheme.primary, size: 22),
+                  actions: [
+                    OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        side: BorderSide(color: AppTheme.border),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Cancel'),
                     ),
-                    actions: [
-                      TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+                  ],
+                  builder: (ctx) => Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        'Multiple accounts are connected for these platforms. Please choose which account to use:',
+                        style: TextStyle(fontSize: 14, color: AppTheme.textSecondary),
+                      ),
+                      const SizedBox(height: 16),
+                      for (final pl in platformsNeedingSelection)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              minimumSize: const Size.fromHeight(46),
+                              backgroundColor: pl.color.withValues(alpha: 0.15),
+                              foregroundColor: pl.color,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                            icon: Icon(pl.icon, size: 18),
+                            label: Text('Select ${pl.label} Account'),
+                            onPressed: () {
+                              Navigator.pop(ctx);
+                              _pickAccountForPlatform(pl);
+                            },
+                          ),
+                        ),
                     ],
                   ),
                 );
@@ -476,17 +492,33 @@ class _PostBodyState extends ConsumerState<_PostBody> {
             }
           }
 
-          await showDialog<void>(
+          await AppBottomSheet.show<void>(
             context: context,
-            builder: (ctx) => AlertDialog(
-              backgroundColor: AppTheme.surfaceElevated,
-              title: Text(readiness.schedulingBlockers.isEmpty && readiness.approvalPending ? 'Waiting for approval' : 'Not ready to publish'),
-              content: Text(readiness.schedulingBlockers.isEmpty && readiness.approvalPending
+            title: readiness.schedulingBlockers.isEmpty && readiness.approvalPending ? 'Waiting for approval' : 'Not ready to publish',
+            icon: Icon(
+              readiness.schedulingBlockers.isEmpty && readiness.approvalPending ? Icons.pending_actions_rounded : Icons.error_outline_rounded,
+              color: readiness.schedulingBlockers.isEmpty && readiness.approvalPending ? AppTheme.warning : AppTheme.error,
+              size: 22,
+            ),
+            actions: [
+              TextButton(
+                style: TextButton.styleFrom(
+                  minimumSize: const Size(80, 44),
+                  backgroundColor: AppTheme.primary,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                onPressed: () => Navigator.pop(context),
+                child: const Text('OK', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              ),
+            ],
+            child: Text(
+              readiness.schedulingBlockers.isEmpty && readiness.approvalPending
                   ? 'This project requires approval before publishing. Send it for review, or ask an approver to approve it.'
                   : readiness.issues.isEmpty
                       ? 'The server reported the post is not ready.'
-                      : '• ${readiness.issues.join('\n• ')}'),
-              actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: Text('OK'))],
+                      : '• ${readiness.issues.join('\n• ')}',
+              style: TextStyle(fontSize: 14, color: AppTheme.textSecondary, height: 1.5),
             ),
           );
           return;
@@ -504,22 +536,49 @@ class _PostBodyState extends ConsumerState<_PostBody> {
         }
         _refresh();
         if (!mounted) return;
-        await showDialog<void>(
+        await AppBottomSheet.show<void>(
           context: context,
-          builder: (ctx) => AlertDialog(
-            backgroundColor: AppTheme.surfaceElevated,
-            title: Text(result.simulated ? 'Simulated publish: ${result.status}' : 'Publish: ${result.status}'),
-            content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          title: result.simulated ? 'Simulated publish: ${result.status}' : 'Publish: ${result.status}',
+          icon: Icon(
+            result.simulated ? Icons.science_rounded : Icons.check_circle_outline_rounded,
+            color: result.simulated ? AppTheme.warning : AppTheme.success,
+            size: 22,
+          ),
+          actions: [
+            TextButton(
+              style: TextButton.styleFrom(
+                minimumSize: const Size(80, 44),
+                backgroundColor: AppTheme.primary,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              onPressed: () => Navigator.pop(context),
+              child: const Text('OK', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            ),
+          ],
+          builder: (ctx) => Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
               if (result.simulated)
                 Padding(
-                  padding: EdgeInsets.only(bottom: 8),
-                  child: Text('Sandbox mode: nothing was posted to any platform. Limits were checked as for a real post.',
-                      style: TextStyle(color: AppTheme.warning)),
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(
+                    'Sandbox mode: nothing was posted to any platform. Limits were checked as for a real post.',
+                    style: TextStyle(color: AppTheme.warning),
+                  ),
                 ),
-              if (result.message.isNotEmpty) Text(result.message),
+              if (result.message.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(result.message, style: TextStyle(fontSize: 14, color: AppTheme.textPrimary)),
+                ),
               for (final e in result.publishedLinks.entries)
                 result.simulated
-                    ? Text('✓ ${e.key}: simulated (no live post)', style: TextStyle(color: AppTheme.success))
+                    ? Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Text('✓ ${e.key}: simulated (no live post)', style: TextStyle(color: AppTheme.success)),
+                      )
                     : Row(children: [
                         Expanded(child: Text('✓ ${e.key}: posted', style: TextStyle(color: AppTheme.success))),
                         TextButton.icon(
@@ -529,9 +588,12 @@ class _PostBodyState extends ConsumerState<_PostBody> {
                           label: const Text('Open'),
                         ),
                       ]),
-              for (final e in result.errors.entries) Text('✗ ${e.key}: ${e.value}', style: TextStyle(color: AppTheme.error)),
-            ]),
-            actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: Text('OK'))],
+              for (final e in result.errors.entries)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text('✗ ${e.key}: ${e.value}', style: TextStyle(color: AppTheme.error)),
+                ),
+            ],
           ),
         );
 
@@ -815,12 +877,16 @@ class _PostBodyState extends ConsumerState<_PostBody> {
                               color: (v.accountName != null || v.username != null) ? v.platform.color : AppTheme.warning,
                             ),
                           const SizedBox(width: 6),
-                          Text(
-                            v.accountName ?? (v.username != null ? '@${v.username}' : 'Choose account (multiple connected)'),
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: (v.accountName != null || v.username != null) ? Colors.white : AppTheme.warning,
+                          Flexible(
+                            child: Text(
+                              v.accountName ?? (v.username != null ? '@${v.username}' : 'Choose account (multiple connected)'),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: (v.accountName != null || v.username != null) ? Colors.white : AppTheme.warning,
+                              ),
                             ),
                           ),
                           const SizedBox(width: 6),

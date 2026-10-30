@@ -112,37 +112,43 @@ class LibraryScreen extends ConsumerWidget {
 
   Future<void> _showMoveDialog(BuildContext context, WidgetRef ref, VaultItem item) async {
     final folders = ref.read(vaultFoldersProvider).valueOrNull ?? [];
-    final selectedFolderId = await showDialog<String?>(
+    final selectedFolderId = await AppBottomSheet.show<String?>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppTheme.surfaceElevated,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Move to Folder'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: ListView(
-            shrinkWrap: true,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.folder_off_rounded, color: Colors.white70),
-                title: const Text('Vault Root (No folder)'),
-                selected: item.folderId == null,
-                onTap: () => Navigator.pop(ctx, ''),
-              ),
-              const Divider(),
-              ...folders.map(
-                (f) => ListTile(
-                  leading: Icon(Icons.folder_rounded, color: f.color),
-                  title: Text(f.name),
-                  selected: item.folderId == f.id,
-                  onTap: () => Navigator.pop(ctx, f.id),
-                ),
-              ),
-            ],
+      title: 'Move to Folder',
+      subtitle: 'Select destination for "${item.name}"',
+      icon: Icon(Icons.drive_file_move_rounded, color: AppTheme.primary, size: 22),
+      actions: [
+        OutlinedButton(
+          style: OutlinedButton.styleFrom(
+            side: BorderSide(color: AppTheme.border),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
+          onPressed: () => Navigator.pop(context, null),
+          child: const Text('Cancel'),
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, null), child: const Text('Cancel')),
+      ],
+      builder: (ctx) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            leading: const Icon(Icons.folder_off_rounded, color: Colors.white70),
+            title: const Text('Vault Root (No folder)'),
+            selected: item.folderId == null,
+            selectedTileColor: AppTheme.primary.withValues(alpha: 0.15),
+            onTap: () => Navigator.pop(ctx, ''),
+          ),
+          const Divider(),
+          ...folders.map(
+            (f) => ListTile(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              leading: Icon(Icons.folder_rounded, color: f.color),
+              title: Text(f.name),
+              selected: item.folderId == f.id,
+              selectedTileColor: AppTheme.primary.withValues(alpha: 0.15),
+              onTap: () => Navigator.pop(ctx, f.id),
+            ),
+          ),
         ],
       ),
     );

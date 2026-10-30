@@ -22,13 +22,31 @@ class EvergreenTab extends ConsumerWidget {
     var day = 1;
     var time = TimeOfDay(hour: 10, minute: 0);
     var category = EvergreenSlot.categoryPresets.first;
-    final ok = await showDialog<bool>(
+    final ok = await AppBottomSheet.show<bool>(
       context: context,
+      title: 'New evergreen slot',
+      icon: Icon(Icons.repeat_rounded, color: AppTheme.primary, size: 22),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: Text('Cancel', style: TextStyle(color: AppTheme.textSecondary)),
+        ),
+        const SizedBox(width: 8),
+        TextButton(
+          style: TextButton.styleFrom(
+            backgroundColor: AppTheme.primary,
+            foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+          onPressed: () => Navigator.pop(context, true),
+          child: const Text('Add', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+        ),
+      ],
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, set) => AlertDialog(
-          backgroundColor: AppTheme.surfaceElevated,
-          title: Text('New evergreen slot'),
-          content: Column(mainAxisSize: MainAxisSize.min, children: [
+        builder: (ctx, set) => Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
             DropdownButtonFormField<int>(
               isExpanded: true,
               initialValue: day,
@@ -36,16 +54,21 @@ class EvergreenTab extends ConsumerWidget {
               items: [for (var i = 0; i < 7; i++) DropdownMenuItem(value: i, child: Text(EvergreenSlot.dayNames[i]))],
               onChanged: (v) => set(() => day = v ?? 1),
             ),
-            SizedBox(height: 12),
+            const SizedBox(height: 12),
             OutlinedButton.icon(
-              icon: Icon(Icons.schedule_rounded),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(48),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                side: BorderSide(color: AppTheme.border),
+              ),
+              icon: const Icon(Icons.schedule_rounded),
               label: Text('${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')} UTC'),
               onPressed: () async {
                 final t = await showTimePicker(context: ctx, initialTime: time, helpText: 'Time (UTC)');
                 if (t != null) set(() => time = t);
               },
             ),
-            SizedBox(height: 12),
+            const SizedBox(height: 12),
             DropdownButtonFormField<String>(
               isExpanded: true,
               initialValue: category,
@@ -53,10 +76,6 @@ class EvergreenTab extends ConsumerWidget {
               items: [for (final c in EvergreenSlot.categoryPresets) DropdownMenuItem(value: c, child: Text(c))],
               onChanged: (v) => set(() => category = v ?? category),
             ),
-          ]),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('Cancel')),
-            TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text('Add')),
           ],
         ),
       ),

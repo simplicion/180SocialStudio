@@ -82,19 +82,19 @@ export function weightedLength(text: string, platform: CraftPlatform): number {
  */
 export function splitIntoThread(text: string, limit = 280): string[] {
     const clean = text.trim();
-    if (weightedLength(clean, 'x') <= limit) return [clean];
+    if ([...clean].length <= limit) return [clean];
     const reserve = 6; // room for " 10/12"
     const max = limit - reserve;
     const units: string[] = [];
     for (const para of clean.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean)) {
-        if (weightedLength(para, 'x') <= max) { units.push(para); continue; }
+        if ([...para].length <= max) { units.push(para); continue; }
         for (const sentence of para.match(/[^.!?]+[.!?]*\s*/g) || [para]) {
             const s = sentence.trim();
-            if (weightedLength(s, 'x') <= max) { units.push(s); continue; }
+            if ([...s].length <= max) { units.push(s); continue; }
             let buf = '';
             for (const word of s.split(/\s+/)) {
                 const next = buf ? `${buf} ${word}` : word;
-                if (weightedLength(next, 'x') > max && buf) { units.push(buf); buf = word; } else buf = next;
+                if ([...next].length > max && buf) { units.push(buf); buf = word; } else buf = next;
             }
             if (buf) units.push(buf);
         }
@@ -103,7 +103,7 @@ export function splitIntoThread(text: string, limit = 280): string[] {
     let cur = '';
     for (const u of units) {
         const next = cur ? `${cur}\n\n${u}` : u;
-        if (weightedLength(next, 'x') > max && cur) { posts.push(cur); cur = u; } else cur = next;
+        if ([...next].length > max && cur) { posts.push(cur); cur = u; } else cur = next;
     }
     if (cur) posts.push(cur);
     return posts.map((p, i) => `${p} ${i + 1}/${posts.length}`);
@@ -132,11 +132,9 @@ export class PlatformCopyLinter {
         if (weighted > spec.captionMaxChars) {
             checks.push({
                 check: 'LENGTH', status: 'FAIL',
-                detail: platform === 'x'
-                    ? `${weighted}/280 characters. Split it into a thread (post 1 must stand alone).`
-                    : `${weighted} characters is over the ${spec.label} limit of ${spec.captionMaxChars}.`,
+                detail: `${weighted} characters is over the ${spec.label} limit of ${spec.captionMaxChars}.`,
             });
-        } else if (chars < 40 && platform !== 'x') {
+        } else if (chars < 40) {
             checks.push({ check: 'LENGTH', status: 'WARN', detail: `Only ${chars} characters; there is no room for a hook, value and one ask.` });
         } else {
             checks.push({ check: 'LENGTH', status: 'PASS', detail: `${weighted}/${spec.captionMaxChars} characters.` });
@@ -148,7 +146,7 @@ export class PlatformCopyLinter {
             checks.push({ check: 'FOLD_HOOK', status: 'FAIL', detail: `Opens with a hashtag, wasting the ${spec.foldChars}-character preview.` });
         } else if (GREETING_RE.test(firstLine)) {
             checks.push({ check: 'FOLD_HOOK', status: 'WARN', detail: 'Opens on a greeting or announcement. Start on the claim, number or tension.' });
-        } else if (firstWords > spec.openingLineMaxWords && platform !== 'x') {
+        } else if (firstWords > spec.openingLineMaxWords) {
             checks.push({ check: 'FOLD_HOOK', status: 'WARN', detail: `Opening line is ${firstWords} words; keep it under ${spec.openingLineMaxWords} so the hook lands before "${spec.foldLabel}".` });
         } else if ([...feedCutout].length < 30) {
             checks.push({ check: 'FOLD_HOOK', status: 'WARN', detail: 'The preview before the fold is under 30 characters.' });
@@ -225,7 +223,6 @@ export class PlatformCopyLinter {
             score,
             passed: !checks.some((c) => c.status === 'FAIL'),
             recommendations: checks.filter((c) => c.status !== 'PASS').map((c) => c.detail),
-            ...(platform === 'x' && weighted > 280 ? { thread: splitIntoThread(stripped) } : {}),
         };
     }
 

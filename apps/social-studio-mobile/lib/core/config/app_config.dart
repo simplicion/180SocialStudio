@@ -4,7 +4,7 @@ import 'package:flutter/foundation.dart'
 /// Build-time configuration. Nothing in here is a secret.
 ///
 /// Override per build with `--dart-define`, e.g.
-/// `flutter run --dart-define=API_BASE_URL=http://localhost:4005`.
+/// `flutter run --dart-define=API_BASE_URL=http://localhost:4007`.
 class AppConfig {
   AppConfig._();
 
@@ -22,10 +22,10 @@ class AppConfig {
     if (kIsWeb) {
       final host = Uri.base.host;
       if (host == 'localhost' || host == '127.0.0.1') {
-        return 'http://$host:4005';
+        return 'http://$host:4007';
       }
     }
-    return 'http://18.207.84.197:4005';
+    return 'http://18.207.84.197:4007';
   }
 
   /// Origin of the web app. Used to build shareable links such as `/review/<token>`.
@@ -77,13 +77,23 @@ class AppConfig {
     return 'https://profile.180core.cloud';
   }
 
-  /// Registered 180 Social Studio Mobile Client ID
-  static const String identityClientId = '180-social-studio-mobile';
+  /// Registered 180 Social Studio Client ID (180 Sovereign Core)
+  static String get identityClientId {
+    const fromEnv = String.fromEnvironment('IDENTITY_CLIENT_ID');
+    if (fromEnv.isNotEmpty) return fromEnv;
+    const from180Env = String.fromEnvironment('180_CLIENT_ID');
+    if (from180Env.isNotEmpty) return from180Env;
+    return '180_client_a61725d6de73908b150480da80991fc4';
+  }
+
   static String get identityRedirectUri {
     const fromEnv = String.fromEnvironment('IDENTITY_REDIRECT_URI');
     if (fromEnv.isNotEmpty) return fromEnv;
     if (kIsWeb) {
       final base = Uri.base.origin;
+      if (base.contains(':3000')) {
+        return '$base/callback';
+      }
       if (base.contains(':3007')) {
         return 'http://localhost:3007/oauth-callback';
       }

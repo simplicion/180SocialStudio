@@ -335,7 +335,7 @@ export class PublishDispatcher {
             const a = await db.socialAccount.findFirst({ where: { id: post.socialAccountId, companyId: post.companyId } });
             if (matches(a)) return a;
         }
-        const aliases = platform === 'x' ? ['x', 'twitter'] : [platform];
+        const aliases = [platform];
         const candidates = await db.socialAccount.findMany({
             where: { companyId: post.companyId, platform: { in: aliases }, isActive: true, ...(post.projectId ? { projectId: post.projectId } : {}) },
             take: 5,
