@@ -18,6 +18,7 @@ import 'engagement_tab.dart';
 import 'evergreen_tab.dart';
 import 'publishing_tab.dart';
 import 'settings_tab.dart';
+import '../studio/auto_clipper_sheet.dart';
 
 /// `/projects/:id/:tab`: one section of a project's workspace (web `/social-projects/:id?tab=`).
 class ProjectWorkspaceScreen extends ConsumerWidget {
@@ -67,6 +68,7 @@ class ProjectWorkspaceScreen extends ConsumerWidget {
         'accounts' => AccountsTab(project: d.project),
         'evergreen' => EvergreenTab(project: d.project),
         'settings' => SettingsTab(project: d.project),
+        'auto_clipper' => AutoClipperStudioSheet(projectId: d.project.id),
         _ => SizedBox.shrink(),
       };
 }

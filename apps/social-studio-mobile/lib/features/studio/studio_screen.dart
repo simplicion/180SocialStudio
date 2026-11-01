@@ -1,3 +1,6 @@
+import 'dart:io';
+
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,6 +14,7 @@ import '../posts/post_providers.dart';
 import '../projects/project_provider.dart';
 import 'studio_drafts_service.dart';
 import 'teleprompter_setup_sheet.dart';
+import 'video_thumbnails.dart';
 
 /// The on-device video engine exists for Android only; iOS shows this instead of failing later.
 bool get studioSupported => defaultTargetPlatform != TargetPlatform.iOS;
@@ -167,24 +171,24 @@ class _DraftCard extends StatelessWidget {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          AppTheme.primary.withValues(alpha: 0.25),
-                          Colors.black87,
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
+                  Positioned.fill(
+                    child: _DraftThumbnail(draft: draft),
+                  ),
+                  Positioned.fill(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.black.withValues(alpha: 0.40),
+                            Colors.transparent,
+                            Colors.black.withValues(alpha: 0.70),
+                          ],
+                          stops: const [0.0, 0.45, 1.0],
+                        ),
                       ),
                     ),
-                    child: draft.thumbnailUrl != null
-                        ? Image.network(
-                            draft.thumbnailUrl!,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, o, s) => _fallbackCover(),
-                          )
-                        : _fallbackCover(),
                   ),
                   Center(
                     child: Container(
@@ -264,8 +268,95 @@ class _DraftCard extends StatelessWidget {
     );
   }
 
-  Widget _fallbackCover() => Center(
-        child: Icon(Icons.movie_creation_outlined, color: Colors.white38, size: 28),
+}
+
+class _DraftThumbnail extends StatelessWidget {
+  const _DraftThumbnail({required this.draft});
+
+  final StudioDraft draft;
+
+  String? _resolveMedia() {
+    if (draft.thumbnailUrl != null && draft.thumbnailUrl!.trim().isNotEmpty) {
+      return draft.thumbnailUrl!.trim();
+    }
+    final firstClip = draft.ir.clips.firstOrNull;
+    if (firstClip != null) {
+      final p = draft.sourcePaths[firstClip.assetId];
+      if (p != null && p.trim().isNotEmpty) return p.trim();
+    }
+    if (draft.sourcePath.trim().isNotEmpty) {
+      return draft.sourcePath.trim();
+    }
+    return null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final media = _resolveMedia();
+    if (media == null) return _fallback();
+
+    // 1. Remote HTTP/HTTPS image
+    if (media.startsWith('http://') || media.startsWith('https://')) {
+      return Image.network(
+        media,
+        fit: BoxFit.cover,
+        cacheWidth: 360,
+        errorBuilder: (_, _, _) => _fallback(),
+      );
+    }
+
+    // 2. Video file (local) -> extract frame or use cached frame via VideoThumbnails
+    if (VideoThumbnails.isLocalVideo(media)) {
+      final atMs = draft.playheadMs > 0 ? draft.playheadMs : 1000;
+      return FutureBuilder<String?>(
+        future: VideoThumbnails.frameFor(media, atMs: atMs),
+        builder: (_, snap) {
+          final frame = snap.data;
+          if (frame != null && !kIsWeb) {
+            return Image.file(
+              File(frame),
+              fit: BoxFit.cover,
+              cacheWidth: 360,
+              errorBuilder: (_, _, _) => _fallback(),
+            );
+          }
+          return _fallback();
+        },
+      );
+    }
+
+    // 3. Image file (e.g. extracted frame or still asset)
+    if (!kIsWeb) {
+      try {
+        final f = File(media);
+        if (f.existsSync()) {
+          return Image.file(
+            f,
+            fit: BoxFit.cover,
+            cacheWidth: 360,
+            errorBuilder: (_, _, _) => _fallback(),
+          );
+        }
+      } catch (_) {}
+    }
+
+    return _fallback();
+  }
+
+  Widget _fallback() => Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              AppTheme.primary.withValues(alpha: 0.25),
+              Colors.black87,
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: const Center(
+          child: Icon(Icons.movie_creation_outlined, color: Colors.white38, size: 28),
+        ),
       );
 }
 

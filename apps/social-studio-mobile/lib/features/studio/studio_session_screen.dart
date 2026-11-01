@@ -29,6 +29,7 @@ import 'studio_tools.dart';
 import 'text_motion.dart';
 import 'layer_placement.dart';
 import 'timeline_ops.dart';
+import 'video_thumbnails.dart';
 
 String timecode(int ms) {
   final t = ms < 0 ? 0 : ms;
@@ -197,7 +198,18 @@ class _StudioSessionScreenState extends ConsumerState<StudioSessionScreen> {
   }
 
   Future<void> _saveDraft({bool popOnSuccess = false}) async {
-    final draft = c.createDraft();
+    String? thumbPath;
+    final firstClip = c.ir?.clips.firstOrNull;
+    final vidPath = firstClip != null ? (c.sourcePaths[firstClip.assetId] ?? c.sourcePath) : c.sourcePath;
+    if (vidPath != null && VideoThumbnails.isLocalVideo(vidPath)) {
+      try {
+        final at = c.playheadMs > 0 ? c.playheadMs : 1000;
+        thumbPath = await VideoThumbnails.frameFor(vidPath, atMs: at);
+      } catch (_) {}
+    }
+
+    final draft = c.createDraft(thumbnailUrl: thumbPath);
+    if (!mounted) return;
     if (draft == null) {
       showError(context, 'No active timeline to save as draft.');
       return;
@@ -1403,7 +1415,7 @@ class _CroppedVideo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final size = stillSize ?? player!.value.size;
+    final size = stillSize ?? (player?.value.isInitialized == true ? player!.value.size : const Size(1920, 1080));
     final sideways = clip.rotationDeg == 90 || clip.rotationDeg == 270;
     final srcW = sideways ? size.height : size.width;
     final srcH = sideways ? size.width : size.height;
@@ -1416,7 +1428,9 @@ class _CroppedVideo extends StatelessWidget {
       child: SizedBox(
         width: size.width,
         height: size.height,
-        child: stillPath != null ? Image.file(File(stillPath!), fit: BoxFit.fill, gaplessPlayback: true) : VideoPlayer(player!),
+        child: stillPath != null
+            ? (!kIsWeb ? Image.file(File(stillPath!), fit: BoxFit.fill, gaplessPlayback: true) : const SizedBox.shrink())
+            : (player != null && player!.value.isInitialized ? VideoPlayer(player!) : const SizedBox.shrink()),
       ),
     );
     video = SizedBox(width: srcW, height: srcH, child: FittedBox(child: video));

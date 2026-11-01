@@ -45,9 +45,8 @@ class _AutopilotGeneratorState extends ConsumerState<AutopilotGenerator> {
           id,
   };
 
-  String _mixPreset = 'daily_1_reel';
   int _customReels = 1;
-  int _customCarousels = 2;
+  int _customCarousels = 1;
   int _targetReelDurationSec = 60;
   int _carouselSlideCount = 5;
 
@@ -81,18 +80,9 @@ class _AutopilotGeneratorState extends ConsumerState<AutopilotGenerator> {
   }
 
   Map<String, dynamic> get _mixPayload => <String, dynamic>{
-    'mode': _mixPreset == 'custom' ? 'custom' : 'preset',
-    'preset': _mixPreset,
-    'dailyReels': _mixPreset == 'custom'
-        ? _customReels
-        : (_mixPreset == 'daily_2_carousels_1_reel'
-            ? 1
-            : (_mixPreset == 'daily_1_carousel' ? 0 : 1)),
-    'dailyCarousels': _mixPreset == 'custom'
-        ? _customCarousels
-        : (_mixPreset == 'daily_2_carousels_1_reel'
-            ? 2
-            : (_mixPreset == 'daily_1_carousel' || _mixPreset == 'daily_1_reel_1_carousel' ? 1 : 0)),
+    'mode': 'custom',
+    'dailyReels': _customReels,
+    'dailyCarousels': _customCarousels,
     'targetReelDurationSec': _targetReelDurationSec,
     'carouselSlideCount': _carouselSlideCount,
   };
@@ -100,6 +90,11 @@ class _AutopilotGeneratorState extends ConsumerState<AutopilotGenerator> {
   /// Shows how many AI calls this plan makes and its output-token ceiling, before anything is generated.
   Future<void> _showEstimate() async {
     if (_platforms.isEmpty) return showError(context, 'Choose at least one platform.');
+    if (_customReels + _customCarousels == 0) return showError(context, 'Choose at least one reel or carousel per day.');
+    final supportsCarousel = _platforms.any((p) => p == 'instagram' || p == 'facebook' || p == 'linkedin');
+    if (_customCarousels > 0 && !supportsCarousel) {
+      return showError(context, 'None of the selected platforms publishes carousels. Adjust carousels per day to 0 or choose Instagram, Facebook, or LinkedIn.');
+    }
     final r = await guarded(context, () => ref.read(socialApiProvider).estimateAutopilot(widget.project.id, days: _days, platforms: _platforms.toList(), contentMix: _mixPayload));
     if (r == null || !mounted) return;
     final budget = jMap(r['budget']);
@@ -162,6 +157,11 @@ class _AutopilotGeneratorState extends ConsumerState<AutopilotGenerator> {
 
   Future<void> _start_() async {
     if (_platforms.isEmpty) return showError(context, 'Choose at least one platform.');
+    if (_customReels + _customCarousels == 0) return showError(context, 'Choose at least one reel or carousel per day.');
+    final supportsCarousel = _platforms.any((p) => p == 'instagram' || p == 'facebook' || p == 'linkedin');
+    if (_customCarousels > 0 && !supportsCarousel) {
+      return showError(context, 'None of the selected platforms publishes carousels. Adjust carousels per day to 0 or choose Instagram, Facebook, or LinkedIn.');
+    }
     setState(() => _starting = true);
     try {
       final mixPayload = _mixPayload;
@@ -319,59 +319,6 @@ class _AutopilotGeneratorState extends ConsumerState<AutopilotGenerator> {
         },
       ),
       SectionHeader('Content Cadence & Mix'),
-      Wrap(spacing: 8, runSpacing: 8, children: [
-        ChoiceChip(
-          label: Text('Daily 1 Reel'),
-          selected: _mixPreset == 'daily_1_reel',
-          onSelected: (_) => setState(() {
-            _mixPreset = 'daily_1_reel';
-            _customReels = 1;
-            _customCarousels = 0;
-          }),
-        ),
-        ChoiceChip(
-          label: Text('Daily 1 Carousel'),
-          selected: _mixPreset == 'daily_1_carousel',
-          onSelected: (_) => setState(() {
-            _mixPreset = 'daily_1_carousel';
-            _customReels = 0;
-            _customCarousels = 1;
-          }),
-        ),
-        ChoiceChip(
-          label: Text('Daily 1 Reel + 1 Carousel'),
-          selected: _mixPreset == 'daily_1_reel_1_carousel',
-          onSelected: (_) => setState(() {
-            _mixPreset = 'daily_1_reel_1_carousel';
-            _customReels = 1;
-            _customCarousels = 1;
-          }),
-        ),
-        ChoiceChip(
-          label: Text('Daily 2 Carousels + 1 Reel'),
-          selected: _mixPreset == 'daily_2_carousels_1_reel',
-          onSelected: (_) => setState(() {
-            _mixPreset = 'daily_2_carousels_1_reel';
-            _customReels = 1;
-            _customCarousels = 2;
-          }),
-        ),
-        ChoiceChip(
-          label: Text('Alternate Days (Reel / Carousel)'),
-          selected: _mixPreset == 'alternate',
-          onSelected: (_) => setState(() {
-            _mixPreset = 'alternate';
-            _customReels = 1;
-            _customCarousels = 1;
-          }),
-        ),
-        ChoiceChip(
-          label: Text('Custom Mix'),
-          selected: _mixPreset == 'custom',
-          onSelected: (_) => setState(() => _mixPreset = 'custom'),
-        ),
-      ]),
-      SizedBox(height: 12),
       SectionCard(
         padding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -382,28 +329,18 @@ class _AutopilotGeneratorState extends ConsumerState<AutopilotGenerator> {
                 child: Text('Daily Cadence Stepper',
                     style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: AppTheme.textSecondary)),
               ),
-              if (_mixPreset != 'custom')
-                Container(
-                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: AppTheme.accent.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: AppTheme.accent.withValues(alpha: 0.3)),
-                  ),
-                  child: Text('Preset Active (Prioritized)',
-                      style: TextStyle(fontSize: 10, color: AppTheme.accent, fontWeight: FontWeight.w700)),
-                )
-              else
-                Container(
-                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: AppTheme.success.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: AppTheme.success.withValues(alpha: 0.3)),
-                  ),
-                  child: Text('Custom Mode Active',
-                      style: TextStyle(fontSize: 10, color: AppTheme.success, fontWeight: FontWeight.w700)),
+              Container(
+                padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: AppTheme.primary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: AppTheme.primary.withValues(alpha: 0.3)),
                 ),
+                child: Text(
+                  '${_customReels + _customCarousels} / day',
+                  style: TextStyle(fontSize: 10, color: AppTheme.primary, fontWeight: FontWeight.w700),
+                ),
+              ),
             ],
           ),
           SizedBox(height: 8),
@@ -412,11 +349,8 @@ class _AutopilotGeneratorState extends ConsumerState<AutopilotGenerator> {
             Row(mainAxisSize: MainAxisSize.min, children: [
               IconButton(
                 icon: Icon(Icons.remove_circle_outline),
-                onPressed: _customReels > 0
-                    ? () => setState(() {
-                          _customReels--;
-                          _mixPreset = 'custom';
-                        })
+                onPressed: _customReels > 0 && (_customReels + _customCarousels > 1)
+                    ? () => setState(() => _customReels--)
                     : null,
               ),
               SizedBox(
@@ -426,10 +360,7 @@ class _AutopilotGeneratorState extends ConsumerState<AutopilotGenerator> {
               IconButton(
                 icon: Icon(Icons.add_circle_outline),
                 onPressed: _customReels < 5
-                    ? () => setState(() {
-                          _customReels++;
-                          _mixPreset = 'custom';
-                        })
+                    ? () => setState(() => _customReels++)
                     : null,
               ),
             ]),
@@ -440,11 +371,8 @@ class _AutopilotGeneratorState extends ConsumerState<AutopilotGenerator> {
             Row(mainAxisSize: MainAxisSize.min, children: [
               IconButton(
                 icon: Icon(Icons.remove_circle_outline),
-                onPressed: _customCarousels > 0
-                    ? () => setState(() {
-                          _customCarousels--;
-                          _mixPreset = 'custom';
-                        })
+                onPressed: _customCarousels > 0 && (_customReels + _customCarousels > 1)
+                    ? () => setState(() => _customCarousels--)
                     : null,
               ),
               SizedBox(
@@ -454,10 +382,7 @@ class _AutopilotGeneratorState extends ConsumerState<AutopilotGenerator> {
               IconButton(
                 icon: Icon(Icons.add_circle_outline),
                 onPressed: _customCarousels < 5
-                    ? () => setState(() {
-                          _customCarousels++;
-                          _mixPreset = 'custom';
-                        })
+                    ? () => setState(() => _customCarousels++)
                     : null,
               ),
             ]),
@@ -465,25 +390,25 @@ class _AutopilotGeneratorState extends ConsumerState<AutopilotGenerator> {
         ]),
       ),
       SizedBox(height: 14),
-      Text('Target Reel Duration', style: Theme.of(context).textTheme.labelMedium),
-      SizedBox(height: 6),
-      Wrap(spacing: 8, runSpacing: 8, children: [
-        ChoiceChip(
-          label: Text('30s (Fast Hook)'),
-          selected: _targetReelDurationSec == 30,
-          onSelected: (_) => setState(() => _targetReelDurationSec = 30),
-        ),
-        ChoiceChip(
-          label: Text('60s (Standard)'),
-          selected: _targetReelDurationSec == 60,
-          onSelected: (_) => setState(() => _targetReelDurationSec = 60),
-        ),
-        ChoiceChip(
-          label: Text('90s (In-depth)'),
-          selected: _targetReelDurationSec == 90,
-          onSelected: (_) => setState(() => _targetReelDurationSec = 90),
-        ),
-      ]),
+      DropdownButtonFormField<int>(
+        initialValue: _targetReelDurationSec,
+        isExpanded: true,
+        dropdownColor: AppTheme.surfaceElevated,
+        decoration: fieldDecoration('Target Reel Duration', helper: 'Recommended duration for generated reel scripts & hooks'),
+        items: const [
+          DropdownMenuItem(value: 15, child: Text('15s (Micro Hook)')),
+          DropdownMenuItem(value: 30, child: Text('30s (Fast Hook)')),
+          DropdownMenuItem(value: 45, child: Text('45s (Punchy Story)')),
+          DropdownMenuItem(value: 60, child: Text('60s (1 min — Standard)')),
+          DropdownMenuItem(value: 90, child: Text('90s (1.5 min — In-depth)')),
+          DropdownMenuItem(value: 120, child: Text('120s (2 min — Extended)')),
+          DropdownMenuItem(value: 150, child: Text('150s (2.5 min — Long-form)')),
+          DropdownMenuItem(value: 180, child: Text('180s (3 min — Deep Dive)')),
+        ],
+        onChanged: (val) {
+          if (val != null) setState(() => _targetReelDurationSec = val);
+        },
+      ),
       SizedBox(height: 14),
       Text('Target Carousel Slides', style: Theme.of(context).textTheme.labelMedium),
       SizedBox(height: 6),

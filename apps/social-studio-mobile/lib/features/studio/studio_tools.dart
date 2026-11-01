@@ -11,6 +11,7 @@ import 'package:video_player/video_player.dart';
 
 import '../../core/media/asset_cache.dart';
 import '../../core/native_engine/edit_ir.dart';
+import '../../core/native_engine/color_grade.dart';
 import '../../core/providers.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/common.dart';
@@ -54,7 +55,7 @@ enum StudioTool {
   cards('Cards', Icons.auto_awesome_motion_rounded),
   transition('Transition', Icons.compare_rounded);
 
-  StudioTool(this.label, this.icon);
+  const StudioTool(this.label, this.icon);
   final String label;
   final IconData icon;
 }
@@ -69,16 +70,21 @@ final filterLooks = <String, EditIrFilter>{
   'Mono': EditIrFilter(preset: 'NOIR_BW', brightness: 1.0, contrast: 1.2, saturation: 0),
   'Neon': EditIrFilter(preset: 'CYBER_NEON', brightness: 1.0, contrast: 1.15, saturation: 1.45),
   'Glow': EditIrFilter(preset: 'GLOW', brightness: 1.08, contrast: 0.92, saturation: 1.05),
+  'Retro': EditIrFilter(preset: 'VINTAGE_WARM', brightness: 1.04, contrast: 0.88, saturation: 0.8),
+  'Cool': EditIrFilter(preset: 'CYBER_NEON', brightness: 0.98, contrast: 1.08, temperature: -0.3, saturation: 0.95),
 };
 
 Future<void> showStudioTool(BuildContext context, StudioTool tool, StudioController c, {required EditFn onEdit}) {
+  if (c.ir == null) return Future.value();
   final ir = c.ir!;
   final selected = c.selectedClip;
-  final clipIndex = selected ?? TimelineOps.clipIndexAt(ir, c.playheadMs);
+  final rawIndex = selected ?? (ir.clips.isNotEmpty ? TimelineOps.clipIndexAt(ir, c.playheadMs) : 0);
+  final clipIndex = ir.clips.isEmpty ? 0 : rawIndex.clamp(0, ir.clips.length - 1);
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     backgroundColor: AppTheme.surface,
+    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
     builder: (ctx) => Padding(
       padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(ctx).viewInsets.bottom + 16),
       child: SafeArea(
@@ -108,7 +114,7 @@ Future<void> showStudioTool(BuildContext context, StudioTool tool, StudioControl
           StudioTool.broll => _BrollSheet(c: c, onEdit: onEdit),
           StudioTool.sticker => _StickerSheet(c: c, onEdit: onEdit),
           StudioTool.cards => MotionGraphicsSheet(c: c, onEdit: onEdit),
-          StudioTool.transition => _TransitionSheet(c: c, onEdit: onEdit),
+          StudioTool.transition => _TransitionSheet(c: c, index: clipIndex, onEdit: onEdit),
           StudioTool.library => _LibrarySheet(c: c, onEdit: onEdit),
           StudioTool.director => SizedBox.shrink(),
         },
@@ -158,7 +164,9 @@ class _Scope extends StatelessWidget {
         );
 }
 
-void _close(BuildContext context) => Navigator.of(context).pop();
+void _close(BuildContext context) {
+  if (Navigator.of(context).canPop()) Navigator.of(context).pop();
+}
 
 // ── clip tools ───────────────────────────────────────────────────────────────
 
@@ -427,57 +435,179 @@ class _SpeedSheetState extends State<_SpeedSheet> {
   bool all = false;
   bool busy = false;
 
+  static const _speedBadges = [
+    (rate: 0.5, label: '0.5x', name: 'Slow-Mo', icon: Icons.slow_motion_video_rounded, color: Color(0xFF38BDF8)),
+    (rate: 0.75, label: '0.75x', name: 'Chill', icon: Icons.motion_photos_paused_rounded, color: Color(0xFF2DD4BF)),
+    (rate: 1.0, label: '1.0x', name: 'Normal', icon: Icons.play_arrow_rounded, color: Color(0xFF34D399)),
+    (rate: 1.25, label: '1.25x', name: 'Paced', icon: Icons.directions_walk_rounded, color: Color(0xFFA3E635)),
+    (rate: 1.5, label: '1.5x', name: 'Punchy', icon: Icons.bolt_rounded, color: Color(0xFFFBBF24)),
+    (rate: 2.0, label: '2.0x', name: 'Fast', icon: Icons.fast_forward_rounded, color: Color(0xFFFB923C)),
+    (rate: 3.0, label: '3.0x', name: 'Hyper', icon: Icons.rocket_launch_rounded, color: Color(0xFFA855F7)),
+  ];
+
+  static const _rampPresets = [
+    (key: 'hero', label: 'Hero Slow-Mo', icon: Icons.show_chart_rounded, desc: 'Normal → Slow drop → Normal'),
+    (key: 'montage', label: 'Montage', icon: Icons.timeline_rounded, desc: 'Fast burst → Normal pace'),
+    (key: 'bullet', label: 'Bullet Time', icon: Icons.camera_rounded, desc: 'Instant dramatic freeze'),
+    (key: 'flash_in', label: 'Flash In', icon: Icons.trending_up_rounded, desc: 'Accelerates into cut'),
+    (key: 'flash_out', label: 'Flash Out', icon: Icons.trending_down_rounded, desc: 'Decelerates from cut'),
+  ];
+
   @override
-  Widget build(BuildContext context) => Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        const _Title('Speed', subtitle: 'Voice pitch is preserved.'),
-        _Scope(all: all, onChanged: (v) => setState(() => all = v), index: widget.index, count: widget.c.ir!.clips.length),
-        Wrap(spacing: 8, children: [
-          for (final s in [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0])
-            ChoiceChip(label: Text('${s}x'), selected: speed == s, onSelected: (_) => setState(() => speed = s)),
-        ]),
-        Slider(value: speed, min: 0.25, max: 4, divisions: 75, label: '${speed.toStringAsFixed(2)}x', onChanged: (v) => setState(() => speed = (v * 100).round() / 100)),
-        FilledButton(
-          onPressed: () {
-            _close(context);
-            widget.onEdit((ir) => TimelineOps.setSpeed(ir, speed, index: all ? null : widget.index));
-          },
-          child: Text('Set ${speed.toStringAsFixed(2)}x'),
-        ),
-        SizedBox(height: 12),
-        OutlinedButton.icon(
-          onPressed: busy
-              ? null
-              : () async {
-                  setState(() => busy = true);
-                  try {
-                    await widget.c.reverseClip(widget.index);
-                    if (context.mounted) {
-                      _close(context);
-                      showSuccess(context, 'Clip ${widget.index + 1} now plays backwards');
-                    }
-                  } catch (e) {
-                    if (context.mounted) showError(context, e);
-                  } finally {
-                    if (mounted) setState(() => busy = false);
-                  }
-                },
-          icon: Icon(Icons.fast_rewind_rounded),
-          label: Text(busy ? 'Reversing on this phone… (up to a minute)' : 'Play this clip backwards'),
-        ),
-        SizedBox(height: 12),
-        Text('Speed ramp (this clip)', style: Theme.of(context).textTheme.labelMedium),
-        SizedBox(height: 6),
-        Wrap(spacing: 8, runSpacing: 6, children: [
-          for (final (key, label) in const [('montage', 'Montage'), ('hero', 'Hero slow-mo'), ('bullet', 'Bullet'), ('flash_in', 'Flash in'), ('flash_out', 'Flash out')])
-            ActionChip(
-              label: Text(label),
-              onPressed: () {
-                _close(context);
-                widget.onEdit((ir) => TimelineOps.speedRamp(ir, widget.index, key), done: 'Speed ramp: $label');
+  Widget build(BuildContext context) => Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const _Title('Video Speed & Ramping', subtitle: 'Pitch correction enabled automatically'),
+          _Scope(all: all, onChanged: (v) => setState(() => all = v), index: widget.index, count: widget.c.ir!.clips.length),
+          const SizedBox(height: 10),
+
+          // Visual Speed Badges Strip
+          SizedBox(
+            height: 72,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: _speedBadges.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 8),
+              itemBuilder: (ctx, i) {
+                final b = _speedBadges[i];
+                final isSelected = (speed - b.rate).abs() < 0.05;
+                return InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: () => setState(() => speed = b.rate),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    width: 70,
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    decoration: BoxDecoration(
+                      color: isSelected ? b.color.withValues(alpha: 0.15) : AppTheme.surfaceElevated,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: isSelected ? b.color : AppTheme.border,
+                        width: isSelected ? 2 : 1,
+                      ),
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(b.icon, size: 20, color: isSelected ? b.color : AppTheme.textSecondary),
+                        const SizedBox(height: 4),
+                        Text(
+                          b.label,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                            color: isSelected ? b.color : AppTheme.textPrimary,
+                          ),
+                        ),
+                        Text(
+                          b.name,
+                          style: TextStyle(
+                            fontSize: 9,
+                            color: isSelected ? b.color : AppTheme.textMuted,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
               },
             ),
-        ]),
-      ]);
+          ),
+          const SizedBox(height: 12),
+
+          Row(
+            children: [
+              Text('Continuous Speed: ${speed.toStringAsFixed(2)}x', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+              const Spacer(),
+              Text(speed < 1.0 ? 'Slow-motion' : (speed > 1.0 ? 'Accelerated' : 'Normal'), style: TextStyle(fontSize: 12, color: speed != 1.0 ? AppTheme.primary : AppTheme.textMuted)),
+            ],
+          ),
+          Slider(
+            value: speed,
+            min: 0.25,
+            max: 4,
+            divisions: 75,
+            label: '${speed.toStringAsFixed(2)}x',
+            onChanged: (v) => setState(() => speed = (v * 100).round() / 100),
+          ),
+
+          FilledButton(
+            onPressed: () {
+              _close(context);
+              widget.onEdit((ir) => TimelineOps.setSpeed(ir, speed, index: all ? null : widget.index), done: 'Speed set to ${speed.toStringAsFixed(2)}x');
+            },
+            child: Text('Apply ${speed.toStringAsFixed(2)}x Speed'),
+          ),
+          const SizedBox(height: 12),
+
+          OutlinedButton.icon(
+            onPressed: busy
+                ? null
+                : () async {
+                    setState(() => busy = true);
+                    try {
+                      await widget.c.reverseClip(widget.index);
+                      if (context.mounted) {
+                        _close(context);
+                        showSuccess(context, 'Clip ${widget.index + 1} now plays backwards');
+                      }
+                    } catch (e) {
+                      if (context.mounted) showError(context, e);
+                    } finally {
+                      if (mounted) setState(() => busy = false);
+                    }
+                  },
+            icon: const Icon(Icons.fast_rewind_rounded),
+            label: Text(busy ? 'Reversing clip… (generating reversed track)' : 'Play this clip backwards (Reverse)'),
+          ),
+
+          const SizedBox(height: 16),
+          Text('Speed Ramp Curves (This Clip)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textSecondary)),
+          const SizedBox(height: 8),
+
+          SizedBox(
+            height: 64,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: _rampPresets.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 8),
+              itemBuilder: (ctx, i) {
+                final r = _rampPresets[i];
+                return InkWell(
+                  borderRadius: BorderRadius.circular(10),
+                  onTap: () {
+                    _close(context);
+                    widget.onEdit((ir) => TimelineOps.speedRamp(ir, widget.index, r.key), done: 'Speed ramp: ${r.label}');
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: AppTheme.surfaceElevated,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: AppTheme.border),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(r.icon, size: 18, color: AppTheme.primary),
+                        const SizedBox(width: 8),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(r.label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                            Text(r.desc, style: TextStyle(fontSize: 9, color: AppTheme.textMuted)),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      );
 }
 
 class _VolumeSheet extends StatefulWidget {
@@ -558,36 +688,104 @@ class _CanvasSheetState extends State<_CanvasSheet> {
             widget.c.ir!.sources.firstOrNull?.width ?? 0, widget.c.ir!.sources.firstOrNull?.height ?? 0, widget.c.ir!.canvas) ==
         null;
 
-  static const _labels = {'9:16': 'Reels · Shorts', '1:1': 'Square', '4:5': 'Feed portrait', '16:9': 'YouTube · landscape'};
+  static const _aspectConfigs = [
+    (ratio: '9:16', title: '9:16 Vertical', subtitle: 'Reels · Shorts · TikTok', icon: Icons.smartphone_rounded, w: 26.0, h: 46.0),
+    (ratio: '16:9', title: '16:9 Landscape', subtitle: 'YouTube · Desktop', icon: Icons.tv_rounded, w: 46.0, h: 26.0),
+    (ratio: '1:1', title: '1:1 Square', subtitle: 'Instagram Post', icon: Icons.crop_square_rounded, w: 34.0, h: 34.0),
+    (ratio: '4:5', title: '4:5 Portrait', subtitle: 'Instagram Feed', icon: Icons.portrait_rounded, w: 30.0, h: 38.0),
+  ];
 
   @override
-  Widget build(BuildContext context) => Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        const _Title('Canvas & crop'),
-        RadioGroup<String>(
-          groupValue: aspect,
-          onChanged: (v) => setState(() => aspect = v ?? aspect),
-          child: Column(children: [
-            for (final a in TimelineOps.aspects)
-              RadioListTile<String>(value: a, title: Text(a), subtitle: Text(_labels[a] ?? ''), dense: true),
-          ]),
-        ),
-        SegmentedButton<bool>(
-          segments: [
-            ButtonSegment(value: true, label: Text('Fill (crop)'), icon: Icon(Icons.crop_rounded)),
-            ButtonSegment(value: false, label: Text('Fit (bars)'), icon: Icon(Icons.fit_screen_rounded)),
-          ],
-          selected: {fill},
-          onSelectionChanged: (s) => setState(() => fill = s.first),
-        ),
-        SizedBox(height: 16),
-        FilledButton(
-          onPressed: () {
-            _close(context);
-            widget.onEdit((ir) => TimelineOps.setAspect(ir, aspect, fill: fill, focus: widget.c.faceFocus));
-          },
-          child: Text('Apply'),
-        ),
-      ]);
+  Widget build(BuildContext context) => Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const _Title('Canvas & Aspect Ratio', subtitle: 'Choose video dimensions for your target platform'),
+          const SizedBox(height: 8),
+
+          // Visual Aspect Ratio Mockups Grid
+          GridView.count(
+            crossAxisCount: 2,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            mainAxisSpacing: 10,
+            crossAxisSpacing: 10,
+            childAspectRatio: 1.85,
+            children: [
+              for (final cfg in _aspectConfigs)
+                InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: () => setState(() => aspect = cfg.ratio),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: aspect == cfg.ratio ? AppTheme.primary.withValues(alpha: 0.12) : AppTheme.surfaceElevated,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: aspect == cfg.ratio ? AppTheme.primary : AppTheme.border,
+                        width: aspect == cfg.ratio ? 2 : 1,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        // Visual Canvas Silhouette
+                        Container(
+                          width: 48,
+                          height: 52,
+                          alignment: Alignment.center,
+                          child: Container(
+                            width: cfg.w,
+                            height: cfg.h,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(
+                                color: aspect == cfg.ratio ? AppTheme.primary : AppTheme.textSecondary,
+                                width: 1.5,
+                              ),
+                              color: aspect == cfg.ratio ? AppTheme.primary.withValues(alpha: 0.3) : AppTheme.border.withValues(alpha: 0.3),
+                            ),
+                            child: Icon(cfg.icon, size: 14, color: aspect == cfg.ratio ? AppTheme.primary : AppTheme.textSecondary),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(cfg.title, style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: aspect == cfg.ratio ? AppTheme.primary : AppTheme.textPrimary)),
+                              const SizedBox(height: 2),
+                              Text(cfg.subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 10, color: AppTheme.textMuted)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 14),
+
+          SegmentedButton<bool>(
+            segments: const [
+              ButtonSegment(value: true, label: Text('Fill (Smart Crop)'), icon: Icon(Icons.crop_rounded)),
+              ButtonSegment(value: false, label: Text('Fit (Add Bars)'), icon: Icon(Icons.fit_screen_rounded)),
+            ],
+            selected: {fill},
+            onSelectionChanged: (s) => setState(() => fill = s.first),
+          ),
+          const SizedBox(height: 16),
+          FilledButton(
+            onPressed: () {
+              _close(context);
+              widget.onEdit((ir) => TimelineOps.setAspect(ir, aspect, fill: fill, focus: widget.c.faceFocus));
+            },
+            child: Text('Apply $aspect Canvas'),
+          ),
+        ],
+      );
 }
 
 class _RotateSheet extends StatefulWidget {
@@ -645,33 +843,203 @@ class _FilterSheet extends StatefulWidget {
 
 class _FilterSheetState extends State<_FilterSheet> {
   bool all = true;
+  late EditIrFilter? _selectedFilter = widget.c.ir!.clips[widget.index].filter;
+
+  static const _samplePortrait = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80';
 
   @override
   Widget build(BuildContext context) {
-    final current = widget.c.ir!.clips[widget.index].filter?.preset;
-    return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      const _Title('Filters'),
-      _Scope(all: all, onChanged: (v) => setState(() => all = v), index: widget.index, count: widget.c.ir!.clips.length),
-      Wrap(spacing: 8, runSpacing: 8, children: [
-        ChoiceChip(
-          label: Text('None'),
-          selected: current == null,
-          onSelected: (_) {
-            _close(context);
-            widget.onEdit((ir) => TimelineOps.setFilter(ir, null, index: all ? null : widget.index));
-          },
+    final currentPreset = _selectedFilter?.preset;
+    final totalClips = widget.c.ir!.clips.length;
+
+    final filterItems = [
+      (name: 'Original', filter: null as EditIrFilter?, desc: 'Clean natural look'),
+      for (final e in filterLooks.entries)
+        (name: e.key, filter: e.value as EditIrFilter?, desc: _filterDesc(e.key)),
+    ];
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Visual Color Filters', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 18)),
+                Text('Tap to see real-time color grading', style: Theme.of(context).textTheme.labelSmall),
+              ],
+            ),
+            if (_selectedFilter != null)
+              TextButton.icon(
+                onPressed: () {
+                  setState(() => _selectedFilter = null);
+                  widget.onEdit((ir) => TimelineOps.setFilter(ir, null, index: all ? null : widget.index), done: 'Filter removed');
+                },
+                icon: Icon(Icons.refresh_rounded, size: 16, color: AppTheme.textSecondary),
+                label: Text('Reset', style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+              ),
+          ],
         ),
-        for (final e in filterLooks.entries)
-          ChoiceChip(
-            label: Text(e.key),
-            selected: current == e.value.preset,
-            onSelected: (_) {
-              _close(context);
-              widget.onEdit((ir) => TimelineOps.setFilter(ir, e.value, index: all ? null : widget.index));
+        const SizedBox(height: 12),
+        _Scope(all: all, onChanged: (v) => setState(() => all = v), index: widget.index, count: totalClips),
+        const SizedBox(height: 8),
+
+        // Visual Filter Cards Strip
+        SizedBox(
+          height: 124,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: filterItems.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 10),
+            itemBuilder: (ctx, i) {
+              final item = filterItems[i];
+              final isSelected = item.filter == null
+                  ? currentPreset == null
+                  : currentPreset == item.filter?.preset;
+
+              final matrix = item.filter == null ? null : gradeMatrix(item.filter!);
+
+              return GestureDetector(
+                onTap: () {
+                  setState(() => _selectedFilter = item.filter);
+                  widget.onEdit(
+                    (ir) => TimelineOps.setFilter(ir, item.filter, index: all ? null : widget.index),
+                    done: item.filter == null ? 'Filter cleared' : '${item.name} filter applied',
+                  );
+                },
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      width: 76,
+                      height: 94,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: isSelected ? AppTheme.primary : AppTheme.border,
+                          width: isSelected ? 2.5 : 1,
+                        ),
+                        boxShadow: isSelected
+                            ? [
+                                BoxShadow(
+                                  color: AppTheme.primary.withValues(alpha: 0.4),
+                                  blurRadius: 10,
+                                  spreadRadius: 1,
+                                )
+                              ]
+                            : null,
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            if (matrix != null)
+                              ColorFiltered(
+                                colorFilter: ColorFilter.matrix(matrix),
+                                child: Image.network(
+                                  _samplePortrait,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, _, _) => _fallbackFilterThumb(item.name),
+                                ),
+                              )
+                            else
+                              Image.network(
+                                _samplePortrait,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, _, _) => _fallbackFilterThumb(item.name),
+                              ),
+                            Positioned(
+                              bottom: 0,
+                              left: 0,
+                              right: 0,
+                              height: 28,
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    begin: Alignment.bottomCenter,
+                                    end: Alignment.topCenter,
+                                    colors: [Colors.black.withValues(alpha: 0.8), Colors.transparent],
+                                  ),
+                                ),
+                              ),
+                            ),
+                            if (isSelected)
+                              Positioned(
+                                top: 4,
+                                right: 4,
+                                child: Container(
+                                  padding: const EdgeInsets.all(2),
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.primary,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(Icons.check, size: 12, color: Colors.white),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      item.name,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                        color: isSelected ? AppTheme.primary : AppTheme.textPrimary,
+                      ),
+                    ),
+                  ],
+                ),
+              );
             },
           ),
-      ]),
-    ]);
+        ),
+
+        const SizedBox(height: 14),
+        FilledButton(
+          onPressed: () => _close(context),
+          child: Text(all ? 'Done (Applied to all $totalClips clips)' : 'Done (Applied to Clip ${widget.index + 1})'),
+        ),
+      ],
+    );
+  }
+
+  static String _filterDesc(String name) => switch (name) {
+    'Vivid' => 'Punchy saturation & contrast',
+    'Cinematic' => 'Hollywood Teal & Orange grade',
+    'Warm' => 'Golden hour amber sunlight',
+    'Mono' => 'High-contrast noir black & white',
+    'Neon' => 'Cyberpunk electric magenta & cyan',
+    'Glow' => 'Dreamy soft bloom diffusion',
+    'Retro' => '70s nostalgic film fade',
+    'Cool' => 'Crisp arctic tone',
+    _ => 'Custom grade',
+  };
+
+  Widget _fallbackFilterThumb(String label) {
+    final colors = switch (label) {
+      'Vivid' => [const Color(0xFFFF5252), const Color(0xFFFFD740)],
+      'Cinematic' => [const Color(0xFF00E5FF), const Color(0xFFFF6D00)],
+      'Warm' => [const Color(0xFFFFB300), const Color(0xFFE65100)],
+      'Mono' => [const Color(0xFF424242), const Color(0xFFE0E0E0)],
+      'Neon' => [const Color(0xFFE040FB), const Color(0xFF00E5FF)],
+      'Glow' => [const Color(0xFFFFF9C4), const Color(0xFFFFAB91)],
+      'Retro' => [const Color(0xFF8D6E63), const Color(0xFFFFCC80)],
+      'Cool' => [const Color(0xFF00B0FF), const Color(0xFF80D8FF)],
+      _ => [const Color(0xFF37474F), const Color(0xFF78909C)],
+    };
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: colors),
+      ),
+      child: Center(child: Icon(Icons.palette_rounded, color: Colors.white.withValues(alpha: 0.6), size: 20)),
+    );
   }
 }
 
@@ -2040,6 +2408,70 @@ class _CaptionsSheetState extends State<_CaptionsSheet> {
   }
 }
 
+class _MusicWaveformVisualizer extends StatefulWidget {
+  const _MusicWaveformVisualizer({required this.isPlaying, this.color});
+  final bool isPlaying;
+  final Color? color;
+
+  @override
+  State<_MusicWaveformVisualizer> createState() => _MusicWaveformVisualizerState();
+}
+
+class _MusicWaveformVisualizerState extends State<_MusicWaveformVisualizer> with SingleTickerProviderStateMixin {
+  late final AnimationController _anim = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 700),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _anim.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final activeColor = widget.color ?? AppTheme.primary;
+    if (!widget.isPlaying) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final h in [6.0, 10.0, 4.0, 12.0, 8.0])
+            Container(
+              width: 2.5,
+              height: h,
+              margin: const EdgeInsets.symmetric(horizontal: 1),
+              decoration: BoxDecoration(color: AppTheme.textMuted, borderRadius: BorderRadius.circular(2)),
+            ),
+        ],
+      );
+    }
+    return AnimatedBuilder(
+      animation: _anim,
+      builder: (context, _) {
+        final v = _anim.value;
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _bar(4 + 10 * v, activeColor),
+            _bar(14 - 10 * v, activeColor),
+            _bar(6 + 8 * ((v + 0.4) % 1.0), activeColor),
+            _bar(12 - 7 * v, activeColor),
+            _bar(5 + 9 * ((v + 0.7) % 1.0), activeColor),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _bar(double h, Color color) => Container(
+        width: 2.5,
+        height: h.clamp(3.0, 16.0),
+        margin: const EdgeInsets.symmetric(horizontal: 1),
+        decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(2)),
+      );
+}
+
 class _MusicSheet extends ConsumerStatefulWidget {
   const _MusicSheet({required this.c, required this.onEdit});
   final StudioController c;
@@ -2061,7 +2493,16 @@ class _MusicSheetState extends ConsumerState<_MusicSheet> {
   String? _previewingUrl;
   VideoPlayerController? _previewPlayer;
 
-  static const _moodChips = ['upbeat', 'lo-fi', 'cinematic', 'ambient', 'energetic', 'calm', 'electronic'];
+  static const _moodPresets = [
+    (tag: 'upbeat', label: 'Upbeat', icon: Icons.bolt_rounded, color: Color(0xFFF59E0B)),
+    (tag: 'lo-fi', label: 'Lo-Fi', icon: Icons.coffee_rounded, color: Color(0xFFA78BFA)),
+    (tag: 'cinematic', label: 'Cinematic', icon: Icons.movie_filter_rounded, color: Color(0xFF38BDF8)),
+    (tag: 'ambient', label: 'Ambient', icon: Icons.nightlight_round, color: Color(0xFF818CF8)),
+    (tag: 'energetic', label: 'Energetic', icon: Icons.local_fire_department_rounded, color: Color(0xFFF43F5E)),
+    (tag: 'calm', label: 'Calm', icon: Icons.spa_rounded, color: Color(0xFF10B981)),
+    (tag: 'electronic', label: 'Electronic', icon: Icons.headphones_rounded, color: Color(0xFF06B6D4)),
+    (tag: 'acoustic', label: 'Acoustic', icon: Icons.music_note_rounded, color: Color(0xFFEAB308)),
+  ];
 
   @override
   void initState() {
@@ -2179,169 +2620,418 @@ class _MusicSheetState extends ConsumerState<_MusicSheet> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final hasSpeech = widget.c.ir?.audio.speechRangesMs.isNotEmpty ?? false;
-    return ConstrainedBox(
-      constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.8),
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _Title('Music & Soundtracks',
-                subtitle: m == null
-                    ? 'Plays under the video and loops automatically.'
-                    : 'Current: ${m!.source['query'] ?? 'custom track'}'),
-            Row(children: [
-              Expanded(
-                child: TextField(
-                  controller: _query,
-                  onSubmitted: _searchAudio,
-                  decoration: fieldDecoration('Mood / Genre', hint: 'upbeat, chill, cinematic…'),
+  Widget _buildCurrentTrackCard(BuildContext context, EditIrMusic music, bool hasSpeech) {
+    final currentTitle = music.source['title'] ?? music.source['query'] ?? 'Background Soundtrack';
+    final currentUrl = music.source['url'] as String?;
+    final isPlayingCurrent = currentUrl != null && _previewingUrl == currentUrl && (_previewPlayer?.value.isPlaying ?? false);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceElevated,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppTheme.primary.withValues(alpha: 0.4), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.primary.withValues(alpha: 0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: AppTheme.primary.withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: Center(
+                  child: currentUrl != null
+                      ? IconButton(
+                          padding: EdgeInsets.zero,
+                          icon: Icon(
+                            isPlayingCurrent ? Icons.pause_circle_filled_rounded : Icons.play_circle_fill_rounded,
+                            color: AppTheme.primary,
+                            size: 28,
+                          ),
+                          onPressed: () => _togglePreview(currentUrl),
+                        )
+                      : Icon(Icons.music_note_rounded, color: AppTheme.primary, size: 20),
                 ),
               ),
-              SizedBox(width: 8),
-              FilledButton.icon(
-                onPressed: _searching || _busy ? null : () => _searchAudio(_query.text),
-                icon: Icon(Icons.search_rounded, size: 18),
-                label: Text('Find'),
-              ),
-            ]),
-            SizedBox(height: 8),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  for (final tag in _moodChips)
-                    Padding(
-                      padding: EdgeInsets.only(right: 6),
-                      child: ActionChip(
-                        label: Text(tag, style: TextStyle(fontSize: 12)),
-                        backgroundColor: _query.text.trim().toLowerCase() == tag ? AppTheme.primary.withValues(alpha: 0.3) : AppTheme.surfaceElevated,
-                        side: BorderSide(
-                          color: _query.text.trim().toLowerCase() == tag ? AppTheme.primary : AppTheme.border,
-                        ),
-                        onPressed: () {
-                          _query.text = tag;
-                          _searchAudio(tag);
-                        },
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            if (_searching)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: UniversalSkeleton(type: SkeletonType.activity, itemCount: 2),
-              ),
-            if (_results != null && !_searching) ...[
-              SizedBox(height: 12),
-              Text(
-                'Found ${_results!.length} tracks (Pixabay / Freesound):',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textSecondary),
-              ),
-              SizedBox(height: 6),
-              if (_results!.isEmpty)
-                Container(
-                  padding: EdgeInsets.all(16),
-                  decoration: BoxDecoration(color: AppTheme.surfaceElevated, borderRadius: BorderRadius.circular(12)),
-                  child: Text('No tracks found for this mood. Try "energetic" or "calm", or upload an audio file.',
-                      style: TextStyle(color: AppTheme.textMuted)),
-                )
-              else
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxHeight: 280),
-                  child: ListView.separated(
-                    shrinkWrap: true,
-                    itemCount: _results!.length.clamp(0, 20),
-                    separatorBuilder: (_, _) => Divider(height: 1, color: AppTheme.borderSubtle),
-                  itemBuilder: (ctx, i) {
-                    final t = _results![i];
-                    final isPlaying = _previewingUrl == t.url && (_previewPlayer?.value.isPlaying ?? false);
-                    final durStr = t.durationSec != null ? '${(t.durationSec! / 60).floor()}:${(t.durationSec! % 60).round().toString().padLeft(2, '0')}' : '';
-                    return ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: IconButton(
-                        icon: Icon(
-                          isPlaying ? Icons.pause_circle_filled_rounded : Icons.play_circle_fill_rounded,
-                          color: isPlaying ? AppTheme.success : AppTheme.primary,
-                          size: 36,
-                        ),
-                        onPressed: () => _togglePreview(t.url),
-                      ),
-                      title: Text(t.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-                      subtitle: Row(
-                        children: [
-                          Container(
-                            padding: EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                            decoration: BoxDecoration(color: AppTheme.surfaceElevated, borderRadius: BorderRadius.circular(4)),
-                            child: Text(t.provider.toUpperCase(), style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: AppTheme.textSecondary)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: AppTheme.primary.withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(4),
                           ),
-                          if (durStr.isNotEmpty) ...[
-                            SizedBox(width: 6),
-                            Text(durStr, style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
-                          ],
-                        ],
-                      ),
-                      trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                        AssetDownloadBadge(url: t.url),
-                        SizedBox(width: 6),
-                        FilledButton.tonal(
-                          style: FilledButton.styleFrom(padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6)),
-                          onPressed: () => _applyTrack(t.url, t.title, t.attribution),
-                          child: Text('Use', style: TextStyle(fontSize: 12)),
+                          child: Text(
+                            'TIMELINE SOUNDTRACK',
+                            style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: AppTheme.primary),
+                          ),
                         ),
-                      ]),
+                        const SizedBox(width: 6),
+                        _MusicWaveformVisualizer(isPlaying: isPlayingCurrent),
+                      ],
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      currentTitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: 'Remove soundtrack',
+                onPressed: () {
+                  _close(context);
+                  widget.onEdit((ir) => TimelineOps.removeMusic(ir), done: 'Music removed');
+                },
+                icon: Icon(Icons.delete_outline_rounded, color: AppTheme.error, size: 20),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Icon(Icons.volume_up_rounded, size: 16, color: AppTheme.textSecondary),
+              const SizedBox(width: 6),
+              Text(
+                'Volume: ${vol.toStringAsFixed(0)} dB',
+                style: TextStyle(fontSize: 11, color: AppTheme.textSecondary),
+              ),
+              Expanded(
+                child: Slider(
+                  value: vol,
+                  min: -40,
+                  max: 0,
+                  divisions: 40,
+                  onChanged: (v) {
+                    setState(() => vol = v.roundToDouble());
+                    widget.onEdit(
+                      (ir) => TimelineOps.updateMusic(ir, volumeDb: vol, duck: duck, fadeInMs: fades ? 500 : 0, fadeOutMs: fades ? 1000 : 0),
                     );
                   },
                 ),
               ),
             ],
-            SizedBox(height: 8),
-            OutlinedButton.icon(
-              onPressed: _busy || _searching ? null : _upload,
-              icon: Icon(Icons.upload_file_rounded),
-              label: Text('Use my own audio file'),
-            ),
-            if (_busy) Padding(padding: EdgeInsets.only(top: 8), child: LinearProgressIndicator()),
-            SizedBox(height: 12),
-            Text('Music volume: ${vol.toStringAsFixed(0)} dB'),
-            Slider(value: vol, min: -40, max: 0, divisions: 40, onChanged: (v) => setState(() => vol = v.roundToDouble())),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              value: duck && hasSpeech,
-              onChanged: hasSpeech ? (v) => setState(() => duck = v) : null,
-              title: Text('Lower music while someone speaks'),
-              subtitle: hasSpeech ? null : Text('Needs a transcript'),
-            ),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              value: fades,
-              onChanged: (v) => setState(() => fades = v),
-              title: Text('Fade in and out'),
-            ),
-            if (m != null)
-              Row(children: [
-                TextButton(
-                  onPressed: () {
-                    _close(context);
-                    widget.onEdit((ir) => TimelineOps.removeMusic(ir), done: 'Music removed');
-                  },
-                  child: Text('Remove music', style: TextStyle(color: AppTheme.error)),
+          ),
+          Row(
+            children: [
+              Expanded(
+                child: SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  value: duck && hasSpeech,
+                  onChanged: hasSpeech
+                      ? (v) {
+                          setState(() => duck = v);
+                          widget.onEdit(
+                            (ir) => TimelineOps.updateMusic(ir, volumeDb: vol, duck: duck, fadeInMs: fades ? 500 : 0, fadeOutMs: fades ? 1000 : 0),
+                          );
+                        }
+                      : null,
+                  title: const Text('Speech Ducking', style: TextStyle(fontSize: 12)),
+                  subtitle: Text(hasSpeech ? 'Lower under voice' : 'Needs speech transcript', style: TextStyle(fontSize: 10, color: AppTheme.textMuted)),
                 ),
-                Spacer(),
-                FilledButton(
-                  onPressed: () {
-                    _close(context);
-                    widget.onEdit((ir) => TimelineOps.updateMusic(ir, volumeDb: vol, duck: duck, fadeInMs: fades ? 500 : 0, fadeOutMs: fades ? 1000 : 0));
+              ),
+              Expanded(
+                child: SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  value: fades,
+                  onChanged: (v) {
+                    setState(() => fades = v);
+                    widget.onEdit(
+                      (ir) => TimelineOps.updateMusic(ir, volumeDb: vol, duck: duck, fadeInMs: fades ? 500 : 0, fadeOutMs: fades ? 1000 : 0),
+                    );
                   },
-                  child: Text('Update'),
+                  title: const Text('Fade in & out', style: TextStyle(fontSize: 12)),
+                  subtitle: Text('Smooth head & tail', style: TextStyle(fontSize: 10, color: AppTheme.textMuted)),
                 ),
-              ]),
-          ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTrackCard(StockAudioResult t) {
+    final isPlaying = _previewingUrl == t.url && (_previewPlayer?.value.isPlaying ?? false);
+    final durStr = t.durationSec != null
+        ? '${(t.durationSec! / 60).floor()}:${(t.durationSec! % 60).round().toString().padLeft(2, '0')}'
+        : '';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: isPlaying ? AppTheme.primary.withValues(alpha: 0.1) : AppTheme.surfaceElevated,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: isPlaying ? AppTheme.primary.withValues(alpha: 0.5) : AppTheme.border,
         ),
+      ),
+      child: Row(
+        children: [
+          IconButton(
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+            icon: Icon(
+              isPlaying ? Icons.pause_circle_filled_rounded : Icons.play_circle_fill_rounded,
+              color: isPlaying ? AppTheme.success : AppTheme.primary,
+              size: 34,
+            ),
+            onPressed: () => _togglePreview(t.url),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        t.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                    if (isPlaying) ...[
+                      const SizedBox(width: 6),
+                      _MusicWaveformVisualizer(isPlaying: true, color: AppTheme.success),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                      decoration: BoxDecoration(
+                        color: AppTheme.surface,
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: AppTheme.borderSubtle),
+                      ),
+                      child: Text(
+                        t.provider.toUpperCase(),
+                        style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: AppTheme.textSecondary),
+                      ),
+                    ),
+                    if (durStr.isNotEmpty) ...[
+                      const SizedBox(width: 6),
+                      Text(
+                        durStr,
+                        style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AssetDownloadBadge(url: t.url),
+              const SizedBox(width: 6),
+              FilledButton.tonal(
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  visualDensity: VisualDensity.compact,
+                ),
+                onPressed: () => _applyTrack(t.url, t.title, t.attribution),
+                child: const Text('Use', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hasSpeech = widget.c.ir?.audio.speechRangesMs.isNotEmpty ?? false;
+
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.85),
+      child: ListView(
+        shrinkWrap: true,
+        physics: const BouncingScrollPhysics(),
+        padding: const EdgeInsets.only(bottom: 16),
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Music & Soundtracks', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 18)),
+                  Text(
+                    m == null ? 'Browse royalty-free background music or upload your own' : 'Soundtrack active on video timeline',
+                    style: Theme.of(context).textTheme.labelSmall,
+                  ),
+                ],
+              ),
+              IconButton(
+                icon: const Icon(Icons.close_rounded, size: 20),
+                onPressed: () => _close(context),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // Active Music Card (if any)
+          if (m != null) _buildCurrentTrackCard(context, m!, hasSpeech),
+
+          // Search Input Row
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _query,
+                  onSubmitted: _searchAudio,
+                  decoration: fieldDecoration('Mood / Genre', hint: 'upbeat, cinematic, lo-fi…'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              FilledButton.icon(
+                onPressed: _searching || _busy ? null : () => _searchAudio(_query.text),
+                icon: const Icon(Icons.search_rounded, size: 18),
+                label: const Text('Find'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+
+          // Visual Mood / Genre Preset Cards Strip
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            child: Row(
+              children: [
+                for (final item in _moodPresets)
+                  () {
+                    final isSelected = _query.text.trim().toLowerCase() == item.tag;
+                    return GestureDetector(
+                      onTap: () {
+                        _query.text = item.tag;
+                        _searchAudio(item.tag);
+                      },
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        margin: const EdgeInsets.only(right: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: isSelected ? item.color.withValues(alpha: 0.22) : AppTheme.surfaceElevated,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: isSelected ? item.color : AppTheme.border,
+                            width: isSelected ? 1.5 : 1,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(item.icon, size: 14, color: isSelected ? item.color : AppTheme.textSecondary),
+                            const SizedBox(width: 5),
+                            Text(
+                              item.label,
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                color: isSelected ? item.color : AppTheme.textPrimary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }(),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // Search Indicator / Results / Empty state
+          if (_searching)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              child: Center(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primary)),
+                    const SizedBox(width: 10),
+                    Text('Searching soundtrack catalog…', style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+                  ],
+                ),
+              ),
+            )
+          else if (_results != null) ...[
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Found ${_results!.length} royalty-free tracks:',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textSecondary),
+                ),
+                Text(
+                  'Pixabay · Freesound',
+                  style: TextStyle(fontSize: 10, color: AppTheme.textMuted),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            if (_results!.isEmpty)
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(color: AppTheme.surfaceElevated, borderRadius: BorderRadius.circular(12)),
+                child: Text(
+                  'No tracks found for this mood. Try "energetic", "calm", or import your own audio.',
+                  style: TextStyle(color: AppTheme.textMuted, fontSize: 12),
+                  textAlign: TextAlign.center,
+                ),
+              )
+            else
+              for (final track in _results!.take(20))
+                _buildTrackCard(track),
+          ],
+
+          const SizedBox(height: 10),
+
+          // Upload own audio file
+          OutlinedButton.icon(
+            onPressed: _busy || _searching ? null : _upload,
+            icon: const Icon(Icons.upload_file_rounded),
+            label: const Text('Import my own audio file (MP3 / WAV)'),
+          ),
+          if (_busy)
+            const Padding(padding: EdgeInsets.only(top: 8), child: LinearProgressIndicator()),
+        ],
       ),
     );
   }
@@ -2756,47 +3446,370 @@ class _BrollSheetState extends ConsumerState<_BrollSheet> {
   }
 }
 
-class _TransitionSheet extends StatelessWidget {
-  const _TransitionSheet({required this.c, required this.onEdit});
+class _TransitionSheet extends StatefulWidget {
+  const _TransitionSheet({required this.c, this.index, required this.onEdit});
   final StudioController c;
+  final int? index;
   final EditFn onEdit;
 
   @override
+  State<_TransitionSheet> createState() => _TransitionSheetState();
+}
+
+class _TransitionSheetState extends State<_TransitionSheet> with SingleTickerProviderStateMixin {
+  late final AnimationController _anim = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 2400),
+  )..repeat();
+
+  int _durationMs = 400;
+  bool _applyToAll = true;
+  late String _selectedType;
+
+  static const _sceneAUrl = 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=300&q=80';
+  static const _sceneBUrl = 'https://images.unsplash.com/photo-1519501025264-65ba15a82390?auto=format&fit=crop&w=300&q=80';
+
+  static const _transitions = [
+    (type: 'CUT', label: 'Hard Cut', icon: Icons.content_cut_rounded, desc: 'Instant switch between clips', defaultMs: 0),
+    (type: 'CROSSFADE', label: 'Crossfade', icon: Icons.animation_rounded, desc: 'Smooth alpha blend', defaultMs: 400),
+    (type: 'DISSOLVE', label: 'Dissolve', icon: Icons.blur_on_rounded, desc: 'Soft-focus dissolve blend', defaultMs: 500),
+    (type: 'DIP_BLACK', label: 'Fade Black', icon: Icons.dark_mode_rounded, desc: 'Cinematic dip through black', defaultMs: 500),
+    (type: 'DIP_WHITE', label: 'Fade White', icon: Icons.light_mode_rounded, desc: 'Bright exposure flash cut', defaultMs: 400),
+    (type: 'ZOOM_SWOOSH', label: 'Zoom Swoosh', icon: Icons.zoom_in_rounded, desc: 'Dynamic energetic push punch', defaultMs: 400),
+    (type: 'ZOOM_OUT', label: 'Zoom Out', icon: Icons.zoom_out_map_rounded, desc: 'Wide angle pull-back reveal', defaultMs: 500),
+    (type: 'GLITCH', label: 'Glitch', icon: Icons.electric_bolt_rounded, desc: 'Cyberpunk chromatic scanline jitter', defaultMs: 350),
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    final firstTransition = widget.c.ir?.clips.skip(1).firstOrNull?.transitionIn;
+    _selectedType = firstTransition?.type ?? 'CUT';
+    _durationMs = firstTransition?.durationMs ?? 400;
+  }
+
+  @override
+  void dispose() {
+    _anim.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final n = c.ir!.clips.length;
-    final current = {for (final clip in c.ir!.clips.skip(1)) clip.transitionIn?.type ?? 'CUT'};
-    final unknown = current.where((t) => !EditIrTransition.types.containsKey(t)).toList();
-    return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      if (unknown.isNotEmpty)
-        Padding(
-          padding: EdgeInsets.only(bottom: 8),
-          child: Text(
-            'This edit uses ${unknown.join(', ')}, which this phone renders as a crossfade. Pick one below to replace it.',
-            style: TextStyle(color: AppTheme.warning, fontSize: 12),
+    final clipCount = widget.c.ir?.clips.length ?? 0;
+    final hasMultipleClips = clipCount > 1;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Visual Transitions', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 18)),
+                Text(
+                  hasMultipleClips
+                      ? 'Live animated preview · Applied between clips'
+                      : 'Split the video first: transitions go between cuts',
+                  style: Theme.of(context).textTheme.labelSmall,
+                ),
+              ],
+            ),
+            if (_selectedType != 'CUT')
+              TextButton(
+                onPressed: () {
+                  setState(() => _selectedType = 'CUT');
+                  widget.onEdit((ir) => TimelineOps.setTransition(ir, null, index: _applyToAll ? null : widget.index), done: 'Transitions removed');
+                },
+                child: Text('Reset', style: TextStyle(fontSize: 12, color: AppTheme.error)),
+              ),
+          ],
+        ),
+        const SizedBox(height: 12),
+
+        // Scope Selector
+        if (hasMultipleClips)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: SegmentedButton<bool>(
+              segments: [
+                ButtonSegment(value: true, label: Text('All cuts (${clipCount - 1})')),
+                ButtonSegment(value: false, label: Text('Current cut (${(widget.index ?? 0) + 1})')),
+              ],
+              selected: {_applyToAll},
+              onSelectionChanged: (s) => setState(() => _applyToAll = s.first),
+            ),
+          ),
+
+        // Animated Visual Transition Cards Grid
+        SizedBox(
+          height: 290,
+          child: GridView.builder(
+            physics: const BouncingScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: 10,
+              mainAxisSpacing: 10,
+              childAspectRatio: 1.35,
+            ),
+            itemCount: _transitions.length,
+            itemBuilder: (ctx, i) {
+              final t = _transitions[i];
+              final isSelected = _selectedType == t.type;
+
+              return InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: !hasMultipleClips
+                    ? null
+                    : () {
+                        setState(() {
+                          _selectedType = t.type;
+                          if (t.defaultMs > 0) _durationMs = t.defaultMs;
+                        });
+                        final transition = t.type == 'CUT' ? null : EditIrTransition(type: t.type, durationMs: _durationMs);
+                        widget.onEdit(
+                          (ir) => TimelineOps.setTransition(ir, transition, index: _applyToAll ? null : widget.index),
+                          done: '${t.label} applied',
+                        );
+                      },
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  decoration: BoxDecoration(
+                    color: AppTheme.surfaceElevated,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: isSelected ? AppTheme.primary : AppTheme.border,
+                      width: isSelected ? 2.5 : 1,
+                    ),
+                    boxShadow: isSelected
+                        ? [
+                            BoxShadow(
+                              color: AppTheme.primary.withValues(alpha: 0.35),
+                              blurRadius: 10,
+                              spreadRadius: 1,
+                            ),
+                          ]
+                        : null,
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: Stack(
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            // Live Animated Micro-Transition View
+                            Expanded(
+                              child: _buildAnimatedPreview(t.type),
+                            ),
+                            // Footer Label
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                              color: Colors.black.withValues(alpha: 0.6),
+                              child: Row(
+                                children: [
+                                  Icon(t.icon, size: 14, color: isSelected ? AppTheme.primary : Colors.white70),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Text(
+                                      t.label,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                                        color: isSelected ? AppTheme.primary : Colors.white,
+                                      ),
+                                    ),
+                                  ),
+                                  if (t.defaultMs > 0)
+                                    Text(
+                                      '${t.defaultMs}ms',
+                                      style: TextStyle(fontSize: 10, color: AppTheme.textMuted),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (isSelected)
+                          Positioned(
+                            top: 6,
+                            right: 6,
+                            child: Container(
+                              padding: const EdgeInsets.all(3),
+                              decoration: BoxDecoration(
+                                color: AppTheme.primary,
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(Icons.check, size: 12, color: Colors.white),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
           ),
         ),
-      _Title('Transitions', subtitle: n < 2 ? 'Split the video first: transitions go between clips.' : 'Applied at every cut.'),
-      for (final (label, t) in [
-        ('Hard cut', null),
-        ('Crossfade', EditIrTransition(type: 'CROSSFADE', durationMs: 300)),
-        ('Dissolve', EditIrTransition(type: 'DISSOLVE', durationMs: 500)),
-        ('Fade through black', EditIrTransition(type: 'DIP_BLACK', durationMs: 500)),
-        ('Fade through white', EditIrTransition(type: 'DIP_WHITE', durationMs: 400)),
-        ('Zoom swoosh', EditIrTransition(type: 'ZOOM_SWOOSH', durationMs: 400)),
-        ('Zoom out', EditIrTransition(type: 'ZOOM_OUT', durationMs: 500)),
-        ('Glitch', EditIrTransition(type: 'GLITCH', durationMs: 300)),
-      ])
-        ListTile(
-          enabled: n > 1,
-          title: Text(label),
-          trailing: current.contains(t?.type ?? 'CUT') ? Icon(Icons.check_rounded, color: AppTheme.primary) : null,
-          onTap: () {
-            _close(context);
-            onEdit((ir) => TimelineOps.setTransition(ir, t));
-          },
+
+        if (_selectedType != 'CUT') ...[
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Text('Duration: ${_durationMs}ms', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+              const Spacer(),
+              Text('${(_durationMs / 1000).toStringAsFixed(2)}s', style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+            ],
+          ),
+          Slider(
+            value: _durationMs.toDouble().clamp(200.0, 1000.0),
+            min: 200,
+            max: 1000,
+            divisions: 16,
+            onChanged: (v) {
+              setState(() => _durationMs = v.round());
+              final transition = EditIrTransition(type: _selectedType, durationMs: _durationMs);
+              widget.onEdit((ir) => TimelineOps.setTransition(ir, transition, index: _applyToAll ? null : widget.index));
+            },
+          ),
+        ],
+
+        const SizedBox(height: 8),
+        FilledButton(
+          onPressed: () => _close(context),
+          child: Text(hasMultipleClips ? 'Done' : 'Back to Studio'),
         ),
-    ]);
+      ],
+    );
   }
+
+  Widget _buildAnimatedPreview(String type) {
+    return AnimatedBuilder(
+      animation: _anim,
+      builder: (context, _) {
+        final v = _anim.value; // 0.0 .. 1.0
+
+        // 3-phase cycle:
+        // 0.0 - 0.25: Scene A holds
+        // 0.25 - 0.75: Transition executes (progress 0.0 .. 1.0)
+        // 0.75 - 1.0: Scene B holds
+        final double p;
+        if (v < 0.25) {
+          p = 0.0;
+        } else if (v > 0.75) {
+          p = 1.0;
+        } else {
+          p = (v - 0.25) / 0.50;
+        }
+
+        Widget sceneA = Image.network(_sceneAUrl, fit: BoxFit.cover, errorBuilder: (_, _, _) => _sceneFallbackA());
+        Widget sceneB = Image.network(_sceneBUrl, fit: BoxFit.cover, errorBuilder: (_, _, _) => _sceneFallbackB());
+
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            // Base layer: Scene A
+            sceneA,
+
+            // Transition effect layer
+            if (type == 'CUT')
+              if (p >= 0.5) sceneB,
+
+            if (type == 'CROSSFADE')
+              Opacity(opacity: p.clamp(0.0, 1.0), child: sceneB),
+
+            if (type == 'DISSOLVE')
+              Opacity(
+                opacity: p.clamp(0.0, 1.0),
+                child: sceneB,
+              ),
+
+            if (type == 'DIP_BLACK') ...[
+              if (p >= 0.5) sceneB,
+              Container(
+                color: Colors.black.withValues(
+                  alpha: p < 0.5 ? (p * 2.0).clamp(0.0, 1.0) : ((1.0 - p) * 2.0).clamp(0.0, 1.0),
+                ),
+              ),
+            ],
+
+            if (type == 'DIP_WHITE') ...[
+              if (p >= 0.5) sceneB,
+              Container(
+                color: Colors.white.withValues(
+                  alpha: p < 0.5 ? (p * 2.0).clamp(0.0, 1.0) : ((1.0 - p) * 2.0).clamp(0.0, 1.0),
+                ),
+              ),
+            ],
+
+            if (type == 'ZOOM_SWOOSH')
+              if (p < 0.5)
+                Transform.scale(
+                  scale: 1.0 + p * 1.5,
+                  child: Opacity(opacity: (1.0 - p * 1.8).clamp(0.0, 1.0), child: sceneA),
+                )
+              else
+                Transform.scale(
+                  scale: 1.6 - (p - 0.5) * 1.2,
+                  child: Opacity(opacity: ((p - 0.5) * 2.0).clamp(0.0, 1.0), child: sceneB),
+                ),
+
+            if (type == 'ZOOM_OUT')
+              if (p < 0.5)
+                Transform.scale(
+                  scale: (1.0 - p * 0.5).clamp(0.5, 1.0),
+                  child: Opacity(opacity: (1.0 - p * 1.8).clamp(0.0, 1.0), child: sceneA),
+                )
+              else
+                Transform.scale(
+                  scale: (0.6 + (p - 0.5) * 0.8).clamp(0.6, 1.0),
+                  child: Opacity(opacity: ((p - 0.5) * 2.0).clamp(0.0, 1.0), child: sceneB),
+                ),
+
+            if (type == 'GLITCH') ...[
+              if (p >= 0.5) sceneB,
+              if (p > 0.3 && p < 0.7)
+                Transform.translate(
+                  offset: Offset(math.sin(p * 45) * 8.0, 0),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Container(color: Colors.cyanAccent.withValues(alpha: 0.25)),
+                      Positioned(
+                        top: (p * 50) % 40,
+                        left: 0,
+                        right: 0,
+                        height: 4,
+                        child: Container(color: const Color(0xFFFF00FF).withValues(alpha: 0.6)),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _sceneFallbackA() => Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(colors: [Color(0xFFE65100), Color(0xFFFFB74D)]),
+        ),
+        child: const Center(child: Icon(Icons.wb_sunny_rounded, color: Colors.white, size: 20)),
+      );
+
+  Widget _sceneFallbackB() => Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(colors: [Color(0xFF1A237E), Color(0xFF00E5FF)]),
+        ),
+        child: const Center(child: Icon(Icons.location_city_rounded, color: Colors.white, size: 20)),
+      );
 }
 
 /// A caption preset rendered as a live sample in its own font, colours, stroke, glow and pill.

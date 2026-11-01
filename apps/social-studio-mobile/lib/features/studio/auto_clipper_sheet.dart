@@ -303,17 +303,20 @@ class _AutoClipperStudioSheetState extends ConsumerState<AutoClipperStudioSheet>
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // Supported platform pills
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            _platformPill('YouTube', Icons.play_arrow_rounded, const Color(0xFFFF0000)),
-            const SizedBox(width: 6),
-            _platformPill('Instagram', Icons.camera_alt_rounded, const Color(0xFFE4405F)),
-            const SizedBox(width: 6),
-            _platformPill('Facebook', Icons.facebook_rounded, const Color(0xFF1877F2)),
-            const SizedBox(width: 6),
-            _platformPill('LinkedIn', Icons.work_rounded, const Color(0xFF0A66C2)),
-          ],
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _platformPill('YouTube', Icons.play_arrow_rounded, const Color(0xFFFF0000)),
+              const SizedBox(width: 6),
+              _platformPill('Instagram', Icons.camera_alt_rounded, const Color(0xFFE4405F)),
+              const SizedBox(width: 6),
+              _platformPill('Facebook', Icons.facebook_rounded, const Color(0xFF1877F2)),
+              const SizedBox(width: 6),
+              _platformPill('LinkedIn', Icons.work_rounded, const Color(0xFF0A66C2)),
+            ],
+          ),
         ),
         const SizedBox(height: 14),
 
@@ -435,75 +438,89 @@ class _AutoClipperStudioSheetState extends ConsumerState<AutoClipperStudioSheet>
         const SizedBox(height: 12),
 
         // 1. Clip Count
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text('Number of Shorts:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-            Row(
-              children: [1, 2, 3, 5].map((cnt) {
-                final isSel = _clipCount == cnt;
-                return Padding(
-                  padding: const EdgeInsets.only(left: 6),
-                  child: ChoiceChip(
-                    label: Text('$cnt ${cnt == 1 ? "Clip" : "Clips"}'),
-                    selected: isSel,
-                    onSelected: (_) => setState(() => _clipCount = cnt),
-                    selectedColor: AppTheme.primary,
-                    labelStyle: TextStyle(
-                      fontSize: 11,
-                      fontWeight: isSel ? FontWeight.bold : FontWeight.normal,
-                      color: isSel ? Colors.white : AppTheme.textSecondary,
+            const SizedBox(height: 6),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [1, 2, 3, 5].map((cnt) {
+                  final isSel = _clipCount == cnt;
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: ChoiceChip(
+                      label: Text('$cnt ${cnt == 1 ? "Clip" : "Clips"}'),
+                      selected: isSel,
+                      onSelected: (_) => setState(() => _clipCount = cnt),
+                      selectedColor: AppTheme.primary,
+                      labelStyle: TextStyle(
+                        fontSize: 11,
+                        fontWeight: isSel ? FontWeight.bold : FontWeight.normal,
+                        color: isSel ? Colors.white : AppTheme.textSecondary,
+                      ),
                     ),
-                  ),
-                );
-              }).toList(),
+                  );
+                }).toList(),
+              ),
             ),
           ],
         ),
         const SizedBox(height: 12),
 
         // 2. Target Duration
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text('Clip Duration:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-            Row(
-              children: [
-                _durationChip(30, '< 30s Hook'),
-                const SizedBox(width: 6),
-                _durationChip(45, '45s Standard'),
-                const SizedBox(width: 6),
-                _durationChip(60, '60s Deep Dive'),
-              ],
+            const SizedBox(height: 6),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  _durationChip(30, '< 30s Hook'),
+                  const SizedBox(width: 6),
+                  _durationChip(45, '45s Standard'),
+                  const SizedBox(width: 6),
+                  _durationChip(60, '60s Deep Dive'),
+                ],
+              ),
             ),
           ],
         ),
         const SizedBox(height: 12),
 
         // 3. Aspect Ratio / Framing
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text('Format / Aspect:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-            Row(
-              children: [
-                _aspectChip('9:16', '9:16 Vertical', Icons.phone_android_rounded),
-                const SizedBox(width: 6),
-                _aspectChip('1:1', '1:1 Square', Icons.crop_square_rounded),
-                const SizedBox(width: 6),
-                _aspectChip('16:9', '16:9 Wide', Icons.tv_rounded),
-              ],
+            const SizedBox(height: 6),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  _aspectChip('9:16', '9:16 Vertical', Icons.phone_android_rounded),
+                  const SizedBox(width: 6),
+                  _aspectChip('1:1', '1:1 Square', Icons.crop_square_rounded),
+                  const SizedBox(width: 6),
+                  _aspectChip('16:9', '16:9 Wide', Icons.tv_rounded),
+                ],
+              ),
             ),
           ],
         ),
         const SizedBox(height: 12),
 
         // 4. Kinetic Subtitles Theme
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text('Subtitles Style:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+            const SizedBox(height: 4),
             DropdownButton<String>(
+              isExpanded: true,
               value: _subtitleStyle,
               dropdownColor: AppTheme.surfaceElevated,
               underline: const SizedBox.shrink(),
@@ -520,13 +537,16 @@ class _AutoClipperStudioSheetState extends ConsumerState<AutoClipperStudioSheet>
             ),
           ],
         ),
+        const SizedBox(height: 12),
 
         // 5. Background Music Selector
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text('Background Music:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+            const SizedBox(height: 4),
             DropdownButton<String>(
+              isExpanded: true,
               value: _musicMood,
               dropdownColor: AppTheme.surfaceElevated,
               underline: const SizedBox.shrink(),

@@ -374,7 +374,7 @@ class StudioController extends ChangeNotifier {
   }
 
   /// Creates a draft representation of the current project and timeline.
-  StudioDraft? createDraft({String? title}) {
+  StudioDraft? createDraft({String? title, String? thumbnailUrl}) {
     final curIr = _ir;
     final path = sourcePath;
     if (curIr == null || path == null) return null;
@@ -387,6 +387,12 @@ class StudioController extends ChangeNotifier {
             ? (script!.trim().length > 30 ? '${script!.trim().substring(0, 30)}…' : script!.trim())
             : null) ??
         'Draft · ${timecode(curIr.durationMs)}';
+
+    final firstClip = curIr.clips.firstOrNull;
+    final primaryMedia = firstClip != null ? (sourcePaths[firstClip.assetId] ?? path) : path;
+    final resolvedThumb = thumbnailUrl ??
+        (curIr.overlays.firstOrNull?.source['thumbnailUrl'] as String?) ??
+        primaryMedia;
 
     return StudioDraft(
       id: dId,
@@ -401,7 +407,7 @@ class StudioController extends ChangeNotifier {
       pieceId: pieceId,
       hook: hook,
       script: script,
-      thumbnailUrl: curIr.overlays.firstOrNull?.source['thumbnailUrl'] as String?,
+      thumbnailUrl: resolvedThumb,
     );
   }
 
