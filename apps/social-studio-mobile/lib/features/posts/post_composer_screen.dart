@@ -334,6 +334,7 @@ class _ComposerFormState extends ConsumerState<_ComposerForm> {
     final picker = ImagePicker();
     showModalBottomSheet<void>(
       context: context,
+    useRootNavigator: true,
       backgroundColor: AppTheme.surfaceElevated,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
@@ -481,6 +482,7 @@ class _ComposerFormState extends ConsumerState<_ComposerForm> {
 
     showModalBottomSheet<void>(
       context: context,
+    useRootNavigator: true,
       isScrollControlled: true,
       backgroundColor: AppTheme.surfaceElevated,
       shape: const RoundedRectangleBorder(
@@ -522,6 +524,7 @@ class _ComposerFormState extends ConsumerState<_ComposerForm> {
   void _showPreview() {
     showModalBottomSheet<void>(
       context: context,
+    useRootNavigator: true,
       isScrollControlled: true,
       backgroundColor: AppTheme.surface,
       builder: (ctx) => DraggableScrollableSheet(

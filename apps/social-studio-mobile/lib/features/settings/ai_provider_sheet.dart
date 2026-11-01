@@ -15,6 +15,7 @@ class AiProviderSheet extends ConsumerStatefulWidget {
   static Future<bool?> show(BuildContext context, {VoidCallback? onSaved}) {
     return showModalBottomSheet<bool>(
       context: context,
+    useRootNavigator: true,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => AiProviderSheet(onSaved: onSaved),

@@ -21,6 +21,7 @@ Future<void> showCarouselSheet(
 }) =>
     showModalBottomSheet<void>(
       context: context,
+    useRootNavigator: true,
       isScrollControlled: true,
       useSafeArea: true,
       backgroundColor: AppTheme.surfaceElevated,

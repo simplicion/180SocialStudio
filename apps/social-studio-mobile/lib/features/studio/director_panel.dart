@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/common.dart';
@@ -153,7 +154,16 @@ class _DirectorPanelState extends State<DirectorPanel> {
     return [
       _DirectorBubble(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(text),
+          MarkdownBody(
+            data: text,
+            selectable: true,
+            styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
+              p: TextStyle(color: AppTheme.textPrimary, height: 1.35, fontSize: 13),
+              strong: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.textPrimary, fontSize: 13),
+              em: TextStyle(fontStyle: FontStyle.italic, color: AppTheme.textPrimary, fontSize: 13),
+              code: TextStyle(fontSize: 12, fontFamily: 'monospace', backgroundColor: AppTheme.surface, color: AppTheme.accent),
+            ),
+          ),
           if (hasPlan) ...[
             const SizedBox(height: 10),
             _PlanCard(

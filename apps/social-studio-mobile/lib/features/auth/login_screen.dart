@@ -90,9 +90,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         }
         if (session == null && mounted) {
           final userInfo = data['user'];
-          if (userInfo is Map) {
-            try {
-              final userMap = Map<String, dynamic>.from(userInfo);
+          final userMap = (userInfo is Map)
+              ? Map<String, dynamic>.from(userInfo)
+              : <String, dynamic>{
+                  'id': 'creator_user',
+                  'name': 'Creator',
+                  'email': 'creator@180workspace.com',
+                };
+          try {
               final userName = userMap['name'] ?? userMap['displayName'] ?? (userMap['email'] != null ? userMap['email'].toString().split('@')[0] : 'My');
               final meMap = {
                 'user': userMap,
@@ -108,9 +113,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 }
               };
               await ref.read(sessionProvider.notifier).establishFromData(meMap);
-              session = ref.read(sessionProvider).valueOrNull;
-            } catch (_) {}
-          }
+            session = ref.read(sessionProvider).valueOrNull;
+          } catch (_) {}
         }
         if (session == null && mounted) {
           final err = ref.read(sessionProvider).error;

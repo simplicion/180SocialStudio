@@ -31,6 +31,7 @@ Future<void> showExportSheet(BuildContext context, StudioController c) async {
   // The sheet opens on the export settings; the render starts from its Export button.
   await showModalBottomSheet<void>(
     context: context,
+    useRootNavigator: true,
     isScrollControlled: true,
     isDismissible: false,
     enableDrag: false,
@@ -127,6 +128,7 @@ class _ExportSheetState extends ConsumerState<_ExportSheet> {
     }
     final post = await showModalBottomSheet<SocialPost>(
       context: context,
+    useRootNavigator: true,
       backgroundColor: AppTheme.surface,
       builder: (_) => _PostPicker(projectId: projectId),
     );
@@ -370,6 +372,7 @@ class _ExportSheetState extends ConsumerState<_ExportSheet> {
                 onPressed: () {
                   showModalBottomSheet(
                     context: context,
+    useRootNavigator: true,
                     isScrollControlled: true,
                     backgroundColor: Colors.transparent,
                     builder: (ctx) => CentralizedManualPublishSheet(

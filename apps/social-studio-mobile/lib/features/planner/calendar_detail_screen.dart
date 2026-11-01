@@ -311,6 +311,7 @@ class _CalendarDateGrid extends StatelessWidget {
                 if (hasPieces) {
                   showModalBottomSheet<void>(
                     context: context,
+    useRootNavigator: true,
                     isScrollControlled: true,
                     backgroundColor: AppTheme.surface,
                     builder: (_) => DayScheduleSheet(calendar: calendar, date: date, pieces: piecesOnDay),
@@ -495,6 +496,7 @@ class _DayPieceCard extends StatelessWidget {
         Navigator.pop(context);
         showModalBottomSheet<void>(
           context: context,
+    useRootNavigator: true,
           isScrollControlled: true,
           backgroundColor: AppTheme.surface,
           builder: (_) => PieceSheet(calendar: calendar, piece: piece),
@@ -564,6 +566,7 @@ class _DayPieceCard extends StatelessWidget {
                 Navigator.pop(context);
                 showModalBottomSheet<void>(
                   context: context,
+    useRootNavigator: true,
                   isScrollControlled: true,
                   backgroundColor: AppTheme.surface,
                   builder: (_) => PieceSheet(calendar: calendar, piece: piece),
@@ -661,6 +664,7 @@ class _PieceTile extends StatelessWidget {
         padding: EdgeInsets.all(12),
         onTap: () => showModalBottomSheet<void>(
           context: context,
+    useRootNavigator: true,
           isScrollControlled: true,
           backgroundColor: AppTheme.surface,
           builder: (_) => PieceSheet(calendar: calendar, piece: piece),
@@ -850,6 +854,7 @@ class _PieceSheetState extends ConsumerState<PieceSheet> {
   void _showPreview() {
     showModalBottomSheet<void>(
       context: context,
+    useRootNavigator: true,
       isScrollControlled: true,
       backgroundColor: AppTheme.surface,
       builder: (ctx) => DraggableScrollableSheet(
@@ -1091,6 +1096,7 @@ class _PieceSheetState extends ConsumerState<PieceSheet> {
               final picker = ImagePicker();
               final choice = await showModalBottomSheet<String>(
                 context: context,
+    useRootNavigator: true,
                 backgroundColor: AppTheme.surfaceElevated,
                 builder: (ctx) => SafeArea(
                   child: Wrap(children: [

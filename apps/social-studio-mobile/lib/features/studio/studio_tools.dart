@@ -82,6 +82,7 @@ Future<void> showStudioTool(BuildContext context, StudioTool tool, StudioControl
   final clipIndex = ir.clips.isEmpty ? 0 : rawIndex.clamp(0, ir.clips.length - 1);
   return showModalBottomSheet<void>(
     context: context,
+    useRootNavigator: true,
     isScrollControlled: true,
     backgroundColor: AppTheme.surface,
     shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
@@ -3166,6 +3167,7 @@ class _BrollSheetState extends ConsumerState<_BrollSheet> {
   void _onSelectClip(StockVideoResult v) {
     showModalBottomSheet<void>(
       context: context,
+    useRootNavigator: true,
       backgroundColor: AppTheme.surface,
       builder: (ctx) => SafeArea(
         child: Padding(
@@ -3228,6 +3230,7 @@ class _BrollSheetState extends ConsumerState<_BrollSheet> {
     final f = file;
     showModalBottomSheet<void>(
       context: context,
+    useRootNavigator: true,
       backgroundColor: AppTheme.surface,
       builder: (ctx) => SafeArea(
         child: Padding(
@@ -3942,6 +3945,7 @@ class _UploadsTabState extends ConsumerState<_UploadsTab> {
   void _chooseVideoPlacement(String path, String name) {
     showModalBottomSheet<void>(
       context: context,
+    useRootNavigator: true,
       backgroundColor: AppTheme.surface,
       builder: (ctx) => SafeArea(
         child: Padding(
@@ -4023,6 +4027,7 @@ class _UploadsTabState extends ConsumerState<_UploadsTab> {
   void _chooseAudioPlacement(String path, String name) {
     showModalBottomSheet<void>(
       context: context,
+    useRootNavigator: true,
       backgroundColor: AppTheme.surface,
       builder: (ctx) => SafeArea(
         child: Padding(

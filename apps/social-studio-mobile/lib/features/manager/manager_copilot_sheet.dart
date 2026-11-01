@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -13,6 +15,7 @@ import '../projects/project_provider.dart';
 void show180ManagerCopilot(BuildContext context, {String? projectId}) {
   showModalBottomSheet(
     context: context,
+    useRootNavigator: true,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
     builder: (_) => ManagerCopilotSheet(projectId: projectId),
@@ -397,9 +400,20 @@ class _ManagerCopilotSheetState extends ConsumerState<ManagerCopilotSheet> {
                 color: AppTheme.primary,
                 borderRadius: BorderRadius.circular(14).copyWith(bottomRight: Radius.zero),
               ),
-              child: Text(
-                msg.content,
-                style: const TextStyle(fontSize: 13, color: Colors.white, height: 1.3),
+              child: MarkdownBody(
+                data: msg.content,
+                selectable: true,
+                styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
+                  p: const TextStyle(fontSize: 13, color: Colors.white, height: 1.3),
+                  strong: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white),
+                  em: const TextStyle(fontSize: 13, fontStyle: FontStyle.italic, color: Colors.white),
+                  code: TextStyle(
+                    fontSize: 12,
+                    fontFamily: 'monospace',
+                    backgroundColor: Colors.white.withValues(alpha: 0.15),
+                    color: Colors.white,
+                  ),
+                ),
               ),
             ),
           ],
@@ -438,9 +452,43 @@ class _ManagerCopilotSheetState extends ConsumerState<ManagerCopilotSheet> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        msg.content,
-                        style: TextStyle(fontSize: 13, color: AppTheme.textPrimary, height: 1.4),
+                      MarkdownBody(
+                        data: msg.content,
+                        selectable: true,
+                        styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
+                          p: TextStyle(fontSize: 13, color: AppTheme.textPrimary, height: 1.4),
+                          strong: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
+                          em: TextStyle(fontSize: 13, fontStyle: FontStyle.italic, color: AppTheme.textPrimary),
+                          h1: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
+                          h2: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
+                          h3: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
+                          listBullet: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+                          code: TextStyle(
+                            fontSize: 12,
+                            fontFamily: 'monospace',
+                            backgroundColor: AppTheme.surface,
+                            color: AppTheme.accent,
+                          ),
+                          codeblockDecoration: BoxDecoration(
+                            color: AppTheme.surface,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: AppTheme.border),
+                          ),
+                          blockquoteDecoration: BoxDecoration(
+                            color: AppTheme.surface,
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border(left: BorderSide(color: AppTheme.primary, width: 3)),
+                          ),
+                          a: TextStyle(fontSize: 13, color: AppTheme.primary, decoration: TextDecoration.underline),
+                        ),
+                        onTapLink: (text, href, title) {
+                          if (href != null && href.isNotEmpty) {
+                            final uri = Uri.tryParse(href);
+                            if (uri != null) {
+                              launchUrl(uri, mode: LaunchMode.externalApplication);
+                            }
+                          }
+                        },
                       ),
 
                       // Delegated Agent Badges

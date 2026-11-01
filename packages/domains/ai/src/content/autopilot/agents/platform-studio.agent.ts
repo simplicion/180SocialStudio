@@ -72,6 +72,7 @@ export async function runPlatformDraftAgent(params: {
     if (idea.length < 8) throw new AutopilotError('INVALID_INPUT', 'Describe the idea in at least a few words');
     if (idea.length > 4000) throw new AutopilotError('INVALID_INPUT', 'Idea must be at most 4000 characters');
     const spec = PLATFORM_CRAFT[params.platform];
+    if (!spec) throw new AutopilotError('INVALID_INPUT', `Unsupported platform: ${params.platform}`);
     const format = params.format;
     if (format === 'carousel' && !spec.carousel) throw new AutopilotError('INVALID_INPUT', `${spec.label} has no carousel format`);
     const video = format === 'video';

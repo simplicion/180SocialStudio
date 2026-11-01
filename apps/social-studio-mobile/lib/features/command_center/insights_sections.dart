@@ -301,6 +301,7 @@ class _RadarSectionState extends ConsumerState<RadarSection> {
 Future<void> showReplyDrafts(BuildContext context, {required String platform, required String projectId, required String conversationId, required String author, required String message}) =>
     showModalBottomSheet<void>(
       context: context,
+    useRootNavigator: true,
       isScrollControlled: true,
       backgroundColor: AppTheme.surface,
       builder: (_) => _ReplyDraftSheet(platform: platform, projectId: projectId, conversationId: conversationId, author: author, message: message),

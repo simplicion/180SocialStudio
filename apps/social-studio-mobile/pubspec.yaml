@@ -55,10 +55,9 @@ dependencies:
   crypto: ^3.0.7
   universal_html: ^2.3.0
   webview_flutter: ^4.14.1
+  flutter_markdown: ^0.7.7+1
 dev_dependencies:
   flutter_test:
-    sdk: flutter
-  integration_test:
     sdk: flutter
 
 

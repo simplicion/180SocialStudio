@@ -109,6 +109,7 @@ class _ConversationListState extends ConsumerState<ConversationList> {
   void _openAiReplyAllModal(BuildContext context, InboxFilter f) {
     showModalBottomSheet(
       context: context,
+    useRootNavigator: true,
       isScrollControlled: true,
       backgroundColor: AppTheme.surfaceElevated,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),

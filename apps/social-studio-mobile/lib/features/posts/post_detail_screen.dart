@@ -31,6 +31,7 @@ Future<void> openExternal(BuildContext context, String url) async {
 void _showPostPreview(BuildContext context, SocialPost post) {
   showModalBottomSheet<void>(
     context: context,
+    useRootNavigator: true,
     isScrollControlled: true,
     backgroundColor: AppTheme.surface,
     builder: (ctx) => DraggableScrollableSheet(
@@ -199,6 +200,7 @@ class _PostBodyState extends ConsumerState<_PostBody> {
 
     await showModalBottomSheet<void>(
       context: context,
+    useRootNavigator: true,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => CentralizedManualPublishSheet(
@@ -264,6 +266,7 @@ class _PostBodyState extends ConsumerState<_PostBody> {
 
     final selected = await showModalBottomSheet<SocialAccount>(
       context: context,
+    useRootNavigator: true,
       backgroundColor: AppTheme.surfaceElevated,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
@@ -379,6 +382,7 @@ class _PostBodyState extends ConsumerState<_PostBody> {
         // Action Sheet for Dual-Mode Choice
         final mode = await showModalBottomSheet<String>(
           context: context,
+    useRootNavigator: true,
           backgroundColor: AppTheme.surfaceElevated,
           builder: (ctx) => SafeArea(
             child: Column(

@@ -29,3 +29,7 @@
   - **Full Container Lifecycles:** Use `<SkeletonBoundary loading={isLoading} error={error} empty={data.length === 0} skeletonType="table">{children}</SkeletonBoundary>` to handle loading, error alerts, and empty states smoothly without layout shifts (CLS).
   - Skeletons automatically adapt to dark mode and match the exact pixel geometry of target components.
 
+## 6. Bottom Sheet & Modal Stacking (Mobile)
+- **Mandatory Root Navigator Stacking:** Whenever a modal bottom sheet is opened in Flutter (`showModalBottomSheet`, `AppBottomSheet.show`, etc.), it **MUST** specify `useRootNavigator: true`.
+- **No Exposed Footer Navigation:** Modal bottom sheets must ALWAYS open over the bottom navigation bar (`AppShell` / footer navbar). The footer navigation must never sit visible underneath, peek out behind, or remain interactive while a bottom sheet is open.
+

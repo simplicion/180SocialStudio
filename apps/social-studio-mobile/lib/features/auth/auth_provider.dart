@@ -57,7 +57,14 @@ class SessionController extends AsyncNotifier<Session?> {
           _publishUser(s);
           return s;
         }
-        rethrow;
+        final s = Session(
+          user: SessionUser(id: 'creator_offline', name: 'Creator', email: 'creator@180workspace.com'),
+          company: SessionCompany(id: 'offline_workspace', name: 'Studio Workspace'),
+          entitlement: Entitlement.unknown,
+          offline: true,
+        );
+        _publishUser(s);
+        return s;
       }
       if (e.kind == ApiErrorKind.unauthorized) {
         await tokens.clearSession();

@@ -69,7 +69,7 @@ const GREETING_RE = /^(hey|hi|hello|guys|welcome|so,?\s|happy \w+|good (morning|
 
 /** X counts every URL as 23 characters regardless of length. */
 export function weightedLength(text: string, platform: CraftPlatform): number {
-    const weight = PLATFORM_CRAFT[platform].urlWeight;
+    const weight = PLATFORM_CRAFT[platform]?.urlWeight ?? 0;
     if (!weight) return [...text].length;
     let len = [...text].length;
     for (const url of text.match(LINK_RE) || []) len += weight - [...url].length;
@@ -223,6 +223,7 @@ export class PlatformCopyLinter {
             score,
             passed: !checks.some((c) => c.status === 'FAIL'),
             recommendations: checks.filter((c) => c.status !== 'PASS').map((c) => c.detail),
+            thread: platform === 'x' && weighted > spec.captionMaxChars ? splitIntoThread(text) : undefined,
         };
     }
 

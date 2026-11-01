@@ -13,6 +13,7 @@ import '../projects/project_provider.dart';
 void showAutoClipperStudioSheet(BuildContext context, {String? projectId, String? initialUrl}) {
   showModalBottomSheet(
     context: context,
+    useRootNavigator: true,
     isScrollControlled: true,
     backgroundColor: AppTheme.surfaceElevated,
     shape: const RoundedRectangleBorder(

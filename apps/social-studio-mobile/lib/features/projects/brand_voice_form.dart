@@ -154,6 +154,7 @@ class _BrandVoiceFormState extends State<BrandVoiceForm> {
 
     showModalBottomSheet(
       context: context,
+    useRootNavigator: true,
       backgroundColor: AppTheme.surface,
       isScrollControlled: true,
       shape: RoundedRectangleBorder(

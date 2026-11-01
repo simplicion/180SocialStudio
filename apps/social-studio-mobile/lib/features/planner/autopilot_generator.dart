@@ -206,6 +206,7 @@ class _AutopilotGeneratorState extends ConsumerState<AutopilotGenerator> {
   void _showAiKeyRecoverySheet() {
     showModalBottomSheet<void>(
       context: context,
+    useRootNavigator: true,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => Container(

@@ -158,6 +158,7 @@ class OneEightyPay {
       if (!context.mounted) return OneEightyPayResult.cancelled();
       final res = await showModalBottomSheet<OneEightyPayResult>(
         context: context,
+    useRootNavigator: true,
         isScrollControlled: true,
         backgroundColor: Colors.transparent,
         barrierColor: Colors.black.withValues(alpha: 0.76),

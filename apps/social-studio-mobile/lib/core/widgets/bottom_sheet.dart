@@ -51,6 +51,7 @@ class AppBottomSheet extends StatelessWidget {
   }) {
     return showModalBottomSheet<T>(
       context: context,
+    useRootNavigator: true,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       barrierColor: Colors.black.withValues(alpha: 0.72),
@@ -92,29 +93,33 @@ class AppBottomSheet extends StatelessWidget {
       ),
       actions: [
         Expanded(
-          child: TextButton(
-            style: TextButton.styleFrom(
-              minimumSize: const Size.fromHeight(48),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-                side: BorderSide(color: AppTheme.border),
+          child: Builder(
+            builder: (btnCtx) => TextButton(
+              style: TextButton.styleFrom(
+                minimumSize: const Size.fromHeight(48),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(color: AppTheme.border),
+                ),
               ),
+              onPressed: () => Navigator.of(btnCtx).pop(false),
+              child: Text(cancelText, style: TextStyle(color: AppTheme.textSecondary)),
             ),
-            onPressed: () => Navigator.of(context).pop(false),
-            child: Text(cancelText, style: TextStyle(color: AppTheme.textSecondary)),
           ),
         ),
         const SizedBox(width: 12),
         Expanded(
-          child: TextButton(
-            style: TextButton.styleFrom(
-              minimumSize: const Size.fromHeight(48),
-              backgroundColor: destructive ? AppTheme.error : AppTheme.primary,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          child: Builder(
+            builder: (btnCtx) => TextButton(
+              style: TextButton.styleFrom(
+                minimumSize: const Size.fromHeight(48),
+                backgroundColor: destructive ? AppTheme.error : AppTheme.primary,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              onPressed: () => Navigator.of(btnCtx).pop(true),
+              child: Text(action, style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.white)),
             ),
-            onPressed: () => Navigator.of(context).pop(true),
-            child: Text(action, style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.white)),
           ),
         ),
       ],

@@ -34,6 +34,7 @@ class ProjectSwitcher extends ConsumerWidget {
 Future<void> showProjectSwitcherSheet(BuildContext context, WidgetRef ref) {
   return showModalBottomSheet(
     context: context,
+    useRootNavigator: true,
     backgroundColor: AppTheme.surface,
     isScrollControlled: true,
     shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),

@@ -163,6 +163,7 @@ class LibraryScreen extends ConsumerWidget {
   void _showNoteModal(BuildContext context, WidgetRef ref, VaultItem item) {
     showModalBottomSheet(
       context: context,
+    useRootNavigator: true,
       backgroundColor: AppTheme.surfaceElevated,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(

@@ -716,6 +716,7 @@ class _StudioSessionScreenState extends ConsumerState<StudioSessionScreen> {
     if (tool == StudioTool.director) {
       await showModalBottomSheet<void>(
         context: context,
+    useRootNavigator: true,
         isScrollControlled: true,
         backgroundColor: AppTheme.surface,
         builder: (_) => DirectorPanel(controller: c),
@@ -733,6 +734,7 @@ class _StudioSessionScreenState extends ConsumerState<StudioSessionScreen> {
 
     await showModalBottomSheet<void>(
       context: context,
+    useRootNavigator: true,
       backgroundColor: AppTheme.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) => SafeArea(

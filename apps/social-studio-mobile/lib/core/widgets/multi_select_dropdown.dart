@@ -59,6 +59,7 @@ class _MultiSelectDropdownState extends State<MultiSelectDropdown> {
   void _openSelectionSheet() {
     showModalBottomSheet(
       context: context,
+    useRootNavigator: true,
       backgroundColor: AppTheme.surface,
       isScrollControlled: true,
       useSafeArea: true,

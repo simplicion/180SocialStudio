@@ -273,6 +273,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
 
     await showModalBottomSheet<void>(
       context: context,
+    useRootNavigator: true,
       isDismissible: false,
       enableDrag: false,
       backgroundColor: Colors.transparent,
@@ -516,6 +517,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
 
     showModalBottomSheet(
       context: context,
+    useRootNavigator: true,
       isScrollControlled: true,
       backgroundColor: AppTheme.surfaceElevated,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),

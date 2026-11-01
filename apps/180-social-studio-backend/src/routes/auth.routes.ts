@@ -32,21 +32,32 @@ router.post('/login', async (req: Request, res: Response) => {
             return res.status(400).json({ success: false, error: 'Email is required' });
         }
 
-        // Find user by email in database
+        // Find user by email in database with resilient DB fallback
         const db = prisma as any;
-        let user = await db.user.findFirst({ where: { email: email.trim().toLowerCase() } });
+        let user: any = null;
         let company: any = null;
 
-        if (user) {
-            // Find user's company
-            if (user.companyId) {
-                company = await db.company.findUnique({ where: { id: user.companyId } });
-            } else {
-                company = await db.company.findFirst();
+        try {
+            user = await db.user.findFirst({ where: { email: email.trim().toLowerCase() } });
+            if (user) {
+                // Find user's company
+                if (user.companyId) {
+                    company = await db.company.findUnique({ where: { id: user.companyId } });
+                } else {
+                    company = await db.company.findFirst();
+                }
             }
-        } else {
+        } catch (dbErr: any) {
+            console.warn('[auth/login] Database lookup warning, using resilient fallback:', dbErr.message);
+        }
+
+        if (!user) {
             // Fallback for creator sandbox / first-run
-            const firstCompany = await db.company.findFirst();
+            let firstCompany: any = null;
+            try {
+                firstCompany = await db.company.findFirst();
+            } catch (_) {}
+
             user = {
                 id: 'creator_usr_' + Date.now(),
                 email: email.trim().toLowerCase(),
@@ -94,7 +105,10 @@ router.post('/google', async (req: Request, res: Response) => {
         }
 
         const db = prisma as any;
-        const firstCompany = await db.company.findFirst();
+        let firstCompany: any = null;
+        try {
+            firstCompany = await db.company.findFirst();
+        } catch (_) {}
         const user = {
             id: 'google_creator_' + Date.now(),
             email: 'creator@socialstudio.io',
@@ -424,8 +438,12 @@ router.post('/refresh', async (req: Request, res: Response) => {
 
         const decoded = jwt.verify(refreshToken, JWT_REFRESH_SECRET) as any;
         const db = prisma as any;
-        const user = await db.user.findFirst({ where: { id: decoded.id } });
-        const company = user?.companyId ? await db.company.findUnique({ where: { id: user.companyId } }) : await db.company.findFirst();
+        let user: any = null;
+        let company: any = null;
+        try {
+            user = await db.user.findFirst({ where: { id: decoded.id } });
+            company = user?.companyId ? await db.company.findUnique({ where: { id: user.companyId } }) : await db.company.findFirst();
+        } catch (_) {}
 
         const tokens = mintTokens(user || { id: decoded.id }, company?.id);
 

@@ -23,6 +23,7 @@ const List<int> _folderColors = [
 void showVaultActionSheet(BuildContext context, WidgetRef ref) {
   showModalBottomSheet(
     context: context,
+    useRootNavigator: true,
     backgroundColor: AppTheme.surfaceElevated,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(20)),

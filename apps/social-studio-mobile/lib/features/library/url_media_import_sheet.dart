@@ -10,6 +10,7 @@ import 'vault_provider.dart';
 void showUrlMediaImportSheet(BuildContext context, WidgetRef ref, {String? targetFolderId}) {
   showModalBottomSheet(
     context: context,
+    useRootNavigator: true,
     isScrollControlled: true,
     backgroundColor: AppTheme.surfaceElevated,
     shape: const RoundedRectangleBorder(

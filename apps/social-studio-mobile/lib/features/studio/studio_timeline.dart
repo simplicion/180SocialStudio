@@ -302,6 +302,7 @@ class _StudioTimelineState extends State<StudioTimeline> {
     final isStart = atIndex == 0;
     await showModalBottomSheet<void>(
       context: context,
+    useRootNavigator: true,
       backgroundColor: AppTheme.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
       builder: (ctx) => SafeArea(
@@ -732,6 +733,7 @@ Future<void> showTimelineItemSheet(
 }) =>
     showModalBottomSheet<void>(
       context: context,
+    useRootNavigator: true,
       isScrollControlled: true,
       backgroundColor: AppTheme.surface,
       builder: (ctx) => Padding(

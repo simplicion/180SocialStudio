@@ -7,6 +7,7 @@
 - **Navigation:** Mobile users must ALWAYS have a way to navigate. If hiding a navbar with `hidden md:flex`, you MUST provide a mobile equivalent (e.g., Hamburger Menu, Bottom Sheet, or Drawer).
 - **Touch Targets:** All interactive elements (buttons, links) must have a minimum touch target size of 44x44px for mobile devices.
 - **Scaling:** Use Tailwind prefixes (`sm:`, `md:`, `lg:`) to scale typography and padding. Do not use desktop-sized margins on mobile screens (e.g., avoid `p-12` on mobile; use `p-4 md:p-12`).
+- **Modal Overlay Isolation:** Whenever a modal bottom sheet opens, it must occupy the top-level viewport covering any persistent bottom navigation (`useRootNavigator: true`). Bottom navigation tabs must never be visible, clickable, or peek underneath an open sheet.
 
 ## 2. Error States & Accessibility
 - **Error Recovery:** Never show a dead-end error page. Always provide at least two recovery paths (e.g., "Return to Dashboard" and "Help Center").

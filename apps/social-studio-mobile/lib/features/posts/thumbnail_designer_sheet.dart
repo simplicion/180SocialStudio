@@ -17,6 +17,7 @@ import '../../data/models/social_post.dart';
 /// Opens the AI thumbnail designer for a video post. Returns the chosen thumbnail URL (already saved on the post).
 Future<String?> showThumbnailDesigner(BuildContext context, SocialPost post, String videoUrl) => showModalBottomSheet<String>(
       context: context,
+    useRootNavigator: true,
       isScrollControlled: true,
       backgroundColor: AppTheme.surface,
       builder: (_) => FractionallySizedBox(heightFactor: 0.92, child: ThumbnailDesignerSheet(post: post, videoUrl: videoUrl)),

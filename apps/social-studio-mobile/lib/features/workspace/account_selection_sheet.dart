@@ -10,6 +10,7 @@ import '../../data/models/social_account.dart';
 /// organisations to connect. Nothing is connected until they confirm.
 Future<void> showAccountSelectionSheet(BuildContext context, String selectionId) => showModalBottomSheet<void>(
       context: context,
+    useRootNavigator: true,
       isScrollControlled: true,
       useSafeArea: true,
       backgroundColor: AppTheme.surfaceElevated,

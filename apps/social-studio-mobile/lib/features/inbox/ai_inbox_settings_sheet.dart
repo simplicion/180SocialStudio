@@ -21,6 +21,7 @@ const _modes = [
 /// Opens the AI auto-reply settings: one switch per account plus "all Instagram accounts".
 Future<void> showAiInboxSettings(BuildContext context, {String? projectId}) => showModalBottomSheet<void>(
       context: context,
+    useRootNavigator: true,
       isScrollControlled: true,
       backgroundColor: AppTheme.surface,
       builder: (_) => AiInboxSettingsSheet(projectId: projectId),

@@ -33,6 +33,7 @@ class EngagementTab extends ConsumerWidget {
   void _openCreateRuleSheet(BuildContext context, WidgetRef ref) {
     showModalBottomSheet(
       context: context,
+    useRootNavigator: true,
       isScrollControlled: true,
       backgroundColor: AppTheme.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
@@ -43,6 +44,7 @@ class EngagementTab extends ConsumerWidget {
   void _openDryRunSheet(BuildContext context, WidgetRef ref) {
     showModalBottomSheet(
       context: context,
+    useRootNavigator: true,
       isScrollControlled: true,
       backgroundColor: AppTheme.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
@@ -596,6 +598,7 @@ class _EngagementRuleFormSheetState extends ConsumerState<_EngagementRuleFormShe
     }
     final picked = await showModalBottomSheet<AccountMediaItem>(
       context: context,
+    useRootNavigator: true,
       isScrollControlled: true,
       backgroundColor: AppTheme.surface,
       builder: (_) => AccountMediaPickerSheet(account: account),

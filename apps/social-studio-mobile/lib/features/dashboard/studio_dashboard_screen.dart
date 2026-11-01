@@ -104,6 +104,7 @@ PreferredSizeWidget workspaceAppBar(BuildContext context, WidgetRef ref, {List<W
 void showProfileAndAccountsSheet(BuildContext context, WidgetRef ref) {
   showModalBottomSheet(
     context: context,
+    useRootNavigator: true,
     isScrollControlled: true,
     backgroundColor: AppTheme.surfaceElevated,
     shape: const RoundedRectangleBorder(
