@@ -63,7 +63,7 @@ export interface AutopilotJobView {
 
 export interface AutopilotServiceDeps {
     db: any;
-    createLLM: (companyId: string) => Promise<AutopilotLLM>;
+    createLLM: (companyId: string, options?: { fallbackToBuiltin?: boolean; requestedProvider?: string }) => Promise<AutopilotLLM>;
     loadBrand: (projectId: string, companyId: string) => Promise<{ profile: any; promptContext?: string }>;
     search: WebSearchProvider | null;
     /** Runs the job after the HTTP response; tests await it directly. */
@@ -87,7 +87,7 @@ function objectivesAsGoals(profile: any): string[] {
 export const AUTOPILOT_STALE_MS = 15 * 60 * 1000;
 
 const X_TO_ACCOUNT_PLATFORM: Record<AutopilotPlatform, string> = {
-    instagram: 'instagram', facebook: 'facebook', youtube: 'youtube', linkedin: 'linkedin',
+    instagram: 'instagram', facebook: 'facebook', youtube: 'youtube', linkedin: 'linkedin', tiktok: 'tiktok', x: 'twitter',
 };
 const MEDIA_TYPE: Record<string, string> = { reel: 'video', carousel: 'carousel', static: 'image', text: 'text' };
 
@@ -148,6 +148,8 @@ export interface StartAutopilotBody {
     contentMix?: unknown;
     targetReelDurationSec?: unknown;
     carouselSlideCount?: unknown;
+    fallbackToBuiltin?: unknown;
+    aiProvider?: unknown;
 }
 
 export class AutopilotCalendarService {
@@ -191,7 +193,7 @@ export class AutopilotCalendarService {
         }
 
         // Fail fast on a missing AI key: nothing is created and no job is queued.
-        const llm = await this.deps.createLLM(companyId);
+        const llm = await this.deps.createLLM(companyId, { fallbackToBuiltin: body.fallbackToBuiltin === true, requestedProvider: typeof body.aiProvider === 'string' ? body.aiProvider : undefined });
 
         const brand = await this.deps.loadBrand(projectId, companyId);
         let platforms: AutopilotPlatform[];

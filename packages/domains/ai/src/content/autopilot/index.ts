@@ -20,3 +20,4 @@ export * from './agents/voice-guard.agent';
 export * from './agents/production-script.agent';
 export * from './agents/platform-studio.agent';
 export * from './budget';
+export * from './builtin-viral-llm';

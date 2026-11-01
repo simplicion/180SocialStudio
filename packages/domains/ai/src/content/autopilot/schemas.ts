@@ -11,7 +11,7 @@ export type HookType = (typeof HOOK_TYPES)[number];
 export const CONTENT_FORMATS = ['reel', 'carousel', 'static', 'text'] as const;
 export type ContentFormat = (typeof CONTENT_FORMATS)[number];
 
-export const AUTOPILOT_PLATFORMS = ['instagram', 'facebook', 'youtube', 'linkedin'] as const;
+export const AUTOPILOT_PLATFORMS = ['instagram', 'facebook', 'youtube', 'linkedin', 'tiktok', 'x'] as const;
 export type AutopilotPlatform = (typeof AUTOPILOT_PLATFORMS)[number];
 
 export const PSYCHOLOGICAL_JOBS = [

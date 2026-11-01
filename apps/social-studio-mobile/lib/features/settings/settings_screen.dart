@@ -1,3 +1,4 @@
+import 'ai_provider_sheet.dart';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -354,6 +355,51 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
           ),
           SizedBox(height: 24),
+
+          // Section: AI Engine & Intelligence Keys
+          _sectionHeader(context, 'AI Engine & API Keys', Icons.auto_awesome_rounded),
+          const SizedBox(height: 8),
+          _card(
+            context,
+            InkWell(
+              onTap: () => AiProviderSheet.show(context),
+              borderRadius: BorderRadius.circular(12),
+              child: Padding(
+                padding: const EdgeInsets.all(4),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: AppTheme.primary.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(Icons.psychology_rounded, color: AppTheme.primary, size: 24),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'AI Models & Keys',
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Google Gemini, OpenAI GPT-4o, Claude, or 180 Studio Viral AI',
+                            style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(Icons.chevron_right_rounded, color: AppTheme.textMuted),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
 
           // Section: Project Settings
           if (activeProject != null) ...[

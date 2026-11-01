@@ -1,3 +1,4 @@
+import '../settings/ai_provider_sheet.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -155,7 +156,7 @@ class _AutopilotGeneratorState extends ConsumerState<AutopilotGenerator> {
     );
   }
 
-  Future<void> _start_() async {
+  Future<void> _start_({bool fallbackToBuiltin = false}) async {
     if (_platforms.isEmpty) return showError(context, 'Choose at least one platform.');
     if (_customReels + _customCarousels == 0) return showError(context, 'Choose at least one reel or carousel per day.');
     final supportsCarousel = _platforms.any((p) => p == 'instagram' || p == 'facebook' || p == 'linkedin');
@@ -178,6 +179,7 @@ class _AutopilotGeneratorState extends ConsumerState<AutopilotGenerator> {
             contentMix: mixPayload,
             targetReelDurationSec: _targetReelDurationSec,
             carouselSlideCount: _carouselSlideCount,
+            fallbackToBuiltin: fallbackToBuiltin,
           );
       if (!mounted) return;
       _follow(r.jobId);
@@ -187,6 +189,10 @@ class _AutopilotGeneratorState extends ConsumerState<AutopilotGenerator> {
       if (running != null) {
         showInfo(context, 'A calendar is already being written for this project. Showing its progress.');
         _follow(running);
+      } else if (e.code == 'AI_NOT_CONFIGURED' ||
+                 e.message.contains('AI provider key') ||
+                 e.message.contains('AI_NOT_CONFIGURED')) {
+        _showAiKeyRecoverySheet();
       } else {
         showError(context, e);
       }
@@ -195,6 +201,112 @@ class _AutopilotGeneratorState extends ConsumerState<AutopilotGenerator> {
     } finally {
       if (mounted) setState(() => _starting = false);
     }
+  }
+
+  void _showAiKeyRecoverySheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: Theme.of(context).scaffoldBackgroundColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          border: Border(top: BorderSide(color: Theme.of(context).dividerColor)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: AppTheme.warning.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(Icons.key_rounded, color: AppTheme.warning, size: 24),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'AI Provider Setup Required',
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Choose how you want to generate your $_days-day calendar.',
+                          style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'No external AI key (OpenAI / Gemini) is configured for this workspace yet. You can generate immediately with zero setup using our built-in viral engine, or configure an API key.',
+                style: TextStyle(fontSize: 13, color: Theme.of(context).textTheme.bodyMedium?.color, height: 1.4),
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.of(ctx).pop();
+                    _start_(fallbackToBuiltin: true);
+                  },
+                  icon: const Icon(Icons.bolt_rounded, size: 20),
+                  label: const Text('Generate with Built-in Viral AI (Zero Setup)', style: TextStyle(fontWeight: FontWeight.bold)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primary,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: OutlinedButton.icon(
+                  onPressed: () {
+                    Navigator.of(ctx).pop();
+                    AiProviderSheet.show(context, onSaved: () {
+                      _start_();
+                    });
+                  },
+                  icon: const Icon(Icons.tune_rounded, size: 20),
+                  label: const Text('Configure API Key (Gemini / OpenAI)', style: TextStyle(fontWeight: FontWeight.w600)),
+                  style: OutlinedButton.styleFrom(
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   static String? _runningJobId(ApiException e) {
@@ -480,8 +592,14 @@ class _AutopilotGeneratorState extends ConsumerState<AutopilotGenerator> {
                 label: Text(_starting ? 'Starting Swarm…' : 'Generate $_days-day calendar'),
               ),
               SizedBox(height: 4),
-              TextButton(onPressed: _starting ? null : _showEstimate, child: Text('See AI usage for this plan')),
-              TextButton(onPressed: widget.onUseClassic, child: Text('Use the classic generator instead')),
+              SizedBox(height: 4),
+              TextButton.icon(
+                onPressed: () => AiProviderSheet.show(context),
+                icon: const Icon(Icons.tune_rounded, size: 16),
+                label: const Text('AI Engine & API Keys', style: TextStyle(fontSize: 12)),
+              ),
+              TextButton(onPressed: _starting ? null : _showEstimate, child: const Text('See AI usage for this plan')),
+              TextButton(onPressed: widget.onUseClassic, child: const Text('Use the classic generator instead')),
             ],
           ),
         ),

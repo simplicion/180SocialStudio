@@ -17,8 +17,12 @@ import managerRoutes from './manager/manager.routes';
 import studioLibraryRoutes from './library/studio-library.routes';
 import socialBillingRoutes from './billing/social-billing.routes';
 import platformTeamRoutes from './platform-team/platform-team.routes';
+import settingsAiRoutes from './settings/ai.routes';
 
 const router = Router();
+
+// Workspace & AI settings
+router.use('/settings', settingsAiRoutes);
 
 // Creator billing & recharge routes
 router.use('/billing', socialBillingRoutes);

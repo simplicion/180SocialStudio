@@ -1,3 +1,4 @@
+import { createBuiltinViralAutopilotLLM } from './builtin-viral-llm';
 /**
  * LLM access for the autopilot agents.
  *
@@ -125,14 +126,42 @@ export function wrapAiClient(client: AIClient, models: AutopilotModelConfig): Au
 /**
  * Resolves the company's AI provider. Throws AI_NOT_CONFIGURED when there is no usable key.
  */
-export async function createCompanyAutopilotLLM(companyId: string): Promise<AutopilotLLM> {
+export async function createCompanyAutopilotLLM(
+    companyId: string,
+    options?: { fallbackToBuiltin?: boolean; requestedProvider?: string }
+): Promise<AutopilotLLM> {
     if (!companyId) throw new AutopilotError('INVALID_INPUT', 'companyId is required');
+    if (options?.requestedProvider === 'builtin' || options?.fallbackToBuiltin) {
+        return createBuiltinViralAutopilotLLM();
+    }
     const { settings } = await AICompanyConfigService.getCompanyAISettings(companyId);
-    const client = await aiProviderService.getClient(settings);
+    if (settings?.aiProvider === 'builtin') {
+        return createBuiltinViralAutopilotLLM();
+    }
+    let client = await aiProviderService.getClient(settings);
+
+    // Smart auto-fallback: if the configured provider lacks a key, try other configured providers
     if (!client) {
+        const candidateProviders = ['gemini', 'openai', 'claude', 'groq', 'custom'];
+        for (const prov of candidateProviders) {
+            if (prov === settings.aiProvider) continue;
+            const fallbackSettings = { ...settings, aiProvider: prov };
+            const fallbackClient = await aiProviderService.getClient(fallbackSettings);
+            if (fallbackClient) {
+                client = fallbackClient;
+                break;
+            }
+        }
+    }
+
+    if (!client) {
+        if (options?.fallbackToBuiltin) {
+            return createBuiltinViralAutopilotLLM();
+        }
         throw new AutopilotError(
             'AI_NOT_CONFIGURED',
             `No usable AI provider key for this workspace (provider "${settings?.aiProvider || 'none'}"). Add a key in Settings > AI or set the platform env key.`,
+            { provider: settings?.aiProvider || 'openai', availableProviders: ['gemini', 'openai', 'claude', 'groq', 'builtin'] }
         );
     }
     return wrapAiClient(client, resolveAutopilotModels(client.provider));

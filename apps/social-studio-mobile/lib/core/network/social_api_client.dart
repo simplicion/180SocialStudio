@@ -341,6 +341,8 @@ class SocialApi {
     Map<String, dynamic>? contentMix,
     int? targetReelDurationSec,
     int? carouselSlideCount,
+    bool fallbackToBuiltin = false,
+    String? aiProvider,
   }) async {
     final d = startDate;
     final ymd = '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
@@ -355,6 +357,8 @@ class SocialApi {
       if (contentMix != null && contentMix.isNotEmpty) 'contentMix': contentMix,
       'targetReelDurationSec': ?targetReelDurationSec,
       'carouselSlideCount': ?carouselSlideCount,
+      if (fallbackToBuiltin) 'fallbackToBuiltin': true,
+      'aiProvider': ?aiProvider,
     }), idempotencyKey: _uuid.v4());
     final jobId = jStr(r['jobId']);
     final calendarId = jStr(r['calendarId']);
@@ -758,6 +762,33 @@ class SocialApi {
 
   /// Queued in the outbox when offline, like every other write.
   Future<MutationOutcome> pushStudioLibrary(Json body) => _mutate('PUT', '$base/library/sync', body: body, label: 'Sync library');
+
+
+  // ── Workspace AI Settings ──
+  /// Retrieves the workspace AI settings, active provider, and masked keys.
+  Future<Map<String, dynamic>> getAiSettings() async {
+    final r = await _api.get('$base/settings/ai');
+    return (r as Map).cast<String, dynamic>();
+  }
+
+  /// Updates the workspace AI provider and keys.
+  Future<Map<String, dynamic>> updateAiSettings({
+    required String aiProvider,
+    String? openaiKey,
+    String? geminiKey,
+    String? claudeKey,
+    String? groqKey,
+  }) async {
+    final body = <String, dynamic>{
+      'aiProvider': aiProvider,
+      'openaiKey': ?openaiKey,
+      'geminiKey': ?geminiKey,
+      'claudeKey': ?claudeKey,
+      'groqKey': ?groqKey,
+    };
+    final r = await _mutate('PUT', '$base/settings/ai', body: body, label: 'Update AI Settings');
+    return (r as Map).cast<String, dynamic>();
+  }
 
   // ── AI inbox per account ──
   Future<List<AiInboxAccount>> aiInboxSettings({String? projectId}) async {

@@ -115,4 +115,100 @@ export class AICompanyConfigService {
             companyName
         };
     }
+    /**
+     * Returns a safe summary of AI provider configurations for this company,
+     * with secret keys masked (sk-proj••••••••1234 or AIzaSy••••••••5678).
+     */
+    static async getCompanyAISummary(companyId?: string) {
+        const { settings, metadata, companyName } = await this.getCompanyAISettings(companyId);
+        const mask = (key?: string) => {
+            if (!key || key.length < 8) return null;
+            return key.slice(0, 4) + '••••••••' + key.slice(-4);
+        };
+
+        const activeProvider = settings.aiProvider || 'openai';
+        const hasActiveKey = (
+            (activeProvider === 'builtin') ||
+            (activeProvider === 'gemini' && !!settings.geminiKey) ||
+            (activeProvider === 'openai' && !!settings.openaiKey) ||
+            (activeProvider === 'claude' && !!settings.claudeKey) ||
+            (activeProvider === 'groq' && !!settings.groqKey) ||
+            (activeProvider === 'custom' && !!settings.customAiKey && !!settings.customAiUrl)
+        );
+
+        return {
+            aiProvider: activeProvider,
+            isConfigured: hasActiveKey,
+            companyName,
+            providers: {
+                builtin: {
+                    displayName: '180 Studio Viral AI (Zero Setup)',
+                    isConfigured: true,
+                    keyPreview: 'Active',
+                    isDefault: activeProvider === 'builtin',
+                },
+                gemini: {
+                    displayName: 'Google Gemini (1.5 Flash / Pro)',
+                    isConfigured: !!settings.geminiKey,
+                    keyPreview: mask(settings.geminiKey),
+                    isDefault: activeProvider === 'gemini',
+                },
+                openai: {
+                    displayName: 'OpenAI (GPT-4o / GPT-4o-mini)',
+                    isConfigured: !!settings.openaiKey,
+                    keyPreview: mask(settings.openaiKey),
+                    isDefault: activeProvider === 'openai',
+                },
+                claude: {
+                    displayName: 'Anthropic Claude (3.5 Sonnet)',
+                    isConfigured: !!settings.claudeKey,
+                    keyPreview: mask(settings.claudeKey),
+                    isDefault: activeProvider === 'claude',
+                },
+                groq: {
+                    displayName: 'Groq Cloud (Llama 3.3)',
+                    isConfigured: !!settings.groqKey,
+                    keyPreview: mask(settings.groqKey),
+                    isDefault: activeProvider === 'groq',
+                },
+            },
+        };
+    }
+
+    /**
+     * Updates company AI configuration stored securely in Company.metadata.
+     */
+    static async updateCompanyAISettings(companyId: string, updates: {
+        aiProvider?: string;
+        openaiKey?: string;
+        geminiKey?: string;
+        claudeKey?: string;
+        groqKey?: string;
+    }) {
+        if (!companyId) throw new Error('Company ID is required');
+        const company = await prisma.company.findUnique({ where: { id: companyId } });
+        if (!company) throw new Error('Company not found');
+
+        let metadata: any = company.metadata || {};
+        if (typeof metadata === 'string') {
+            try { metadata = JSON.parse(metadata); } catch { metadata = {}; }
+        }
+        if (typeof metadata === 'string') {
+            try { metadata = JSON.parse(metadata); } catch { metadata = {}; }
+        }
+
+        if (updates.aiProvider !== undefined) metadata.aiProvider = updates.aiProvider;
+        if (updates.openaiKey !== undefined) metadata.openaiKey = updates.openaiKey.trim();
+        if (updates.geminiKey !== undefined) metadata.geminiKey = updates.geminiKey.trim();
+        if (updates.claudeKey !== undefined) metadata.claudeKey = updates.claudeKey.trim();
+        if (updates.groqKey !== undefined) metadata.groqKey = updates.groqKey.trim();
+        metadata.lastAiConfiguredDate = new Date().toISOString();
+
+        await prisma.company.update({
+            where: { id: companyId },
+            data: { metadata },
+        });
+
+        return this.getCompanyAISummary(companyId);
+    }
 }
