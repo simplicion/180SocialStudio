@@ -25,7 +25,7 @@ class AppConfig {
         return 'http://$host:4007';
       }
     }
-    return 'http://18.207.84.197:4005';
+    return 'https://api.180workspace.com';
   }
 
   /// Origin of the web app. Used to build shareable links such as `/review/<token>`.

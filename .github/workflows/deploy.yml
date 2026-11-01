@@ -64,7 +64,7 @@ jobs:
             mkdir -p apps/180-social-studio-backend
             if [ ! -f "apps/180-social-studio-backend/.env" ]; then
               echo "Creating initial .env template..."
-              printf "PORT=4005\nSOCIAL_STUDIO_PORT=4005\nNODE_ENV=production\nCLIENT_URL=http://18.207.84.197:4005,http://localhost:3000,http://localhost:3002\nJWT_SECRET=180-social-studio-production-jwt-secret-key-2026\nSTORAGE_PROVIDER=local\nAWS_REGION=us-east-1\n" > apps/180-social-studio-backend/.env
+              printf "PORT=4005\nSOCIAL_STUDIO_PORT=4005\nNODE_ENV=production\nAPI_BASE_URL=https://api.180workspace.com\nSOCIAL_OAUTH_CALLBACK_BASE_URL=https://api.180workspace.com\nCLIENT_URL=https://api.180workspace.com,https://180workspace.com,https://social.180workspace.com,http://localhost:3000,http://localhost:3002\nJWT_SECRET=180-social-studio-production-jwt-secret-key-2026\nSTORAGE_PROVIDER=local\nAWS_REGION=us-east-1\n" > apps/180-social-studio-backend/.env
             else
               echo "Existing .env found on server, preserving production configuration."
             fi
@@ -152,13 +152,13 @@ jobs:
       - name: Build Android Release APK
         working-directory: apps/social-studio-mobile
         run: |
-          flutter build apk --release --dart-define=API_BASE_URL="http://18.207.84.197:4005"
+          flutter build apk --release --dart-define=API_BASE_URL="https://api.180workspace.com"
           cp build/app/outputs/flutter-apk/app-release.apk ../../180-social-studio-release.apk
 
       - name: Build Android Release App Bundle (AAB)
         working-directory: apps/social-studio-mobile
         run: |
-          flutter build appbundle --release --dart-define=API_BASE_URL="http://18.207.84.197:4005"
+          flutter build appbundle --release --dart-define=API_BASE_URL="https://api.180workspace.com"
           cp build/app/outputs/bundle/release/app-release.aab ../../180-social-studio-release.aab
 
       - name: Upload Release APK
