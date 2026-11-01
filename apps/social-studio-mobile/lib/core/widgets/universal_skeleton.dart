@@ -82,27 +82,45 @@ class _UniversalSkeletonState extends State<UniversalSkeleton>
 
   @override
   Widget build(BuildContext context) {
+    final Widget content;
     switch (widget.type) {
       case SkeletonType.calendar:
-        return _buildCalendarSkeleton();
+        content = _buildCalendarSkeleton();
       case SkeletonType.editor:
-        return _buildEditorSkeleton();
+        content = _buildEditorSkeleton();
       case SkeletonType.chat:
-        return _buildChatSkeleton();
+        content = _buildChatSkeleton();
       case SkeletonType.projects:
-        return _buildProjectsSkeleton();
+        content = _buildProjectsSkeleton();
       case SkeletonType.metrics:
-        return _buildMetricsSkeleton();
+        content = _buildMetricsSkeleton();
       case SkeletonType.table:
       case SkeletonType.activity:
-        return _buildListSkeleton();
+        content = _buildListSkeleton();
       case SkeletonType.kanban:
-        return _buildKanbanSkeleton();
+        content = _buildKanbanSkeleton();
       case SkeletonType.financial:
       case SkeletonType.form:
       case SkeletonType.detail:
-        return _buildDetailSkeleton();
+        content = _buildDetailSkeleton();
     }
+    if (widget.height != null) {
+      return SizedBox(
+        height: widget.height,
+        child: ClipRect(
+          child: SingleChildScrollView(
+            physics: const NeverScrollableScrollPhysics(),
+            child: content,
+          ),
+        ),
+      );
+    }
+    return ClipRect(
+      child: SingleChildScrollView(
+        physics: const NeverScrollableScrollPhysics(),
+        child: content,
+      ),
+    );
   }
 
   Widget _buildCalendarSkeleton() {

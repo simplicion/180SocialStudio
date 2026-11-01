@@ -754,8 +754,8 @@ class TimelineItemInspector extends StatefulWidget {
 class _TimelineItemInspectorState extends State<TimelineItemInspector> {
   late RangeValues _range = RangeValues(widget.item.startMs.toDouble(), widget.item.endMs.toDouble());
   late double _volume = _sfx?.volumeDb ??
-      widget.c.ir!.audio.voiceovers.where((v) => v.id == widget.item.id).firstOrNull?.volumeDb ??
-      widget.c.ir!.audio.music.firstOrNull?.volumeDb ??
+      widget.c.ir?.audio.voiceovers.where((v) => v.id == widget.item.id).firstOrNull?.volumeDb ??
+      widget.c.ir?.audio.music.firstOrNull?.volumeDb ??
       -12;
   late final _text = TextEditingController(text: _caption?.text ?? '');
   late double _intensity = _effect?.intensity ?? 0.6;

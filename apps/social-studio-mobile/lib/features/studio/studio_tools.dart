@@ -949,7 +949,7 @@ class _StickerSheetState extends State<_StickerSheet> {
           ),
         ),
         SizedBox(height: 8),
-        if (_searching) SizedBox(height: 120, child: UniversalSkeleton(type: SkeletonType.projects)),
+        if (_searching) SizedBox(height: 120, child: UniversalSkeleton(type: SkeletonType.activity, itemCount: 1)),
         if (_error != null && !_searching) ErrorView(error: _error!, compact: true, onRetry: _search),
         if (!_searching && _error == null && (_found?.isEmpty ?? false))
           EmptyView(
@@ -2050,7 +2050,7 @@ class _MusicSheet extends ConsumerStatefulWidget {
 }
 
 class _MusicSheetState extends ConsumerState<_MusicSheet> {
-  late final EditIrMusic? m = widget.c.ir!.audio.music.firstOrNull;
+  late final EditIrMusic? m = widget.c.ir?.audio.music.firstOrNull;
   late double vol = m?.volumeDb ?? -16;
   late bool duck = m?.duck?.enabled ?? true;
   late bool fades = (m?.fadeInMs ?? 500) > 0;
@@ -2129,8 +2129,8 @@ class _MusicSheetState extends ConsumerState<_MusicSheet> {
   Future<void> _applyTrack(String url, String title, String? credit) async {
     await _previewPlayer?.dispose();
     _previewPlayer = null;
-    // Online tracks are downloaded first (progress shown on the row), so preview and export use the same file.
-    if (url.startsWith('http')) {
+    // Online tracks are downloaded on native platforms; on web or when cache is not ready, use direct stream.
+    if (url.startsWith('http') && AssetCache.instance.available) {
       try {
         await AssetCache.instance.ensure(url, kind: AssetKind.audio);
       } catch (e) {
@@ -2181,7 +2181,7 @@ class _MusicSheetState extends ConsumerState<_MusicSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final hasSpeech = widget.c.ir!.audio.speechRangesMs.isNotEmpty;
+    final hasSpeech = widget.c.ir?.audio.speechRangesMs.isNotEmpty ?? false;
     return ConstrainedBox(
       constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.8),
       child: SingleChildScrollView(
@@ -2232,7 +2232,10 @@ class _MusicSheetState extends ConsumerState<_MusicSheet> {
               ),
             ),
             if (_searching)
-              SizedBox(height: 160, child: UniversalSkeleton(type: SkeletonType.projects)),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: UniversalSkeleton(type: SkeletonType.activity, itemCount: 2),
+              ),
             if (_results != null && !_searching) ...[
               SizedBox(height: 12),
               Text(
@@ -2248,11 +2251,12 @@ class _MusicSheetState extends ConsumerState<_MusicSheet> {
                       style: TextStyle(color: AppTheme.textMuted)),
                 )
               else
-                ListView.separated(
-                  shrinkWrap: true,
-                  physics: NeverScrollableScrollPhysics(),
-                  itemCount: _results!.length.clamp(0, 10),
-                  separatorBuilder: (_, _) => Divider(height: 1, color: AppTheme.borderSubtle),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 280),
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: _results!.length.clamp(0, 20),
+                    separatorBuilder: (_, _) => Divider(height: 1, color: AppTheme.borderSubtle),
                   itemBuilder: (ctx, i) {
                     final t = _results![i];
                     final isPlaying = _previewingUrl == t.url && (_previewPlayer?.value.isPlaying ?? false);
@@ -2293,6 +2297,7 @@ class _MusicSheetState extends ConsumerState<_MusicSheet> {
                     );
                   },
                 ),
+              ),
             ],
             SizedBox(height: 8),
             OutlinedButton.icon(
@@ -2624,7 +2629,7 @@ class _BrollSheetState extends ConsumerState<_BrollSheet> {
             ),
           ),
           if (_searching)
-            SizedBox(height: 160, child: UniversalSkeleton(type: SkeletonType.projects)),
+            SizedBox(height: 160, child: UniversalSkeleton(type: SkeletonType.activity, itemCount: 2)),
           if (_results != null && !_searching) ...[
             SizedBox(height: 12),
             Text(
@@ -3444,7 +3449,7 @@ class _PhotosTabState extends ConsumerState<_PhotosTab> {
         Text('Show for ${_seconds.toStringAsFixed(1)} s', style: Theme.of(context).textTheme.bodySmall),
         Expanded(child: Slider(value: _seconds, min: 1, max: 8, divisions: 14, onChanged: (v) => setState(() => _seconds = v))),
       ]),
-      if (_busy) SizedBox(height: 200, child: UniversalSkeleton(type: SkeletonType.projects)),
+      if (_busy) SizedBox(height: 160, child: UniversalSkeleton(type: SkeletonType.activity, itemCount: 2)),
       if (_error != null && !_busy) ErrorView(error: _error!, compact: true, onRetry: _search),
       if (!_busy && _error == null && results != null && results.isEmpty)
         EmptyView(

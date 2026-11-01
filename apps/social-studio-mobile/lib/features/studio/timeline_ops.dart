@@ -1866,7 +1866,7 @@ class TimelineOps {
       id: ir.audio.music.firstOrNull?.id ?? _id('m'),
       timelineStartMs: 0,
       timelineEndMs: ir.durationMs,
-      source: isHttp ? {'kind': 'url', 'url': url, 'query': ?title} : {'kind': 'file', 'path': url, 'query': ?title},
+      source: isHttp ? {'kind': 'url', 'url': url, 'query': ?title, 'title': ?title} : {'kind': 'file', 'path': url, 'query': ?title, 'title': ?title},
       volumeDb: volumeDb,
       fadeInMs: fadeInMs,
       fadeOutMs: fadeOutMs,

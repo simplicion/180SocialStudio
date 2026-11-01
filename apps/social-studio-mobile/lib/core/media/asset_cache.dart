@@ -59,7 +59,7 @@ class AssetCache {
   Future<void> Function(String path)? videoFinalizer;
 
   /// False where the app has no storage for a cache (web, plain unit tests): callers then skip prefetching.
-  bool get available => _dir != null || fetchOverride != null;
+  bool get available => !kIsWeb && (_dir != null || fetchOverride != null);
 
   /// Live progress per URL (0..1; -1 while the size is unknown). Removed when the download ends.
   final ValueNotifier<Map<String, double>> progress = ValueNotifier(const {});
@@ -96,7 +96,7 @@ class AssetCache {
 
   /// The cached file for [url], or null when it is not downloaded yet (synchronous, for build methods).
   String? cachedPath(String url) {
-    if (_dir == null || !_isRemote(url)) return null;
+    if (kIsWeb || _dir == null || !_isRemote(url)) return null;
     final path = _index[_key(url)];
     if (path == null) return null;
     if (!File(path).existsSync()) {
@@ -106,10 +106,11 @@ class AssetCache {
     return path;
   }
 
-  bool isCached(String url) => cachedPath(url) != null;
+  bool isCached(String url) => kIsWeb ? true : cachedPath(url) != null;
 
   /// The local file for [url], downloading it first if needed. Concurrent calls for one URL share a download.
   Future<String> ensure(String url, {AssetKind? kind, CancelToken? cancel}) async {
+    if (kIsWeb) return url;
     if (!_isRemote(url)) {
       if (File(url).existsSync()) return url;
       throw AssetDownloadException('FILE_NOT_FOUND', 'The file is no longer on this phone.');
@@ -117,6 +118,7 @@ class AssetCache {
     final override = fetchOverride;
     if (override != null) return override(url, kind);
     await init();
+    if (!available || _dir == null) return url;
     final hit = cachedPath(url);
     if (hit != null) {
       // Touch for least-recently-used trimming.
@@ -135,6 +137,12 @@ class AssetCache {
   Future<({Map<String, String> paths, Map<String, String> errors})> ensureAll(Map<String, AssetKind?> urls) async {
     final paths = <String, String>{};
     final errors = <String, String>{};
+    if (kIsWeb) {
+      for (final u in urls.keys) {
+        paths[u] = u;
+      }
+      return (paths: paths, errors: errors);
+    }
     await Future.wait(urls.entries.map((e) async {
       try {
         paths[e.key] = await ensure(e.key, kind: e.value);
@@ -155,9 +163,11 @@ class AssetCache {
   }
 
   Future<String> _download(String url, AssetKind? kind, CancelToken? cancel) async {
+    if (kIsWeb || _dir == null) return url;
     await _slot();
     try {
-      final dir = _dir!;
+      final dir = _dir;
+      if (dir == null) return url;
       final key = _key(url);
       final part = File('${dir.path}/$key.part');
       _setProgress(url, 0);
