@@ -371,6 +371,7 @@ class _TeleprompterSetupSheetState extends ConsumerState<TeleprompterSetupSheet>
               ),
             ] else ...[
               DropdownButtonFormField<String>(
+                isExpanded: true,
                 initialValue: _selectedFolderId ?? existingFolders.first.id,
                 decoration: fieldDecoration('Select library folder', prefix: const Icon(Icons.folder_rounded, size: 18)),
                 dropdownColor: AppTheme.surfaceElevated,
@@ -381,7 +382,13 @@ class _TeleprompterSetupSheetState extends ConsumerState<TeleprompterSetupSheet>
                             children: [
                               Icon(Icons.folder_rounded, color: f.color, size: 18),
                               const SizedBox(width: 10),
-                              Text(f.name, style: const TextStyle(fontSize: 14)),
+                              Expanded(
+                                child: Text(
+                                  f.name,
+                                  style: const TextStyle(fontSize: 14),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
                             ],
                           ),
                         ))

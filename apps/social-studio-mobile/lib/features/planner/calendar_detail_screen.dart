@@ -1009,9 +1009,10 @@ class _PieceSheetState extends ConsumerState<PieceSheet> {
         ],
 
         DropdownButtonFormField<PieceStatus>(
+          isExpanded: true,
           initialValue: PieceStatus.settable.contains(_status) ? _status : null,
           decoration: fieldDecoration('Status'),
-          items: [for (final s in PieceStatus.settable) DropdownMenuItem(value: s, child: Text(s.label))],
+          items: [for (final s in PieceStatus.settable) DropdownMenuItem(value: s, child: Text(s.label, overflow: TextOverflow.ellipsis))],
           onChanged: (s) => s == null || s == _status ? null : _setStatus(s),
         ),
         SizedBox(height: 12),

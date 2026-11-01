@@ -3,6 +3,39 @@ import { YtDlpService, AutoClipperService, ProductionRenderQueue } from "@worksp
 import path from "path";
 import fs from "fs";
 
+export function sanitizeMediaError(rawError: any): string {
+  if (!rawError) return "An unexpected error occurred while processing the video.";
+  let msg = typeof rawError === "string" ? rawError : rawError.message || String(rawError);
+
+  if (msg.includes("Sign in to confirm you're not a bot")) {
+    return "YouTube requires verification for this video. Please try another link or ensure cookies are configured.";
+  }
+  if (msg.includes("Video unavailable") || msg.includes("Private video")) {
+    return "This video is unavailable, private, or has been removed.";
+  }
+  if (msg.includes("ffmpeg is not installed")) {
+    return "Media processing engine is initializing audio codecs. Please retry in a moment.";
+  }
+  if (msg.includes("Invalid URL") || msg.includes("not in the supported video platform allowlist")) {
+    return "Please enter a valid YouTube, Instagram, TikTok, or Vimeo link.";
+  }
+
+  // Strip local system paths like /home/ubuntu/... or C:\Users\...
+  msg = msg.replace(/(?:\/[a-zA-Z0-9_\-\.]+)+/g, "");
+  msg = msg.replace(/(?:[a-zA-Z]:\\[a-zA-Z0-9_\-\.\\]+)/g, "");
+
+  // Strip shell command failure noise
+  msg = msg.replace(/Command failed with exit code \d+:?/i, "").trim();
+  msg = msg.replace(/Deprecated Feature:[^.]+\./i, "").trim();
+  msg = msg.replace(/^ERROR:\s*/i, "").trim();
+
+  if (!msg || msg.length < 5) {
+    return "Failed to process video. Please verify the URL is accessible and try again.";
+  }
+
+  return msg.length > 250 ? msg.slice(0, 250) + "..." : msg;
+}
+
 export async function ingestMetadataHandler(req: Request, res: Response) {
   try {
     const url = typeof req.query.url === "string" ? req.query.url.trim() : "";
@@ -22,7 +55,7 @@ export async function ingestMetadataHandler(req: Request, res: Response) {
     return res.status(502).json({
       success: false,
       error: "METADATA_FETCH_FAILED",
-      message: err?.message || "Failed to fetch metadata from video URL.",
+      message: sanitizeMediaError(err),
     });
   }
 }
@@ -76,7 +109,7 @@ export async function ingestDownloadHandler(req: Request, res: Response) {
     return res.status(502).json({
       success: false,
       error: "DOWNLOAD_FAILED",
-      message: err?.message || "Failed to download media from video URL.",
+      message: sanitizeMediaError(err),
     });
   }
 }
@@ -153,7 +186,7 @@ export async function ingestAutoClipHandler(req: Request, res: Response) {
     return res.status(502).json({
       success: false,
       error: "AUTOCLIP_FAILED",
-      message: err?.message || "Failed to auto-clip media from video URL.",
+      message: sanitizeMediaError(err),
     });
   }
 }
@@ -175,7 +208,7 @@ export function queueJobStatusHandler(req: Request, res: Response) {
       status: job.status,
       progress: job.progress,
       result: job.result,
-      error: job.error,
+      error: job.error ? sanitizeMediaError(job.error) : undefined,
       createdAt: job.createdAt,
       startedAt: job.startedAt,
       completedAt: job.completedAt,

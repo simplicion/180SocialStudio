@@ -2211,13 +2211,21 @@ class _CaptionsSheetState extends State<_CaptionsSheet> {
       ]),
       SizedBox(height: 12),
       Row(children: [
-        Expanded(child: Text('Spoken language')),
-        DropdownButton<String>(
-          value: c.spokenLanguage,
-          onChanged: running ? null : (v) => v == null ? null : c.setSpokenLanguage(v),
-          items: [
-            for (final e in CaptionLanguages.spoken.entries) DropdownMenuItem(value: e.key, child: Text(e.value)),
-          ],
+        Expanded(child: Text('Spoken language', overflow: TextOverflow.ellipsis)),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 160),
+          child: DropdownButton<String>(
+            isExpanded: true,
+            value: c.spokenLanguage,
+            onChanged: running ? null : (v) => v == null ? null : c.setSpokenLanguage(v),
+            items: [
+              for (final e in CaptionLanguages.spoken.entries)
+                DropdownMenuItem(
+                  value: e.key,
+                  child: Text(e.value, overflow: TextOverflow.ellipsis),
+                ),
+            ],
+          ),
         ),
       ]),
       if (running) SizedBox(height: 48, child: UniversalSkeleton(type: SkeletonType.activity)),
@@ -2379,7 +2387,7 @@ class _CaptionsSheetState extends State<_CaptionsSheet> {
               hint: Text('Choose a language'),
               onChanged: _converting ? null : (v) => setState(() => _convertTo = v),
               items: [
-                for (final e in CaptionLanguages.targets.entries) DropdownMenuItem(value: e.key, child: Text(e.value)),
+                for (final e in CaptionLanguages.targets.entries) DropdownMenuItem(value: e.key, child: Text(e.value, overflow: TextOverflow.ellipsis)),
               ],
             ),
           ),

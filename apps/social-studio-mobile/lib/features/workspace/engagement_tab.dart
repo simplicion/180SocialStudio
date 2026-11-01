@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
 import '../../core/providers.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/common.dart';
@@ -12,24 +11,19 @@ import '../../data/models/project.dart';
 import '../posts/post_providers.dart';
 import 'account_media_picker.dart';
 import 'accounts_tab.dart';
-
 final engagementRulesProvider = FutureProvider.autoDispose.family<List<EngagementRule>, String>((ref, projectId) {
   return ref.watch(socialApiProvider).listEngagementRules(projectId: projectId);
 });
-
 final engagementStatsProvider = FutureProvider.autoDispose.family<EngagementStats, String>((ref, projectId) {
   return ref.watch(socialApiProvider).getEngagementStats(projectId: projectId);
 });
-
 final livePlatformMetricsProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>((ref, projectId) {
   return ref.watch(socialApiProvider).getLivePlatformMetrics(projectId);
 });
-
 /// 180 Engagement Automation Tab for Projects
 class EngagementTab extends ConsumerWidget {
   const EngagementTab({super.key, required this.project});
   final Project project;
-
   void _openCreateRuleSheet(BuildContext context, WidgetRef ref) {
     showModalBottomSheet(
       context: context,
@@ -40,7 +34,6 @@ class EngagementTab extends ConsumerWidget {
       builder: (_) => _EngagementRuleFormSheet(projectId: project.id),
     );
   }
-
   void _openDryRunSheet(BuildContext context, WidgetRef ref) {
     showModalBottomSheet(
       context: context,
@@ -51,12 +44,10 @@ class EngagementTab extends ConsumerWidget {
       builder: (_) => _DryRunTesterSheet(projectId: project.id),
     );
   }
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final rulesAsync = ref.watch(engagementRulesProvider(project.id));
     final statsAsync = ref.watch(engagementStatsProvider(project.id));
-
     return Scaffold(
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _openCreateRuleSheet(context, ref),
@@ -84,7 +75,6 @@ class EngagementTab extends ConsumerWidget {
             ),
             _buildLiveMetricsCard(context, ref),
             SizedBox(height: 20),
-
             SectionHeader(
               'Active Funnels & Triggers',
               trailing: TextButton.icon(
@@ -94,7 +84,6 @@ class EngagementTab extends ConsumerWidget {
               ),
             ),
             SizedBox(height: 8),
-
             rulesAsync.when(
               data: (rules) {
                 if (rules.isEmpty) {
@@ -126,7 +115,6 @@ class EngagementTab extends ConsumerWidget {
       ),
     );
   }
-
   Widget _buildStatsRow(BuildContext context, EngagementStats stats) {
     return Container(
       padding: EdgeInsets.all(16),
@@ -159,7 +147,6 @@ class EngagementTab extends ConsumerWidget {
       ),
     );
   }
-
   Widget _metricTile(String label, String value, IconData icon, Color color) {
     return Column(
       children: [
@@ -170,7 +157,6 @@ class EngagementTab extends ConsumerWidget {
       ],
     );
   }
-
   Widget _buildLiveMetricsCard(BuildContext context, WidgetRef ref) {
     final metricsAsync = ref.watch(livePlatformMetricsProvider(project.id));
     return metricsAsync.when(
@@ -232,12 +218,10 @@ class EngagementTab extends ConsumerWidget {
     );
   }
 }
-
 class _RuleCard extends ConsumerWidget {
   const _RuleCard({required this.rule, required this.projectId});
   final EngagementRule rule;
   final String projectId;
-
   String _formatTriggerLabel() {
     if (rule.triggerType == 'comment_any') {
       return 'Any Comment on Post';
@@ -246,7 +230,6 @@ class _RuleCard extends ConsumerWidget {
     }
     return 'Comment Keyword';
   }
-
   String _formatGoalLabel() {
     switch (rule.aiAgentGoal) {
       case 'qualify_lead':
@@ -261,12 +244,10 @@ class _RuleCard extends ConsumerWidget {
         return 'AI Assistant';
     }
   }
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isGlobalAccount = rule.socialAccountId == null;
     final isGlobalPost = rule.postId == null && rule.platformMediaId == null;
-
     return Container(
       padding: EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -304,7 +285,6 @@ class _RuleCard extends ConsumerWidget {
             ],
           ),
           SizedBox(height: 8),
-
           // Scope Badges (Target Account & Target Post)
           Wrap(
             spacing: 6,
@@ -363,7 +343,6 @@ class _RuleCard extends ConsumerWidget {
             ],
           ),
           SizedBox(height: 8),
-
           // Keywords (if keyword trigger)
           if (rule.triggerType == 'comment_keyword' && rule.triggerKeywords.isNotEmpty)
             Wrap(
@@ -385,7 +364,6 @@ class _RuleCard extends ConsumerWidget {
               ],
             ),
           SizedBox(height: 8),
-
           // Details summary
           Wrap(
             spacing: 0,
@@ -411,7 +389,6 @@ class _RuleCard extends ConsumerWidget {
               ],
             ],
           ),
-
           if (rule.actionDmDeliverableUrl != null && rule.actionDmDeliverableUrl!.isNotEmpty) ...[
             SizedBox(height: 8),
             Row(
@@ -428,15 +405,16 @@ class _RuleCard extends ConsumerWidget {
               ],
             ),
           ],
-
           Divider(height: 20, color: AppTheme.borderSubtle),
-
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
+              Expanded(
+                child: Text(
                 '${rule.totalTriggered} triggered · ${rule.totalDmsSent} DMs sent',
-                style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                  style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
               IconButton(
                 icon: Icon(Icons.delete_outline_rounded, size: 18, color: AppTheme.error),
@@ -456,15 +434,12 @@ class _RuleCard extends ConsumerWidget {
     );
   }
 }
-
 class _EngagementRuleFormSheet extends ConsumerStatefulWidget {
   const _EngagementRuleFormSheet({required this.projectId});
   final String projectId;
-
   @override
   ConsumerState<_EngagementRuleFormSheet> createState() => _EngagementRuleFormSheetState();
 }
-
 class _EngagementRuleFormSheetState extends ConsumerState<_EngagementRuleFormSheet> {
   final _nameCtl = TextEditingController();
   final _keywordsCtl = TextEditingController();
@@ -474,7 +449,6 @@ class _EngagementRuleFormSheetState extends ConsumerState<_EngagementRuleFormShe
   final _deliverableUrlCtl = TextEditingController();
   final _publicReplyCtl = TextEditingController(text: 'Sent to your DMs! Check your messages');
   final _aiPromptOverrideCtl = TextEditingController();
-
   String _triggerType = 'comment_keyword'; // 'comment_keyword', 'comment_any', 'dm_inbound'
   String _aiAgentGoal = 'qualify_lead'; // 'qualify_lead', 'book_demo', 'answer_support', 'deliver_resource'
   String? _selectedAccountId; // null = all connected accounts (e.g. all 5 accounts)
@@ -487,7 +461,6 @@ class _EngagementRuleFormSheetState extends ConsumerState<_EngagementRuleFormShe
   final String _matchMode = 'contains';
   bool _saving = false;
   String? _selectedPreset;
-
   @override
   void dispose() {
     _nameCtl.dispose();
@@ -498,7 +471,6 @@ class _EngagementRuleFormSheetState extends ConsumerState<_EngagementRuleFormShe
     _aiPromptOverrideCtl.dispose();
     super.dispose();
   }
-
   void _applyPreset(String preset) {
     setState(() => _selectedPreset = preset);
     if (preset == 'blueprint') {
@@ -569,7 +541,6 @@ class _EngagementRuleFormSheetState extends ConsumerState<_EngagementRuleFormShe
       });
     }
   }
-
   void _insertToken(String token) {
     final text = _dmTemplateCtl.text;
     final selection = _dmTemplateCtl.selection;
@@ -583,7 +554,6 @@ class _EngagementRuleFormSheetState extends ConsumerState<_EngagementRuleFormShe
     }
     setState(() {});
   }
-
   /// Picks one of the account's real, already-published posts (Instagram/Facebook) as the rule target.
   Future<void> _pickExistingPost() async {
     final accounts = ref.read(allAccountsProvider).valueOrNull ?? const <SocialAccount>[];
@@ -610,18 +580,15 @@ class _EngagementRuleFormSheetState extends ConsumerState<_EngagementRuleFormShe
       });
     }
   }
-
   Future<void> _submit() async {
     final name = _nameCtl.text.trim();
     if (name.isEmpty) {
       showError(context, 'Rule name is required.');
       return;
     }
-
     final allAccs = ref.read(allAccountsProvider).valueOrNull ?? [];
     final selectedAcc = allAccs.where((a) => a.id == _selectedAccountId).firstOrNull;
     final isLinkedIn = selectedAcc?.platform == SocialPlatform.linkedin;
-
     List<String> rawKeywords = [];
     if (_triggerType == 'comment_keyword') {
       rawKeywords = _keywordsCtl.text
@@ -634,18 +601,15 @@ class _EngagementRuleFormSheetState extends ConsumerState<_EngagementRuleFormShe
         return;
       }
     }
-
     final dmTemplate = _dmTemplateCtl.text.trim();
     if (!isLinkedIn && dmTemplate.isEmpty) {
       showError(context, 'Direct Message Template is required.');
       return;
     }
-
     if (isLinkedIn && !_autoLike && _publicReplyCtl.text.trim().isEmpty) {
       showError(context, 'Please enable Auto-Like or provide a Public Comment Reply for LinkedIn.');
       return;
     }
-
     setState(() => _saving = true);
     final data = {
       'name': name,
@@ -668,7 +632,6 @@ class _EngagementRuleFormSheetState extends ConsumerState<_EngagementRuleFormShe
       'aiAgentGoal': _aiAgentGoal,
       'aiAgentPromptOverride': _aiPromptOverrideCtl.text.trim().isEmpty ? null : _aiPromptOverrideCtl.text.trim(),
     };
-
     final rule = await guarded(context, () => ref.read(socialApiProvider).createEngagementRule(data));
     if (!mounted) return;
     setState(() => _saving = false);
@@ -679,7 +642,6 @@ class _EngagementRuleFormSheetState extends ConsumerState<_EngagementRuleFormShe
       Navigator.of(context).pop();
     }
   }
-
   Widget _buildPresetButton(String id, String label, IconData icon) {
     final isSelected = _selectedPreset == id;
     return InkWell(
@@ -718,7 +680,6 @@ class _EngagementRuleFormSheetState extends ConsumerState<_EngagementRuleFormShe
       ),
     );
   }
-
   Widget _buildSectionCard({
     required IconData icon,
     required String title,
@@ -739,13 +700,16 @@ class _EngagementRuleFormSheetState extends ConsumerState<_EngagementRuleFormShe
             children: [
               Icon(icon, size: 16, color: AppTheme.primary),
               const SizedBox(width: 8),
-              Text(
-                title.toUpperCase(),
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.8,
-                  color: AppTheme.textMuted,
+              Expanded(
+                child: Text(
+                  title.toUpperCase(),
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.8,
+                    color: AppTheme.textMuted,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
@@ -756,12 +720,10 @@ class _EngagementRuleFormSheetState extends ConsumerState<_EngagementRuleFormShe
       ),
     );
   }
-
   @override
   Widget build(BuildContext context) {
     final accountsAsync = ref.watch(allAccountsProvider);
     final postsAsync = ref.watch(projectPostsProvider(PostQuery(projectId: widget.projectId)));
-
     return Container(
       constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.9),
       decoration: BoxDecoration(
@@ -783,7 +745,6 @@ class _EngagementRuleFormSheetState extends ConsumerState<_EngagementRuleFormShe
               ),
             ),
           ),
-
           // Header
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
@@ -811,11 +772,15 @@ class _EngagementRuleFormSheetState extends ConsumerState<_EngagementRuleFormShe
                           fontWeight: FontWeight.bold,
                           color: AppTheme.textPrimary,
                         ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 2),
                       Text(
                         'Automate comments, DMs & lead qualification across your accounts',
                         style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
                   ),
@@ -829,7 +794,6 @@ class _EngagementRuleFormSheetState extends ConsumerState<_EngagementRuleFormShe
             ),
           ),
           Divider(height: 1, color: AppTheme.border),
-
           // Scrollable Form Body
           Expanded(
             child: SingleChildScrollView(
@@ -870,7 +834,6 @@ class _EngagementRuleFormSheetState extends ConsumerState<_EngagementRuleFormShe
                     ),
                   ),
                   const SizedBox(height: 20),
-
                   // Section 1: Scope (Accounts & Target Content)
                   _buildSectionCard(
                     icon: Icons.tune_rounded,
@@ -885,15 +848,16 @@ class _EngagementRuleFormSheetState extends ConsumerState<_EngagementRuleFormShe
                         ),
                       ),
                       const SizedBox(height: 14),
-
                       // Social Account Selection (Filtered to Meta: Instagram & Facebook)
-                      Row(
+                      Wrap(
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 8,
+                        runSpacing: 4,
                         children: [
                           Text(
                             'Target Social Account(s)',
                             style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
                           ),
-                          const SizedBox(width: 8),
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
@@ -917,7 +881,6 @@ class _EngagementRuleFormSheetState extends ConsumerState<_EngagementRuleFormShe
                                a.platform == SocialPlatform.facebook ||
                                a.platform == SocialPlatform.linkedin)
                           ).toList();
-
                           if (accounts.isEmpty) {
                             return Container(
                               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -941,6 +904,7 @@ class _EngagementRuleFormSheetState extends ConsumerState<_EngagementRuleFormShe
                             );
                           }
                           return DropdownButtonFormField<String?>(
+                            isExpanded: true,
                             initialValue: _selectedAccountId,
                             dropdownColor: AppTheme.surfaceElevated,
                             decoration: fieldDecoration(
@@ -985,15 +949,16 @@ class _EngagementRuleFormSheetState extends ConsumerState<_EngagementRuleFormShe
                         ),
                       ),
                       const SizedBox(height: 14),
-
                       // Target Post Selection (All Posts vs Specific Reel / Video)
                       Row(
                         children: [
-                          Text(
-                            'Target Video / Post',
-                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
+                          Expanded(
+                            child: Text(
+                              'Target Video / Post',
+                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
-                          const Spacer(),
                           TextButton.icon(
                             onPressed: _pickExistingPost,
                             icon: Icon(Icons.grid_view_rounded, size: 15, color: AppTheme.primary),
@@ -1067,7 +1032,6 @@ class _EngagementRuleFormSheetState extends ConsumerState<_EngagementRuleFormShe
                     ],
                   ),
                   const SizedBox(height: 16),
-
                   // Section 2: Trigger Rules
                   _buildSectionCard(
                     icon: Icons.sensors_rounded,
@@ -1120,7 +1084,6 @@ class _EngagementRuleFormSheetState extends ConsumerState<_EngagementRuleFormShe
                     ],
                   ),
                   const SizedBox(height: 16),
-
                   // Section 3: Automation Actions & Deliverables
                   _buildSectionCard(
                     icon: Icons.flash_on_rounded,
@@ -1154,7 +1117,6 @@ class _EngagementRuleFormSheetState extends ConsumerState<_EngagementRuleFormShe
                             ],
                           ),
                         ),
-
                       // Auto-Like Container (only if comment trigger)
                       if (_triggerType != 'dm_inbound') ...[
                         Container(
@@ -1179,7 +1141,6 @@ class _EngagementRuleFormSheetState extends ConsumerState<_EngagementRuleFormShe
                           ),
                         ),
                         const SizedBox(height: 14),
-
                         TextField(
                           controller: _publicReplyCtl,
                           decoration: fieldDecoration(
@@ -1191,7 +1152,6 @@ class _EngagementRuleFormSheetState extends ConsumerState<_EngagementRuleFormShe
                         ),
                         const SizedBox(height: 14),
                       ],
-
                       // Deliverable Explanation & Input
                       TextField(
                         controller: _deliverableUrlCtl,
@@ -1203,7 +1163,6 @@ class _EngagementRuleFormSheetState extends ConsumerState<_EngagementRuleFormShe
                         ),
                       ),
                       const SizedBox(height: 14),
-
                       if (accountsAsync.valueOrNull?.where((a) => a.id == _selectedAccountId).firstOrNull?.platform != SocialPlatform.linkedin) ...[
                         TextField(
                           controller: _dmTemplateCtl,
@@ -1215,34 +1174,30 @@ class _EngagementRuleFormSheetState extends ConsumerState<_EngagementRuleFormShe
                           ),
                         ),
                         const SizedBox(height: 8),
-
                         // Interactive Token Pills
-                        Row(
+                        Wrap(
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          spacing: 6,
+                          runSpacing: 6,
                           children: [
-                            Text('Insert token: ', style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
-                            const SizedBox(width: 4),
-                            Wrap(
-                              spacing: 6,
-                              children: [
-                                for (final token in ['{name}', '{handle}', '{link}'])
-                                  InkWell(
-                                    onTap: () => _insertToken(token),
+                            Text('Insert token:', style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
+                            for (final token in ['{name}', '{handle}', '{link}'])
+                              InkWell(
+                                onTap: () => _insertToken(token),
+                                borderRadius: BorderRadius.circular(6),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.surface,
                                     borderRadius: BorderRadius.circular(6),
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                                      decoration: BoxDecoration(
-                                        color: AppTheme.surface,
-                                        borderRadius: BorderRadius.circular(6),
-                                        border: Border.all(color: AppTheme.border),
-                                      ),
-                                      child: Text(
-                                        '+ $token',
-                                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.primary),
-                                      ),
-                                    ),
+                                    border: Border.all(color: AppTheme.border),
                                   ),
-                              ],
-                            ),
+                                  child: Text(
+                                    '+ $token',
+                                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.primary),
+                                  ),
+                                ),
+                              ),
                           ],
                         ),
                       ] else ...[
@@ -1270,7 +1225,6 @@ class _EngagementRuleFormSheetState extends ConsumerState<_EngagementRuleFormShe
                     ],
                   ),
                   const SizedBox(height: 16),
-
                   // Section 4: Autonomous AI Agent & Lead Qualification
                   _buildSectionCard(
                     icon: Icons.psychology_outlined,
@@ -1286,13 +1240,15 @@ class _EngagementRuleFormSheetState extends ConsumerState<_EngagementRuleFormShe
                           contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
                           value: _enableAiAgent,
                           activeTrackColor: AppTheme.primary,
-                          title: Row(
+                          title: Wrap(
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: 6,
+                            runSpacing: 2,
                             children: [
                               Text(
                                 'Enable AI Multi-Turn Agent',
                                 style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
                               ),
-                              const SizedBox(width: 6),
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                                 decoration: BoxDecoration(
@@ -1313,7 +1269,6 @@ class _EngagementRuleFormSheetState extends ConsumerState<_EngagementRuleFormShe
                           onChanged: (v) => setState(() => _enableAiAgent = v),
                         ),
                       ),
-
                       if (_enableAiAgent) ...[
                         const SizedBox(height: 14),
                         Text(
@@ -1322,31 +1277,31 @@ class _EngagementRuleFormSheetState extends ConsumerState<_EngagementRuleFormShe
                         ),
                         const SizedBox(height: 6),
                         DropdownButtonFormField<String>(
+                          isExpanded: true,
                           initialValue: _aiAgentGoal,
                           dropdownColor: AppTheme.surfaceElevated,
                           decoration: fieldDecoration('Select Goal', prefix: Icon(Icons.flag_rounded, size: 18, color: AppTheme.warning)),
                           items: const [
                             DropdownMenuItem(
                               value: 'qualify_lead',
-                              child: Text('🎯 Qualify Lead (Extract Need, Email & Phone into CRM)'),
+                              child: Text('🎯 Qualify Lead (Extract Need, Email & Phone)', overflow: TextOverflow.ellipsis),
                             ),
                             DropdownMenuItem(
                               value: 'book_demo',
-                              child: Text('📅 Book Demo / Call (Guide to Booking Link)'),
+                              child: Text('📅 Book Demo / Call (Guide to Booking Link)', overflow: TextOverflow.ellipsis),
                             ),
                             DropdownMenuItem(
                               value: 'answer_support',
-                              child: Text('💬 Answer Support (Product FAQ with Brand Voice)'),
+                              child: Text('💬 Answer Support (Product FAQ with Voice)', overflow: TextOverflow.ellipsis),
                             ),
                             DropdownMenuItem(
                               value: 'deliver_resource',
-                              child: Text('📦 Deliver Resource (Confirm Receipt & Follow Up)'),
+                              child: Text('📦 Deliver Resource (Confirm & Follow Up)', overflow: TextOverflow.ellipsis),
                             ),
                           ],
                           onChanged: (v) => setState(() => _aiAgentGoal = v ?? 'qualify_lead'),
                         ),
                         const SizedBox(height: 14),
-
                         TextField(
                           controller: _aiPromptOverrideCtl,
                           maxLines: 2,
@@ -1357,7 +1312,6 @@ class _EngagementRuleFormSheetState extends ConsumerState<_EngagementRuleFormShe
                           ),
                         ),
                         const SizedBox(height: 12),
-
                         // Explanatory Callout
                         Container(
                           padding: const EdgeInsets.all(12),
@@ -1384,7 +1338,6 @@ class _EngagementRuleFormSheetState extends ConsumerState<_EngagementRuleFormShe
                     ],
                   ),
                   const SizedBox(height: 24),
-
                   // Submit Action Button
                   SizedBox(
                     width: double.infinity,
@@ -1416,27 +1369,22 @@ class _EngagementRuleFormSheetState extends ConsumerState<_EngagementRuleFormShe
     );
   }
 }
-
 class _DryRunTesterSheet extends ConsumerStatefulWidget {
   const _DryRunTesterSheet({required this.projectId});
   final String projectId;
-
   @override
   ConsumerState<_DryRunTesterSheet> createState() => _DryRunTesterSheetState();
 }
-
 class _DryRunTesterSheetState extends ConsumerState<_DryRunTesterSheet> {
   final _commentCtl = TextEditingController(text: 'Can you send me the free blueprint please?');
   String _selectedPlatform = 'instagram';
   bool _testing = false;
   Map<String, dynamic>? _testResult;
-
   @override
   void dispose() {
     _commentCtl.dispose();
     super.dispose();
   }
-
   Future<void> _runSimulation() async {
     final text = _commentCtl.text.trim();
     if (text.isEmpty) return;
@@ -1444,7 +1392,6 @@ class _DryRunTesterSheetState extends ConsumerState<_DryRunTesterSheet> {
       _testing = true;
       _testResult = null;
     });
-
     final res = await guarded(
       context,
       () => ref.read(socialApiProvider).testEngagementMatch(
@@ -1453,7 +1400,6 @@ class _DryRunTesterSheetState extends ConsumerState<_DryRunTesterSheet> {
             senderHandle: 'prospect_jane',
           ),
     );
-
     if (mounted) {
       setState(() {
         _testing = false;
@@ -1461,12 +1407,10 @@ class _DryRunTesterSheetState extends ConsumerState<_DryRunTesterSheet> {
       });
     }
   }
-
   @override
   Widget build(BuildContext context) {
     final matched = _testResult != null && _testResult!['matched'] == true;
     final rule = _testResult?['rule'] as Map<String, dynamic>?;
-
     return Container(
       constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.9),
       decoration: BoxDecoration(
@@ -1535,7 +1479,6 @@ class _DryRunTesterSheetState extends ConsumerState<_DryRunTesterSheet> {
                     style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
                   ),
                   const SizedBox(height: 16),
-
                   // Platform selector
                   Wrap(
                     spacing: 8,
@@ -1550,14 +1493,12 @@ class _DryRunTesterSheetState extends ConsumerState<_DryRunTesterSheet> {
                     ],
                   ),
                   const SizedBox(height: 14),
-
                   TextField(
                     controller: _commentCtl,
                     maxLines: 2,
                     decoration: fieldDecoration('Sample Incoming Comment', hint: 'e.g. Can you send me the blueprint?'),
                   ),
                   const SizedBox(height: 16),
-
                   SizedBox(
                     width: double.infinity,
                     height: 48,
@@ -1576,7 +1517,6 @@ class _DryRunTesterSheetState extends ConsumerState<_DryRunTesterSheet> {
                     ),
                   ),
                   const SizedBox(height: 16),
-
                   if (_testResult != null) ...[
                     Container(
                       width: double.infinity,
@@ -1651,7 +1591,6 @@ class _DryRunTesterSheetState extends ConsumerState<_DryRunTesterSheet> {
     );
   }
 }
-
 /// One honest line per account: live numbers with their time, stored values labelled as such, or why they are unavailable.
 String _metricLine(Map<String, dynamic> m) {
   String n(Object? v) => v is num ? v.toString() : '–';

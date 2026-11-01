@@ -84,9 +84,39 @@ class _AutoClipperStudioSheetState extends ConsumerState<AutoClipperStudioSheet>
     }
   }
 
+  String _formatErrorMessage(dynamic err) {
+    if (err == null) return 'An unexpected error occurred.';
+    var str = err.toString();
+    final match = RegExp(r'ApiException\([^)]+\):\s*(.*)', dotAll: true).firstMatch(str);
+    if (match != null && match.group(1) != null) {
+      str = match.group(1)!.trim();
+    }
+    if (str.startsWith('Exception:')) {
+      str = str.substring(10).trim();
+    }
+    if (str.contains('/node_modules/') || str.contains('exit code 1')) {
+      if (str.contains("Sign in to confirm you're not a bot")) {
+        return "YouTube requires verification for this video. Please try another link or verify your session.";
+      }
+      return "Unable to process this video. Please check the link and try again.";
+    }
+    return str;
+  }
+
   Future<void> _fetchMetadata() async {
-    final url = _urlController.text.trim();
-    if (url.isEmpty) return;
+    final rawUrl = _urlController.text.trim();
+    if (rawUrl.isEmpty) return;
+
+    if (!rawUrl.startsWith('http://') && !rawUrl.startsWith('https://')) {
+      if (!rawUrl.contains('.')) {
+        setState(() => _error = 'Please enter a valid video URL (e.g. https://youtu.be/...)');
+        return;
+      }
+    }
+    if (rawUrl.endsWith('...') || rawUrl == 'http://' || rawUrl == 'https://') {
+      setState(() => _error = 'Please complete typing the video URL.');
+      return;
+    }
 
     setState(() {
       _fetchingMeta = true;
@@ -96,7 +126,7 @@ class _AutoClipperStudioSheetState extends ConsumerState<AutoClipperStudioSheet>
 
     try {
       final client = ref.read(apiClientProvider);
-      final res = await client.get('/api/v1/media-editor/ingest/metadata?url=${Uri.encodeComponent(url)}');
+      final res = await client.get('/api/v1/media-editor/ingest/metadata?url=${Uri.encodeComponent(rawUrl)}');
       if (res['success'] == true && res['metadata'] != null) {
         setState(() {
           _metadata = Map<String, dynamic>.from(res['metadata'] as Map);
@@ -104,13 +134,13 @@ class _AutoClipperStudioSheetState extends ConsumerState<AutoClipperStudioSheet>
         });
       } else {
         setState(() {
-          _error = res['message']?.toString() ?? 'Unable to resolve video details.';
+          _error = _formatErrorMessage(res['message'] ?? 'Unable to resolve video details.');
           _fetchingMeta = false;
         });
       }
     } catch (e) {
       setState(() {
-        _error = e.toString();
+        _error = _formatErrorMessage(e);
         _fetchingMeta = false;
       });
     }
@@ -177,14 +207,14 @@ class _AutoClipperStudioSheetState extends ConsumerState<AutoClipperStudioSheet>
         }
       } else {
         setState(() {
-          _error = res['message']?.toString() ?? 'Auto-clip operation encountered an issue.';
+          _error = _formatErrorMessage(res['message'] ?? 'Auto-clip operation encountered an issue.');
           _isProcessing = false;
         });
       }
     } catch (e) {
       await ticker.cancel();
       setState(() {
-        _error = e.toString();
+        _error = _formatErrorMessage(e);
         _isProcessing = false;
       });
     }
@@ -324,6 +354,11 @@ class _AutoClipperStudioSheetState extends ConsumerState<AutoClipperStudioSheet>
         // URL Input
         TextField(
           controller: _urlController,
+          onChanged: (val) {
+            if (_error != null) {
+              setState(() => _error = null);
+            }
+          },
           decoration: InputDecoration(
             labelText: 'Paste Video URL',
             hintText: 'https://youtube.com/watch?v=... or Reel/Post link',
