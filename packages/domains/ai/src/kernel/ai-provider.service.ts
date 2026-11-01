@@ -271,6 +271,65 @@ export class AIProviderService {
                 };
             }
 
+            if (provider === 'groq') {
+                const key = (settings.groqKey || '').trim();
+                if (!key) return null;
+                const groq = new OpenAI({ apiKey: key, baseURL: 'https://api.groq.com/openai/v1' });
+
+                return {
+                    provider: 'groq',
+                    generate: async (prompt: string, options: any = {}) => {
+                        const reqOptions: any = {
+                            messages: [{ role: 'user' as const, content: prompt }],
+                            model: options.model || 'llama-3.3-70b-versatile',
+                            temperature: options.temperature || 0.7
+                        };
+                        if (options.max_tokens) reqOptions.max_tokens = options.max_tokens;
+                        const completion = await groq.chat.completions.create(reqOptions);
+                        return completion.choices[0]?.message?.content || '';
+                    },
+                    generateStream: async (prompt: string, options: any = {}, onChunk?: (chunk: string) => void) => {
+                        const reqOptions: any = {
+                            messages: [{ role: 'user' as const, content: prompt }],
+                            model: options.model || 'llama-3.3-70b-versatile',
+                            stream: true,
+                            temperature: options.temperature || 0.7
+                        };
+                        if (options.max_tokens) reqOptions.max_tokens = options.max_tokens;
+                        const stream = await groq.chat.completions.create(reqOptions);
+                        let text = '';
+                        for await (const chunk of stream as any) {
+                            const content = chunk.choices[0]?.delta?.content || '';
+                            text += content;
+                            if (onChunk && content) onChunk(content);
+                        }
+                        return text;
+                    },
+                    generateWithTools: async (prompt: string, tools: any[] = [], options: any = {}) => {
+                        const reqOptions: any = {
+                            messages: [{ role: 'user' as const, content: prompt }],
+                            model: options.model || 'llama-3.3-70b-versatile',
+                            temperature: options.temperature || 0.2
+                        };
+                        if (tools && tools.length > 0) reqOptions.tools = tools;
+                        if (options.max_tokens) reqOptions.max_tokens = options.max_tokens;
+
+                        const completion = await groq.chat.completions.create(reqOptions);
+                        const msg = completion.choices[0]?.message;
+                        const toolCalls = (msg?.tool_calls || []).map((tc: any) => ({
+                            id: tc.id,
+                            name: tc.function?.name,
+                            args: typeof tc.function?.arguments === 'string' ? JSON.parse(tc.function.arguments || '{}') : (tc.function?.arguments || {})
+                        }));
+
+                        return {
+                            text: msg?.content || '',
+                            toolCalls: toolCalls.length > 0 ? toolCalls : undefined
+                        };
+                    }
+                };
+            }
+
             if (provider === 'custom') {
                 const key = (settings.customAiKey || '').trim();
                 const baseURL = (settings.customAiUrl || '').trim();
@@ -460,6 +519,20 @@ export class AIProviderService {
                 success: true,
                 message: 'Connected to Anthropic Claude',
                 text: block.type === 'text' ? block.text : ''
+            };
+        }
+
+        if (provider === 'groq') {
+            const groq = new OpenAI({ apiKey: trimmedKey, baseURL: 'https://api.groq.com/openai/v1' });
+            const response = await groq.chat.completions.create({
+                model: 'llama-3.3-70b-versatile',
+                messages: [{ role: 'user', content: "Say '180 Workspace AI Connection Successful'" }],
+                max_tokens: 20
+            });
+            return {
+                success: true,
+                message: 'Connected to Groq Cloud (Llama 3.3)',
+                text: response.choices[0]?.message?.content || ''
             };
         }
 

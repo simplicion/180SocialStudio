@@ -155,14 +155,8 @@ export async function createCompanyAutopilotLLM(
     }
 
     if (!client) {
-        if (options?.fallbackToBuiltin) {
-            return createBuiltinViralAutopilotLLM();
-        }
-        throw new AutopilotError(
-            'AI_NOT_CONFIGURED',
-            `No usable AI provider key for this workspace (provider "${settings?.aiProvider || 'none'}"). Add a key in Settings > AI or set the platform env key.`,
-            { provider: settings?.aiProvider || 'openai', availableProviders: ['gemini', 'openai', 'claude', 'groq', 'builtin'] }
-        );
+        // Seamlessly default to 180 Studio Built-in Viral AI engine with zero setup requirement
+        return createBuiltinViralAutopilotLLM();
     }
     return wrapAiClient(client, resolveAutopilotModels(client.provider));
 }

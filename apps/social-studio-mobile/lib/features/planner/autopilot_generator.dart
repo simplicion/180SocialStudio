@@ -1,26 +1,31 @@
-import '../settings/ai_provider_sheet.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../core/util/json.dart';
-import '../../core/util/poll_backoff.dart';
 import '../../core/network/api_exception.dart';
 import '../../core/providers.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/util/poll_backoff.dart';
 import '../../core/widgets/common.dart';
 import '../../data/models/autopilot.dart';
+import '../../data/models/content_calendar.dart';
 import '../../data/models/project.dart';
 import 'planner_providers.dart';
 
-/// Autopilot calendar: the server's research → strategy → hooks & scripts → captions → critic agents,
-/// grounded in the project's brand consciousness. Starts a job and follows it until the calendar is saved.
+/// Autopilot calendar: the server's research -> strategy -> hooks & scripts -> captions -> critic agents,
+/// grounded in the project's brand consciousness. Starts an autonomous job and follows it until ready.
 class AutopilotGenerator extends ConsumerStatefulWidget {
-  const AutopilotGenerator({super.key, required this.project, required this.onUseClassic, this.pollInterval});
+  const AutopilotGenerator({
+    super.key,
+    required this.project,
+    this.extendFrom,
+    this.pollInterval,
+  });
+
   final Project project;
-  final VoidCallback onUseClassic;
+  final ContentCalendar? extendFrom;
 
   /// Test hook; defaults to 2 s.
   final Duration? pollInterval;
@@ -31,20 +36,33 @@ class AutopilotGenerator extends ConsumerStatefulWidget {
 
 class _AutopilotGeneratorState extends ConsumerState<AutopilotGenerator> {
   static const _platformIds = BrandConsciousness.platforms;
+  static const _presetDays = [7, 14, 30, 60, 90];
 
-  late final _name = TextEditingController(text: '${widget.project.name} Content Sprint');
+  late final _name = TextEditingController(
+    text: widget.extendFrom != null
+        ? '${widget.extendFrom!.brandName} (Continued Sprint)'
+        : '${widget.project.name} Content Sprint',
+  );
   final _structureDirectives = TextEditingController();
   final _referenceInspirations = TextEditingController();
   final _goals = TextEditingController();
 
   int _days = 30;
-  DateTime _start = DateTime.now().add(Duration(days: 1));
-  late final Set<String> _platforms = {
-    for (final a in widget.project.socialAccounts)
-      for (final id in _platformIds.keys)
-        if (a.platform.id.toLowerCase().startsWith(id.substring(0, 4)))
-          id,
-  };
+  late DateTime _start = widget.extendFrom?.endDate != null
+      ? widget.extendFrom!.endDate!.add(const Duration(days: 1))
+      : DateTime.now().add(const Duration(days: 1));
+
+  late final Set<String> _platforms = widget.extendFrom != null && widget.extendFrom!.platforms.isNotEmpty
+      ? {
+          for (final p in widget.extendFrom!.platforms)
+            for (final id in _platformIds.keys)
+              if (p.toLowerCase().startsWith(id.substring(0, 4))) id,
+        }
+      : {
+          for (final a in widget.project.socialAccounts)
+            for (final id in _platformIds.keys)
+              if (a.platform.id.toLowerCase().startsWith(id.substring(0, 4))) id,
+        };
 
   int _customReels = 1;
   int _customCarousels = 1;
@@ -81,82 +99,58 @@ class _AutopilotGeneratorState extends ConsumerState<AutopilotGenerator> {
   }
 
   Map<String, dynamic> get _mixPayload => <String, dynamic>{
-    'mode': 'custom',
-    'dailyReels': _customReels,
-    'dailyCarousels': _customCarousels,
-    'targetReelDurationSec': _targetReelDurationSec,
-    'carouselSlideCount': _carouselSlideCount,
-  };
+        'mode': 'custom',
+        'dailyReels': _customReels,
+        'dailyCarousels': _customCarousels,
+        'targetReelDurationSec': _targetReelDurationSec,
+        'carouselSlideCount': _carouselSlideCount,
+      };
 
-  /// Shows how many AI calls this plan makes and its output-token ceiling, before anything is generated.
-  Future<void> _showEstimate() async {
-    if (_platforms.isEmpty) return showError(context, 'Choose at least one platform.');
-    if (_customReels + _customCarousels == 0) return showError(context, 'Choose at least one reel or carousel per day.');
-    final supportsCarousel = _platforms.any((p) => p == 'instagram' || p == 'facebook' || p == 'linkedin');
-    if (_customCarousels > 0 && !supportsCarousel) {
-      return showError(context, 'None of the selected platforms publishes carousels. Adjust carousels per day to 0 or choose Instagram, Facebook, or LinkedIn.');
-    }
-    final r = await guarded(context, () => ref.read(socialApiProvider).estimateAutopilot(widget.project.id, days: _days, platforms: _platforms.toList(), contentMix: _mixPayload));
-    if (r == null || !mounted) return;
-    final budget = jMap(r['budget']);
-    const names = {
-      'research': 'Research', 'strategist': 'Strategy', 'hook_script': 'Hooks and scripts', 'hook_lab': 'Hook Lab',
-      'copy': 'Captions', 'craft': 'Platform Craft', 'critic': 'Quality review',
-    };
-    final usd = jDouble(r['outputCeilingUsd']);
-    await AppBottomSheet.show<void>(
+  Future<void> _pickCustomDuration() async {
+    final ctl = TextEditingController(text: '$_days');
+    final result = await showDialog<int>(
       context: context,
-      title: 'AI usage for this plan',
-      icon: Icon(Icons.auto_awesome_rounded, color: AppTheme.primary, size: 22),
-      actions: [
-        ElevatedButton(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppTheme.primary,
-            foregroundColor: Colors.white,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Close'),
-        ),
-      ],
-      builder: (ctx) => Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '${jInt(budget['pieces']) ?? 0} pieces across ${jInt(budget['platforms']) ?? 0} platform(s), up to ${jInt(budget['calls']) ?? 0} AI calls.',
-            style: const TextStyle(fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 12),
-          for (final a in jList(budget['agents'], (m) => m))
-            Padding(
-              padding: const EdgeInsets.only(bottom: 6),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      '${names[jStr(a['agent'])] ?? jStrOr(a['agent'], '')}${jBool(a['conditional']) ? ' (only if needed)' : ''}',
-                      style: const TextStyle(fontSize: 13),
-                    ),
-                  ),
-                  Text(
-                    '${jBool(a['conditional']) ? 'up to ' : ''}${jInt(a['calls']) ?? 0}',
-                    style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
-                  ),
-                ],
-              ),
+      builder: (ctx) => AlertDialog(
+        title: const Text('Custom Duration'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Enter the number of days for this calendar sprint (1–365):',
+              style: TextStyle(fontSize: 13),
             ),
-          const SizedBox(height: 8),
-          Text(
-            'Output ceiling: ${jInt(budget['maxOutputTokens']) ?? 0} tokens${usd == null ? '' : ' (up to \$${usd.toStringAsFixed(2)} of output)'}. Real usage is usually lower; the finished calendar records what was used.',
-            style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+            const SizedBox(height: 12),
+            TextField(
+              controller: ctl,
+              keyboardType: TextInputType.number,
+              autofocus: true,
+              decoration: fieldDecoration('Duration (Days)', hint: 'e.g. 21, 45, 120'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () {
+              final val = int.tryParse(ctl.text.trim());
+              if (val != null && val >= 1 && val <= 365) {
+                Navigator.pop(ctx, val);
+              } else {
+                showError(ctx, 'Please enter a valid number of days between 1 and 365.');
+              }
+            },
+            child: const Text('Set Duration'),
           ),
         ],
       ),
     );
+    if (result != null && mounted) {
+      setState(() => _days = result);
+    }
   }
 
-  Future<void> _start_({bool fallbackToBuiltin = false}) async {
+  Future<void> _start_() async {
     if (_platforms.isEmpty) return showError(context, 'Choose at least one platform.');
     if (_customReels + _customCarousels == 0) return showError(context, 'Choose at least one reel or carousel per day.');
     final supportsCarousel = _platforms.any((p) => p == 'instagram' || p == 'facebook' || p == 'linkedin');
@@ -179,7 +173,7 @@ class _AutopilotGeneratorState extends ConsumerState<AutopilotGenerator> {
             contentMix: mixPayload,
             targetReelDurationSec: _targetReelDurationSec,
             carouselSlideCount: _carouselSlideCount,
-            fallbackToBuiltin: fallbackToBuiltin,
+            fallbackToBuiltin: true,
           );
       if (!mounted) return;
       _follow(r.jobId);
@@ -189,10 +183,6 @@ class _AutopilotGeneratorState extends ConsumerState<AutopilotGenerator> {
       if (running != null) {
         showInfo(context, 'A calendar is already being written for this project. Showing its progress.');
         _follow(running);
-      } else if (e.code == 'AI_NOT_CONFIGURED' ||
-                 e.message.contains('AI provider key') ||
-                 e.message.contains('AI_NOT_CONFIGURED')) {
-        _showAiKeyRecoverySheet();
       } else {
         showError(context, e);
       }
@@ -201,113 +191,6 @@ class _AutopilotGeneratorState extends ConsumerState<AutopilotGenerator> {
     } finally {
       if (mounted) setState(() => _starting = false);
     }
-  }
-
-  void _showAiKeyRecoverySheet() {
-    showModalBottomSheet<void>(
-      context: context,
-    useRootNavigator: true,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          color: Theme.of(context).scaffoldBackgroundColor,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-          border: Border(top: BorderSide(color: Theme.of(context).dividerColor)),
-        ),
-        child: SafeArea(
-          top: false,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.withValues(alpha: 0.3),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: AppTheme.warning.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(Icons.key_rounded, color: AppTheme.warning, size: 24),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'AI Provider Setup Required',
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'Choose how you want to generate your $_days-day calendar.',
-                          style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'No external AI key (OpenAI / Gemini) is configured for this workspace yet. You can generate immediately with zero setup using our built-in viral engine, or configure an API key.',
-                style: TextStyle(fontSize: 13, color: Theme.of(context).textTheme.bodyMedium?.color, height: 1.4),
-              ),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                height: 48,
-                child: ElevatedButton.icon(
-                  onPressed: () {
-                    Navigator.of(ctx).pop();
-                    _start_(fallbackToBuiltin: true);
-                  },
-                  icon: const Icon(Icons.bolt_rounded, size: 20),
-                  label: const Text('Generate with Built-in Viral AI (Zero Setup)', style: TextStyle(fontWeight: FontWeight.bold)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primary,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                height: 48,
-                child: OutlinedButton.icon(
-                  onPressed: () {
-                    Navigator.of(ctx).pop();
-                    AiProviderSheet.show(context, onSaved: () {
-                      _start_();
-                    });
-                  },
-                  icon: const Icon(Icons.tune_rounded, size: 20),
-                  label: const Text('Configure API Key (Gemini / OpenAI)', style: TextStyle(fontWeight: FontWeight.w600)),
-                  style: OutlinedButton.styleFrom(
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 
   static String? _runningJobId(ApiException e) {
@@ -355,7 +238,6 @@ class _AutopilotGeneratorState extends ConsumerState<AutopilotGenerator> {
       }
     } catch (e) {
       if (!mounted) return;
-      // Network blips while following a job are not fatal: show the error and keep trying.
       setState(() => _pollError = e);
       if (e is ApiException && !e.isTransient) return;
     }
@@ -365,243 +247,288 @@ class _AutopilotGeneratorState extends ConsumerState<AutopilotGenerator> {
   @override
   Widget build(BuildContext context) {
     if (_jobId != null) return _progress(context);
+
+    final isCustomDays = !_presetDays.contains(_days);
+
     return Column(
       children: [
         Expanded(
           child: SingleChildScrollView(
-            padding: EdgeInsets.fromLTRB(16, 12, 16, 24),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-      SectionCard(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Icon(Icons.auto_awesome_rounded, color: AppTheme.accent, size: 20),
-            SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                'Master SOP Creative Studio',
-                style: Theme.of(context).textTheme.titleMedium,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ]),
-          SizedBox(height: 6),
-          Text(
-            'Autonomous 4-agent swarm researches psychological tension, builds strategic reels and carousels, and crafts shoot-ready briefs grounded in brand consciousness.',
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
-        ]),
-      ),
-      SectionHeader('Campaign Name'),
-      TextField(
-        controller: _name,
-        decoration: fieldDecoration('Campaign Name', hint: 'e.g. October 2026 AI Growth Campaign'),
-      ),
-      SectionHeader('Length & Start Date'),
-      Wrap(spacing: 8, runSpacing: 8, children: [
-        ChoiceChip(
-          label: Text('7 days'),
-          selected: _days == 7,
-          onSelected: (_) => setState(() => _days = 7),
-        ),
-        ChoiceChip(
-          label: Text('14 days'),
-          selected: _days == 14,
-          onSelected: (_) => setState(() => _days = 14),
-        ),
-        ChoiceChip(
-          label: Text('30 days'),
-          selected: _days == 30,
-          onSelected: (_) => setState(() => _days = 30),
-        ),
-      ]),
-      SizedBox(height: 12),
-      OutlinedButton.icon(
-        icon: Icon(Icons.event_rounded),
-        label: Text('Starts ${fmtDate(_start)}'),
-        onPressed: () async {
-          final d = await showDatePicker(
-            context: context,
-            initialDate: _start,
-            firstDate: DateTime.now().subtract(Duration(days: 1)),
-            lastDate: DateTime.now().add(Duration(days: 365)),
-          );
-          if (d != null) setState(() => _start = d);
-        },
-      ),
-      SectionHeader('Content Cadence & Mix'),
-      SectionCard(
-        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Text('Daily Cadence Stepper',
-                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: AppTheme.textSecondary)),
-              ),
-              Container(
-                padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: AppTheme.primary.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: AppTheme.primary.withValues(alpha: 0.3)),
+                if (widget.extendFrom != null) ...[
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 14),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primary.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppTheme.primary.withValues(alpha: 0.3)),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.fast_forward_rounded, color: AppTheme.primary, size: 20),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Extending Calendar: ${widget.extendFrom!.brandName}',
+                                style: TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold, fontSize: 13),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'Continues automatically starting on ${fmtDate(_start)} (day after previous calendar ends).',
+                                style: TextStyle(fontSize: 11, color: AppTheme.textSecondary, height: 1.35),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+                SectionCard(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Row(children: [
+                      Icon(Icons.auto_awesome_rounded, color: AppTheme.accent, size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Master SOP Creative Studio',
+                          style: Theme.of(context).textTheme.titleMedium,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ]),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Autonomous 4-agent swarm researches psychological tension, builds strategic reels and carousels, and crafts shoot-ready briefs grounded in brand consciousness.',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  ]),
                 ),
-                child: Text(
-                  '${_customReels + _customCarousels} / day',
-                  style: TextStyle(fontSize: 10, color: AppTheme.primary, fontWeight: FontWeight.w700),
+                SectionHeader('Campaign Name'),
+                TextField(
+                  controller: _name,
+                  decoration: fieldDecoration('Campaign Name', hint: 'e.g. October 2026 AI Growth Campaign'),
                 ),
-              ),
-            ],
-          ),
-          SizedBox(height: 8),
-          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            Expanded(child: Text('Reels per day:', style: TextStyle(fontWeight: FontWeight.w600))),
-            Row(mainAxisSize: MainAxisSize.min, children: [
-              IconButton(
-                icon: Icon(Icons.remove_circle_outline),
-                onPressed: _customReels > 0 && (_customReels + _customCarousels > 1)
-                    ? () => setState(() => _customReels--)
-                    : null,
-              ),
-              SizedBox(
-                width: 24,
-                child: Text('$_customReels', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
-              ),
-              IconButton(
-                icon: Icon(Icons.add_circle_outline),
-                onPressed: _customReels < 5
-                    ? () => setState(() => _customReels++)
-                    : null,
-              ),
-            ]),
-          ]),
-          Divider(height: 8),
-          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            Expanded(child: Text('Carousels per day:', style: TextStyle(fontWeight: FontWeight.w600))),
-            Row(mainAxisSize: MainAxisSize.min, children: [
-              IconButton(
-                icon: Icon(Icons.remove_circle_outline),
-                onPressed: _customCarousels > 0 && (_customReels + _customCarousels > 1)
-                    ? () => setState(() => _customCarousels--)
-                    : null,
-              ),
-              SizedBox(
-                width: 24,
-                child: Text('$_customCarousels', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
-              ),
-              IconButton(
-                icon: Icon(Icons.add_circle_outline),
-                onPressed: _customCarousels < 5
-                    ? () => setState(() => _customCarousels++)
-                    : null,
-              ),
-            ]),
-          ]),
-        ]),
-      ),
-      SizedBox(height: 14),
-      DropdownButtonFormField<int>(
-        initialValue: _targetReelDurationSec,
-        isExpanded: true,
-        dropdownColor: AppTheme.surfaceElevated,
-        decoration: fieldDecoration('Target Reel Duration', helper: 'Recommended duration for generated reel scripts & hooks'),
-        items: const [
-          DropdownMenuItem(value: 15, child: Text('15s (Micro Hook)')),
-          DropdownMenuItem(value: 30, child: Text('30s (Fast Hook)')),
-          DropdownMenuItem(value: 45, child: Text('45s (Punchy Story)')),
-          DropdownMenuItem(value: 60, child: Text('60s (1 min — Standard)')),
-          DropdownMenuItem(value: 90, child: Text('90s (1.5 min — In-depth)')),
-          DropdownMenuItem(value: 120, child: Text('120s (2 min — Extended)')),
-          DropdownMenuItem(value: 150, child: Text('150s (2.5 min — Long-form)')),
-          DropdownMenuItem(value: 180, child: Text('180s (3 min — Deep Dive)')),
-        ],
-        onChanged: (val) {
-          if (val != null) setState(() => _targetReelDurationSec = val);
-        },
-      ),
-      SizedBox(height: 14),
-      Text('Target Carousel Slides', style: Theme.of(context).textTheme.labelMedium),
-      SizedBox(height: 6),
-      Wrap(spacing: 8, runSpacing: 8, children: [
-        ChoiceChip(
-          label: Text('5 slides (Standard SOP)'),
-          selected: _carouselSlideCount == 5,
-          onSelected: (_) => setState(() => _carouselSlideCount = 5),
-        ),
-        ChoiceChip(
-          label: Text('7 slides (Deep Dive)'),
-          selected: _carouselSlideCount == 7,
-          onSelected: (_) => setState(() => _carouselSlideCount = 7),
-        ),
-      ]),
-      SectionHeader('Structure & Weekly Themes (Optional)'),
-      TextField(
-        controller: _structureDirectives,
-        minLines: 2,
-        maxLines: 4,
-        decoration: fieldDecoration('Structure Directives',
-            hint: 'e.g. Week 1: Problem awareness, Week 2: Mythbusting, Week 3: Actionable frameworks, Week 4: Case studies & CTA',
-            helper: 'Guide the narrative sequence across the calendar period.'),
-      ),
-      SectionHeader('Reference / Inspirations Box (Optional)'),
-      TextField(
-        controller: _referenceInspirations,
-        minLines: 2,
-        maxLines: 5,
-        decoration: fieldDecoration('Inspiration, Notes or Competitor Links',
-            hint: 'Paste notes, article links, transcripts or raw ideas. Our Neuromarketing Agent will neutralize boring inputs into viral psychological hooks.',
-            helper: 'If left empty, AI generates purely from project brand consciousness.'),
-      ),
-      SectionHeader('Platforms'),
-      Wrap(spacing: 8, runSpacing: 8, children: [
-        for (final e in _platformIds.entries)
-          FilterChip(
-            label: Text(e.value),
-            selected: _platforms.contains(e.key),
-            onSelected: (on) => setState(() => on ? _platforms.add(e.key) : _platforms.remove(e.key)),
-          ),
-      ]),
-      SectionHeader('Campaign Goals'),
-      TextField(
-        controller: _goals,
-        minLines: 1,
-        maxLines: 3,
-        decoration: fieldDecoration('What should this campaign achieve?',
-            hint: 'e.g. 50 trial sign-ups, grow authority reels, increase saveability',
-            helper: 'Optional. Up to 5 goals, comma or line separated.'),
-      ),
+                SectionHeader('Length & Date Range'),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final d in _presetDays)
+                      ChoiceChip(
+                        label: Text('$d days'),
+                        selected: _days == d,
+                        onSelected: (_) => setState(() => _days = d),
+                      ),
+                    ChoiceChip(
+                      avatar: isCustomDays ? const Icon(Icons.check, size: 16) : const Icon(Icons.edit_calendar_rounded, size: 16),
+                      label: Text(isCustomDays ? 'Custom ($_days days)' : 'Custom...'),
+                      selected: isCustomDays,
+                      onSelected: (_) => _pickCustomDuration(),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    alignment: Alignment.centerLeft,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  icon: const Icon(Icons.event_rounded),
+                  label: Text(
+                    'Starts ${fmtDate(_start)}  →  Ends ${fmtDate(_start.add(Duration(days: _days - 1)))} ($_days days)',
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  onPressed: () async {
+                    final d = await showDatePicker(
+                      context: context,
+                      initialDate: _start,
+                      firstDate: DateTime.now().subtract(const Duration(days: 1)),
+                      lastDate: DateTime.now().add(const Duration(days: 365)),
+                    );
+                    if (d != null) setState(() => _start = d);
+                  },
+                ),
+                SectionHeader('Content Cadence & Mix'),
+                SectionCard(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Text('Daily Cadence Stepper',
+                              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: AppTheme.textSecondary)),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: AppTheme.primary.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: AppTheme.primary.withValues(alpha: 0.3)),
+                          ),
+                          child: Text(
+                            '${_customReels + _customCarousels} / day',
+                            style: TextStyle(fontSize: 10, color: AppTheme.primary, fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                      const Expanded(child: Text('Reels per day:', style: TextStyle(fontWeight: FontWeight.w600))),
+                      Row(mainAxisSize: MainAxisSize.min, children: [
+                        IconButton(
+                          icon: const Icon(Icons.remove_circle_outline),
+                          onPressed: _customReels > 0 && (_customReels + _customCarousels > 1)
+                              ? () => setState(() => _customReels--)
+                              : null,
+                        ),
+                        SizedBox(
+                          width: 24,
+                          child: Text('$_customReels', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.add_circle_outline),
+                          onPressed: _customReels < 5 ? () => setState(() => _customReels++) : null,
+                        ),
+                      ]),
+                    ]),
+                    const Divider(height: 8),
+                    Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                      const Expanded(child: Text('Carousels per day:', style: TextStyle(fontWeight: FontWeight.w600))),
+                      Row(mainAxisSize: MainAxisSize.min, children: [
+                        IconButton(
+                          icon: const Icon(Icons.remove_circle_outline),
+                          onPressed: _customCarousels > 0 && (_customReels + _customCarousels > 1)
+                              ? () => setState(() => _customCarousels--)
+                              : null,
+                        ),
+                        SizedBox(
+                          width: 24,
+                          child: Text('$_customCarousels', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.add_circle_outline),
+                          onPressed: _customCarousels < 5 ? () => setState(() => _customCarousels++) : null,
+                        ),
+                      ]),
+                    ]),
+                  ]),
+                ),
+                const SizedBox(height: 14),
+                DropdownButtonFormField<int>(
+                  initialValue: _targetReelDurationSec,
+                  isExpanded: true,
+                  dropdownColor: AppTheme.surfaceElevated,
+                  decoration: fieldDecoration('Target Reel Duration', helper: 'Recommended duration for generated reel scripts & hooks'),
+                  items: const [
+                    DropdownMenuItem(value: 15, child: Text('15s (Micro Hook)', overflow: TextOverflow.ellipsis)),
+                    DropdownMenuItem(value: 30, child: Text('30s (Fast Hook)', overflow: TextOverflow.ellipsis)),
+                    DropdownMenuItem(value: 45, child: Text('45s (Punchy Story)', overflow: TextOverflow.ellipsis)),
+                    DropdownMenuItem(value: 60, child: Text('60s (1 min — Standard)', overflow: TextOverflow.ellipsis)),
+                    DropdownMenuItem(value: 90, child: Text('90s (1.5 min — In-depth)', overflow: TextOverflow.ellipsis)),
+                    DropdownMenuItem(value: 120, child: Text('120s (2 min — Extended)', overflow: TextOverflow.ellipsis)),
+                    DropdownMenuItem(value: 150, child: Text('150s (2.5 min — Long-form)', overflow: TextOverflow.ellipsis)),
+                    DropdownMenuItem(value: 180, child: Text('180s (3 min — Deep Dive)', overflow: TextOverflow.ellipsis)),
+                  ],
+                  onChanged: (val) {
+                    if (val != null) setState(() => _targetReelDurationSec = val);
+                  },
+                ),
+                const SizedBox(height: 14),
+                Text('Target Carousel Slides', style: Theme.of(context).textTheme.labelMedium),
+                const SizedBox(height: 6),
+                Wrap(spacing: 8, runSpacing: 8, children: [
+                  ChoiceChip(
+                    label: const Text('5 slides (Standard SOP)'),
+                    selected: _carouselSlideCount == 5,
+                    onSelected: (_) => setState(() => _carouselSlideCount = 5),
+                  ),
+                  ChoiceChip(
+                    label: const Text('7 slides (Deep Dive)'),
+                    selected: _carouselSlideCount == 7,
+                    onSelected: (_) => setState(() => _carouselSlideCount = 7),
+                  ),
+                ]),
+                SectionHeader('Structure & Weekly Themes (Optional)'),
+                TextField(
+                  controller: _structureDirectives,
+                  minLines: 2,
+                  maxLines: 4,
+                  decoration: fieldDecoration('Structure Directives',
+                      hint: 'e.g. Week 1: Problem awareness, Week 2: Mythbusting, Week 3: Actionable frameworks, Week 4: Case studies & CTA',
+                      helper: 'Guide the narrative sequence across the calendar period.'),
+                ),
+                SectionHeader('Reference / Inspirations Box (Optional)'),
+                TextField(
+                  controller: _referenceInspirations,
+                  minLines: 2,
+                  maxLines: 5,
+                  decoration: fieldDecoration('Inspiration, Notes or Competitor Links',
+                      hint: 'Paste notes, article links, transcripts or raw ideas. Our Neuromarketing Agent will neutralize boring inputs into viral psychological hooks.',
+                      helper: 'If left empty, AI generates purely from project brand consciousness.'),
+                ),
+                SectionHeader('Platforms'),
+                Wrap(spacing: 8, runSpacing: 8, children: [
+                  for (final e in _platformIds.entries)
+                    FilterChip(
+                      label: Text(e.value),
+                      selected: _platforms.contains(e.key),
+                      onSelected: (on) => setState(() => on ? _platforms.add(e.key) : _platforms.remove(e.key)),
+                    ),
+                ]),
+                SectionHeader('Campaign Goals'),
+                TextField(
+                  controller: _goals,
+                  minLines: 1,
+                  maxLines: 3,
+                  decoration: fieldDecoration('What should this campaign achieve?',
+                      hint: 'e.g. 50 trial sign-ups, grow authority reels, increase saveability',
+                      helper: 'Optional. Up to 5 goals, comma or line separated.'),
+                ),
               ],
             ),
           ),
         ),
         Container(
-          padding: EdgeInsets.fromLTRB(16, 10, 16, 16),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
           decoration: BoxDecoration(
             color: AppTheme.surface,
             border: Border(top: BorderSide(color: AppTheme.border)),
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              ElevatedButton.icon(
+          child: SafeArea(
+            top: false,
+            child: SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: FilledButton.icon(
                 onPressed: _starting ? null : _start_,
-                icon: Icon(Icons.auto_awesome_rounded),
-                label: Text(_starting ? 'Starting Swarm…' : 'Generate $_days-day calendar'),
+                icon: _starting
+                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                    : const Icon(Icons.auto_awesome_rounded),
+                label: Text(
+                  _starting ? 'Starting AI Swarm…' : 'Generate $_days-Day Calendar',
+                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                ),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppTheme.primary,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
               ),
-              SizedBox(height: 4),
-              SizedBox(height: 4),
-              TextButton.icon(
-                onPressed: () => AiProviderSheet.show(context),
-                icon: const Icon(Icons.tune_rounded, size: 16),
-                label: const Text('AI Engine & API Keys', style: TextStyle(fontSize: 12)),
-              ),
-              TextButton(onPressed: _starting ? null : _showEstimate, child: const Text('See AI usage for this plan')),
-              TextButton(onPressed: widget.onUseClassic, child: const Text('Use the classic generator instead')),
-            ],
+            ),
           ),
         ),
       ],
@@ -613,21 +540,21 @@ class _AutopilotGeneratorState extends ConsumerState<AutopilotGenerator> {
     if (job != null && job.isFailed) {
       return Center(
         child: SingleChildScrollView(
-          padding: EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(Icons.error_outline_rounded, size: 48, color: AppTheme.error),
-              SizedBox(height: 16),
+              const SizedBox(height: 16),
               Text(
                 'The calendar could not be finished',
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
                 textAlign: TextAlign.center,
               ),
-              SizedBox(height: 12),
+              const SizedBox(height: 12),
               Container(
-                constraints: BoxConstraints(maxHeight: 200),
-                padding: EdgeInsets.all(12),
+                constraints: const BoxConstraints(maxHeight: 200),
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   color: AppTheme.error.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(8),
@@ -641,22 +568,19 @@ class _AutopilotGeneratorState extends ConsumerState<AutopilotGenerator> {
                   ),
                 ),
               ),
-              SizedBox(height: 24),
-              ElevatedButton.icon(
+              const SizedBox(height: 24),
+              FilledButton.icon(
                 onPressed: () {
                   ref.read(activeAutopilotJobProvider(widget.project.id).notifier).clearActiveJob();
                   setState(() => _jobId = null);
                 },
-                icon: Icon(Icons.refresh_rounded),
-                label: Text('Try again'),
-              ),
-              SizedBox(height: 8),
-              TextButton(
-                onPressed: () {
-                  ref.read(activeAutopilotJobProvider(widget.project.id).notifier).clearActiveJob();
-                  widget.onUseClassic();
-                },
-                child: Text('Use the classic generator'),
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('Try again'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppTheme.primary,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
               ),
             ],
           ),
@@ -698,10 +622,10 @@ class _AutopilotGeneratorState extends ConsumerState<AutopilotGenerator> {
     }
 
     return Padding(
-      padding: EdgeInsets.all(24),
+      padding: const EdgeInsets.all(24),
       child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Container(
-          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
             color: agentColor.withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(12),
@@ -709,39 +633,39 @@ class _AutopilotGeneratorState extends ConsumerState<AutopilotGenerator> {
           ),
           child: Row(children: [
             Icon(agentIcon, color: agentColor, size: 24),
-            SizedBox(width: 12),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(agentName, style: TextStyle(color: agentColor, fontWeight: FontWeight.w700, fontSize: 13)),
-                SizedBox(height: 2),
+                const SizedBox(height: 2),
                 Text(job?.stageLabel ?? 'Processing…', style: TextStyle(color: AppTheme.textPrimary, fontSize: 14)),
               ]),
             ),
           ]),
         ),
-        SizedBox(height: 24),
+        const SizedBox(height: 24),
         Semantics(
           label: 'Calendar progress',
           value: '$pct percent',
           child: LinearProgressIndicator(value: pct / 100, minHeight: 8, borderRadius: BorderRadius.circular(4)),
         ),
-        SizedBox(height: 8),
-        Text('$pct%', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.w700)),
+        const SizedBox(height: 8),
+        Text('$pct%', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w700)),
         if (job?.detail != null) ...[
-          SizedBox(height: 8),
+          const SizedBox(height: 8),
           Text(job!.detail!, textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodyMedium),
         ],
-        SizedBox(height: 16),
+        const SizedBox(height: 16),
         Text(
           'Our 4-agent swarm runs asynchronously on the server. You can leave this screen; the calendar appears in Planner when finished.',
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.bodySmall,
         ),
         if (_pollError != null) ...[
-          SizedBox(height: 12),
+          const SizedBox(height: 12),
           ErrorView(error: _pollError!, compact: true, onRetry: _poll),
         ],
-        SizedBox(height: 16),
+        const SizedBox(height: 16),
         Wrap(
           alignment: WrapAlignment.center,
           crossAxisAlignment: WrapCrossAlignment.center,

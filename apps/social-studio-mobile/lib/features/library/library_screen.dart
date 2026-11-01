@@ -271,7 +271,10 @@ class LibraryScreen extends ConsumerWidget {
               ),
               const SizedBox(height: 10),
               ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primary,
+                  foregroundColor: Colors.white,
+                ),
                 icon: const Icon(Icons.movie_creation_rounded, size: 18),
                 label: const Text('Open & Sequence in Video Studio'),
                 onPressed: () {

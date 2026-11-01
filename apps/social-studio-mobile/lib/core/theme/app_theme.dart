@@ -94,6 +94,19 @@ class AppTheme {
         side: WidgetStateProperty.all(const BorderSide(color: Color(0xFFE4E4E7))),
       ),
     ),
+    elevatedButtonTheme: ElevatedButtonThemeData(
+      style: ElevatedButton.styleFrom(
+        backgroundColor: const Color(0xFF0066FF),
+        foregroundColor: Colors.white,
+        elevation: 0,
+      ),
+    ),
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        backgroundColor: const Color(0xFF0066FF),
+        foregroundColor: Colors.white,
+      ),
+    ),
   );
 
   static ThemeData get darkTheme => ThemeData(
@@ -167,6 +180,19 @@ class AppTheme {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
         side: BorderSide(color: Color(0xFF27272A)),
+      ),
+    ),
+    elevatedButtonTheme: ElevatedButtonThemeData(
+      style: ElevatedButton.styleFrom(
+        backgroundColor: const Color(0xFF0066FF),
+        foregroundColor: Colors.white,
+        elevation: 0,
+      ),
+    ),
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        backgroundColor: const Color(0xFF0066FF),
+        foregroundColor: Colors.white,
       ),
     ),
   );

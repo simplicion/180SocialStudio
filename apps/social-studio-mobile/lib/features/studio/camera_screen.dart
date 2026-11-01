@@ -356,15 +356,16 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
                     ElevatedButton.icon(
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppTheme.primary,
+                        foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       ),
                       icon: savingToFolder
                           ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                          : const Icon(Icons.create_new_folder_rounded, size: 20),
+                          : const Icon(Icons.create_new_folder_rounded, size: 20, color: Colors.white),
                       label: Text(
                         savingToFolder ? 'Adding to Folder...' : 'Add Clip to Folder (${_folderName ?? "Library"})',
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white),
                       ),
                       onPressed: savingToFolder
                           ? null
@@ -558,7 +559,10 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
             ),
             const SizedBox(height: 16),
             ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primary,
+                foregroundColor: Colors.white,
+              ),
               onPressed: () {
                 setState(() {
                   _hook = hookCtl.text.trim().isEmpty ? null : hookCtl.text.trim();
@@ -603,74 +607,84 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
               children: [
                 // Top App Bar
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   child: Row(
                     children: [
                       // Close button
                       IconButton(
                         tooltip: 'Exit Camera',
-                        style: IconButton.styleFrom(backgroundColor: Colors.black54, minimumSize: const Size(42, 42)),
+                        style: IconButton.styleFrom(
+                          backgroundColor: Colors.black54,
+                          minimumSize: const Size(38, 38),
+                          padding: const EdgeInsets.all(8),
+                        ),
                         onPressed: _recording ? null : () => context.pop(),
-                        icon: const Icon(Icons.close_rounded, color: Colors.white),
+                        icon: const Icon(Icons.close_rounded, color: Colors.white, size: 20),
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 6),
 
-                      // Folder pill
+                      // Folder pill (Flexible to prevent any overflow on smaller screens)
                       if (_folderName != null && _folderName!.isNotEmpty)
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: Colors.black54,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: Colors.white24),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(Icons.folder_rounded, size: 14, color: Color(0xFF6366F1)),
-                              const SizedBox(width: 6),
-                              ConstrainedBox(
-                                constraints: const BoxConstraints(maxWidth: 110),
-                                child: Text(
-                                  _folderName!,
-                                  style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              if (_savedClips.isNotEmpty) ...[
-                                const SizedBox(width: 4),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                                  decoration: BoxDecoration(color: AppTheme.success, borderRadius: BorderRadius.circular(6)),
+                        Flexible(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: Colors.black54,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: Colors.white24),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.folder_rounded, size: 13, color: Color(0xFF818CF8)),
+                                const SizedBox(width: 5),
+                                Flexible(
                                   child: Text(
-                                    '${_savedClips.length}',
-                                    style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                                    _folderName!,
+                                    style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
+                                if (_savedClips.isNotEmpty) ...[
+                                  const SizedBox(width: 4),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                    decoration: BoxDecoration(color: AppTheme.success, borderRadius: BorderRadius.circular(6)),
+                                    child: Text(
+                                      '${_savedClips.length}',
+                                      style: const TextStyle(color: Colors.white, fontSize: 9.5, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                                ],
                               ],
-                            ],
+                            ),
                           ),
                         ),
 
                       const Spacer(),
 
-                      // Timer pill
+                      // Timer pill (Always visible and centered)
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(10)),
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: Colors.black54,
+                          borderRadius: BorderRadius.circular(10),
+                          border: _recording ? Border.all(color: AppTheme.error.withValues(alpha: 0.6)) : null,
+                        ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             if (_recording)
                               Container(
-                                width: 9,
-                                height: 9,
-                                margin: const EdgeInsets.only(right: 6),
+                                width: 8,
+                                height: 8,
+                                margin: const EdgeInsets.only(right: 5),
                                 decoration: BoxDecoration(color: AppTheme.error, shape: BoxShape.circle),
                               ),
                             Text(
                               '${(_seconds ~/ 60).toString().padLeft(2, '0')}:${(_seconds % 60).toString().padLeft(2, '0')}',
-                              style: mono,
+                              style: mono.copyWith(fontSize: 12),
                             ),
                           ],
                         ),
@@ -678,32 +692,49 @@ class _CameraScreenState extends ConsumerState<CameraScreen> with WidgetsBinding
 
                       const Spacer(),
 
-                      // Prompter Visibility Eye Toggle
-                      if (_hasScript) ...[
-                        IconButton(
-                          tooltip: _prompterVisible ? 'Hide Prompter' : 'Show Prompter',
-                          style: IconButton.styleFrom(backgroundColor: Colors.black54, minimumSize: const Size(42, 42)),
-                          onPressed: () => setState(() => _prompterVisible = !_prompterVisible),
-                          icon: Icon(_prompterVisible ? Icons.visibility_rounded : Icons.visibility_off_rounded, color: Colors.white),
-                        ),
-                        const SizedBox(width: 6),
-                      ],
-
-                      // Edit Script button
-                      IconButton(
-                        tooltip: 'Edit Script',
-                        style: IconButton.styleFrom(backgroundColor: Colors.black54, minimumSize: const Size(42, 42)),
-                        onPressed: _recording ? null : _openScriptEditor,
-                        icon: const Icon(Icons.edit_note_rounded, color: Colors.white),
-                      ),
-                      const SizedBox(width: 6),
-
-                      // Flip Camera
-                      IconButton(
-                        tooltip: 'Switch camera',
-                        style: IconButton.styleFrom(backgroundColor: Colors.black54, minimumSize: const Size(42, 42)),
-                        onPressed: _cameras.length > 1 && !_recording ? _flip : null,
-                        icon: const Icon(Icons.flip_camera_ios_rounded, color: Colors.white),
+                      // Right Action Group: Prompter eye, script edit, flip camera
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (_hasScript) ...[
+                            IconButton(
+                              tooltip: _prompterVisible ? 'Hide Prompter' : 'Show Prompter',
+                              style: IconButton.styleFrom(
+                                backgroundColor: Colors.black54,
+                                minimumSize: const Size(38, 38),
+                                padding: const EdgeInsets.all(8),
+                              ),
+                              onPressed: () => setState(() => _prompterVisible = !_prompterVisible),
+                              icon: Icon(
+                                _prompterVisible ? Icons.visibility_rounded : Icons.visibility_off_rounded,
+                                color: Colors.white,
+                                size: 19,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                          ],
+                          IconButton(
+                            tooltip: 'Edit Script',
+                            style: IconButton.styleFrom(
+                              backgroundColor: Colors.black54,
+                              minimumSize: const Size(38, 38),
+                              padding: const EdgeInsets.all(8),
+                            ),
+                            onPressed: _recording ? null : _openScriptEditor,
+                            icon: const Icon(Icons.edit_note_rounded, color: Colors.white, size: 20),
+                          ),
+                          const SizedBox(width: 4),
+                          IconButton(
+                            tooltip: 'Switch camera',
+                            style: IconButton.styleFrom(
+                              backgroundColor: Colors.black54,
+                              minimumSize: const Size(38, 38),
+                              padding: const EdgeInsets.all(8),
+                            ),
+                            onPressed: _cameras.length > 1 && !_recording ? _flip : null,
+                            icon: const Icon(Icons.flip_camera_ios_rounded, color: Colors.white, size: 19),
+                          ),
+                        ],
                       ),
                     ],
                   ),

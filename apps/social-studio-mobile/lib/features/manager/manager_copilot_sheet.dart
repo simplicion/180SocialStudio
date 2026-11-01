@@ -10,6 +10,7 @@ import '../../core/widgets/common.dart';
 import '../../data/models/manager_chat.dart';
 
 import '../projects/project_provider.dart';
+import '../settings/ai_provider_sheet.dart';
 
 /// Helper to show the 180 Manager AI Copilot from any screen.
 void show180ManagerCopilot(BuildContext context, {String? projectId}) {
@@ -124,13 +125,30 @@ class _ManagerCopilotSheetState extends ConsumerState<ManagerCopilotSheet> {
       }
     } catch (e) {
       if (mounted) {
+        final rawErr = errorText(e);
+        final isAiUnconfigured = rawErr.contains('No AI provider is configured') ||
+            rawErr.contains('AI_NOT_CONFIGURED') ||
+            rawErr.contains('Settings > AI');
         setState(() {
           _thinking = false;
           _messages.add(
             ManagerChatMessage(
               senderType: 'manager',
-              // The server's own reason (e.g. no AI key configured, timeout); nothing is invented.
-              content: '⚠️ ${errorText(e)}',
+              content: isAiUnconfigured
+                  ? '⚠️ **No AI Provider Configured**\n\n'
+                      '180 Manager AI requires an active intelligence provider (such as **Google Gemini** or **OpenAI**) to analyze your workspace channels, metrics, and calendar.\n\n'
+                      'Tap below to connect your API key in seconds:'
+                  : '⚠️ $rawErr',
+              suggestedActions: isAiUnconfigured
+                  ? [
+                      ManagerActionModel(
+                        id: 'open_ai_setup',
+                        label: '⚙️ Configure AI Provider',
+                        type: 'open_ai_settings',
+                        payload: {},
+                      ),
+                    ]
+                  : const [],
             ),
           );
         });
@@ -140,6 +158,15 @@ class _ManagerCopilotSheetState extends ConsumerState<ManagerCopilotSheet> {
   }
 
   Future<void> _handleAction(ManagerActionModel act) async {
+    if (act.type == 'open_ai_settings') {
+      AiProviderSheet.show(context, onSaved: () {
+        if (mounted) {
+          showSuccess(context, 'AI Provider connected! You can now ask 180 Manager any question.');
+        }
+      });
+      return;
+    }
+
     if (act.type == 'quick_reply') {
       final prompt = act.payload['text'] as String? ?? act.label;
       await _sendMessage(prompt);
@@ -284,6 +311,11 @@ class _ManagerCopilotSheetState extends ConsumerState<ManagerCopilotSheet> {
                       ),
                     ],
                   ),
+                ),
+                IconButton(
+                  icon: Icon(Icons.tune_rounded, size: 20, color: AppTheme.textSecondary),
+                  onPressed: () => AiProviderSheet.show(context),
+                  tooltip: 'AI Engine Settings',
                 ),
                 IconButton(
                   icon: Icon(Icons.close_rounded, size: 20, color: AppTheme.textSecondary),
@@ -513,6 +545,27 @@ class _ManagerCopilotSheetState extends ConsumerState<ManagerCopilotSheet> {
                           ],
                         ),
                       ],
+                      if (msg.suggestedActions.any((a) => a.type == 'open_ai_settings')) ...[
+                        const SizedBox(height: 12),
+                        ElevatedButton.icon(
+                          onPressed: () {
+                            AiProviderSheet.show(context, onSaved: () {
+                              if (mounted) {
+                                showSuccess(context, 'AI Provider connected! You can now ask 180 Manager any question.');
+                              }
+                            });
+                          },
+                          icon: const Icon(Icons.auto_awesome, size: 16),
+                          label: const Text('Connect AI Engine (Gemini / OpenAI)'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.primary,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                            textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -535,7 +588,9 @@ class _ManagerCopilotSheetState extends ConsumerState<ManagerCopilotSheet> {
                             ? Icons.open_in_new_rounded
                             : act.type == 'update_calendar'
                                 ? Icons.edit_calendar_rounded
-                                : Icons.bolt_rounded,
+                                : act.type == 'open_ai_settings'
+                                    ? Icons.settings_rounded
+                                    : Icons.bolt_rounded,
                         size: 14,
                         color: AppTheme.primary,
                       ),

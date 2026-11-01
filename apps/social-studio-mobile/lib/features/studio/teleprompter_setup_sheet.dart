@@ -604,15 +604,16 @@ class _TeleprompterSetupSheetState extends ConsumerState<TeleprompterSetupSheet>
               onPressed: _saving ? null : _startShooting,
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppTheme.primary,
+                foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
               ),
               icon: _saving
                   ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                  : const Icon(Icons.videocam_rounded, size: 20),
+                  : const Icon(Icons.videocam_rounded, size: 20, color: Colors.white),
               label: Text(
                 _saving ? 'Preparing Folder...' : 'Open Teleprompter Camera',
-                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.white),
               ),
             ),
           ],
