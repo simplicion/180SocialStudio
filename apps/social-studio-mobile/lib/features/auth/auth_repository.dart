@@ -125,7 +125,44 @@ class AuthRepository {
     return LoginSuccess(me);
   }
 
-  Future<Json> fetchMe() => _api.get('/api/auth/me');
+  Future<Json> fetchMe() async {
+    try {
+      return await _api.get('/api/v1/social-media/auth/me');
+    } catch (_) {
+      return await _api.get('/api/auth/me');
+    }
+  }
+
+  Future<Entitlement> checkDedicatedBilling() async {
+    try {
+      final billingJson = await _api.get('/api/v1/social-media/billing/status');
+      final creatorBilling = CreatorBillingStatus.fromJson(billingJson);
+      if (creatorBilling.canAccess) {
+        return Entitlement(
+          lockReason: null,
+          isPaidPlan: creatorBilling.hasActiveSubscription || creatorBilling.hasActivePass,
+          enabledApps: const [AppConfig.socialAppId],
+          creatorBilling: creatorBilling,
+          message: creatorBilling.message,
+        );
+      } else {
+        return Entitlement(
+          lockReason: LockReason.subscriptionExpired,
+          isPaidPlan: false,
+          enabledApps: const [],
+          creatorBilling: creatorBilling,
+          message: creatorBilling.message ?? 'Your creator pass or subscription has expired. Subscribe or recharge to unlock full access.',
+        );
+      }
+    } catch (e) {
+      return Entitlement(
+        lockReason: LockReason.subscriptionExpired,
+        isPaidPlan: false,
+        enabledApps: const [],
+        message: 'Your subscription or daily pass has expired.',
+      );
+    }
+  }
 
   Future<void> forgotPassword(String email) => _api.post('/api/auth/forgot-password', auth: false, body: {'email': email.trim()});
 

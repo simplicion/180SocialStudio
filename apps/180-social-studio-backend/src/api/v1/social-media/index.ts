@@ -18,14 +18,25 @@ import studioLibraryRoutes from './library/studio-library.routes';
 import socialBillingRoutes from './billing/social-billing.routes';
 import platformTeamRoutes from './platform-team/platform-team.routes';
 import settingsAiRoutes from './settings/ai.routes';
+import authRoutes from '../../../routes/auth.routes';
+import { requireActiveSubscriptionOrPass } from '../../../middleware/creator-access-guard';
 
 const router = Router();
+
+// Dedicated Auth routes for Social Studio
+router.use('/auth', authRoutes);
+
+// Creator billing & recharge routes (Unrestricted so locked creators can view status, plans, and subscribe)
+router.use('/billing', socialBillingRoutes);
 
 // Workspace & AI settings
 router.use('/settings', settingsAiRoutes);
 
-// Creator billing & recharge routes
-router.use('/billing', socialBillingRoutes);
+// ─────────────────────────────────────────────────────────────────────────────
+// STRICT ENFORCEMENT: All downstream creation, studio and publishing features
+// require an active monthly subscription or active daily pass!
+// ─────────────────────────────────────────────────────────────────────────────
+router.use(requireActiveSubscriptionOrPass);
 
 // Platform Team: craft tools, AI drafting and monitoring for Instagram / LinkedIn / YouTube / X / Facebook
 router.use('/platform-team/:platform', platformTeamRoutes);

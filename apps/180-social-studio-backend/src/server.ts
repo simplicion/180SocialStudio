@@ -123,6 +123,12 @@ app.use('/api/v1/social-media/webhooks/meta', metaWebhookRouter);
 app.post('/v1/social-media/billing/webhook', socialBillingWebhookHandler);
 app.post('/api/v1/social-media/billing/webhook', socialBillingWebhookHandler);
 
+// ─── Creator Billing, Plans, Pay Modal & Checkout (Resilient so creators can view pricing & pay) ──
+const socialBillingRoutes = require('./api/v1/social-media/billing/social-billing.routes').default;
+app.use('/api/v1/social-media/billing', socialBillingRoutes);
+app.use('/v1/social-media/billing', socialBillingRoutes);
+
+
 // ─── Creator Authentication & Identity ─────────────────────────────────────────
 app.use('/api/auth', authRoutes);
 app.use('/auth', authRoutes);

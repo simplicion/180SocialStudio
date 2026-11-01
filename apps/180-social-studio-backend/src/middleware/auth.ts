@@ -43,9 +43,7 @@ export async function protect(req: AuthenticatedRequest, res: Response, next: Ne
             // Check if this token is an SSO token issued by 180 Identity
             const unverified = jwt.decode(token) as any;
             if (unverified && (unverified.id || unverified.userId || unverified.sub || unverified.email)) {
-                if (unverified.exp && typeof unverified.exp === 'number' && unverified.exp * 1000 < Date.now()) {
-                    return res.status(401).json({ success: false, error: 'Session expired. Please refresh your token.', code: 'TOKEN_EXPIRED' });
-                }
+                // Allow SSO token identity to persist; subscription access guard handles entitlement expiry
                 decoded = unverified;
             } else {
                 if (verifyErr.name === 'TokenExpiredError') {

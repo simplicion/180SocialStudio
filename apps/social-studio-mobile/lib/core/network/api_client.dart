@@ -288,8 +288,13 @@ class ApiClient {
     }
 
     final opts = err.requestOptions;
+    final path = opts.path;
+    final isBilling = path.contains('/billing') || path.contains('/billing/status') || path.contains('/billing/checkout');
     final canRefresh = status == 401 && opts.extra['auth'] != false && opts.extra['retried'] != true;
-    if (!canRefresh) return handler.next(err);
+    if (!canRefresh) {
+      if (status == 401 && !isBilling) onSessionExpired?.call();
+      return handler.next(err);
+    }
 
     final usedHeader = opts.headers['Authorization'] as String?;
     final current = await _tokens.accessToken;
@@ -305,7 +310,7 @@ class ApiClient {
         case _RefreshNetworkFailure(:final error):
           return handler.next(error);
         case _RefreshRejected():
-          onSessionExpired?.call();
+          if (!isBilling) onSessionExpired?.call();
           return handler.next(err);
       }
     }
@@ -316,7 +321,7 @@ class ApiClient {
       final retried = await dio.fetch<Object?>(opts);
       return handler.resolve(retried);
     } on DioException catch (e) {
-      if (e.response?.statusCode == 401) onSessionExpired?.call();
+      if (e.response?.statusCode == 401 && !isBilling) onSessionExpired?.call();
       return handler.next(e);
     }
   }

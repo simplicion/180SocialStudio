@@ -88,7 +88,7 @@ class SessionController extends AsyncNotifier<Session?> {
     _publishUser(s);
     // Device token for the media routes; failures surface when those routes are used.
     unawaited(ref.read(deviceRegistrationProvider).ensureToken().then((_) {}, onError: (Object e) {
-      debugPrint('[Session] device registration deferred: $e');
+      debugPrint("[refreshEntitlement] notice: " + e.toString());
     }));
     return s;
   }
@@ -124,10 +124,10 @@ class SessionController extends AsyncNotifier<Session?> {
     final current = state.valueOrNull;
     if (current == null) return;
     try {
-      final me = await _repo.fetchMe();
-      state = AsyncData(await _establish(me));
-    } on ApiException catch (e) {
-      if (e.isAccessLock) lockFromError(e);
+      final ent = await _repo.checkDedicatedBilling();
+      state = AsyncData(current.copyWith(entitlement: ent));
+    } catch (e) {
+      debugPrint('[refreshEntitlement] notice: $e');
     }
   }
 
