@@ -43,3 +43,4 @@ export async function requireActiveSubscriptionOrPass(req: Request, res: Respons
         next();
     }
 }
+
