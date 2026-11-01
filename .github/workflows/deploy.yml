@@ -25,16 +25,18 @@ jobs:
           SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_KEY }}
           HOST: ${{ secrets.EC2_HOST || '18.207.84.197' }}
           USER: ${{ secrets.EC2_USERNAME || 'ubuntu' }}
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          JWT_SECRET: ${{ secrets.JWT_SECRET || '180-social-studio-production-jwt-secret-key-2026' }}
-          STORAGE_PROVIDER: ${{ secrets.STORAGE_PROVIDER || 'local' }}
         run: |
           mkdir -p ~/.ssh
           printf "%s\n" "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
 
-          ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key "$USER@$HOST" << 'EOF'
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key "$USER@$HOST" bash -l << 'EOF'
             set -e
+            [ -s "$HOME/.nvm/nvm.sh" ] && . "$HOME/.nvm/nvm.sh"
+            [ -s "$HOME/.profile" ] && . "$HOME/.profile"
+            [ -s "$HOME/.bashrc" ] && . "$HOME/.bashrc"
+            export PATH="$HOME/.local/share/pnpm:$HOME/.npm-global/bin:$PATH"
+
             echo "=== [1/6] Navigating to project directory ==="
             if [ ! -d "/home/ubuntu/180socialstudio/.git" ]; then
               echo "Cloning repository..."
@@ -50,20 +52,8 @@ jobs:
             echo "=== [3/6] Setting up environment variables ==="
             mkdir -p apps/180-social-studio-backend
             if [ ! -f "apps/180-social-studio-backend/.env" ]; then
-              echo "Creating initial .env template from deploy secrets..."
-              cat << INNER_EOF > apps/180-social-studio-backend/.env
-PORT=4005
-SOCIAL_STUDIO_PORT=4005
-NODE_ENV=production
-CLIENT_URL=http://18.207.84.197:4005,http://localhost:3000,http://localhost:3002
-DATABASE_URL="${DATABASE_URL}"
-DIRECT_URL="${DATABASE_URL}"
-JWT_SECRET="${JWT_SECRET}"
-JWT_ACCESS_SECRET="${JWT_SECRET}"
-JWT_REFRESH_SECRET="${JWT_SECRET}"
-STORAGE_PROVIDER="${STORAGE_PROVIDER}"
-AWS_REGION="us-east-1"
-INNER_EOF
+              echo "Creating initial .env template..."
+              printf "PORT=4005\nSOCIAL_STUDIO_PORT=4005\nNODE_ENV=production\nCLIENT_URL=http://18.207.84.197:4005,http://localhost:3000,http://localhost:3002\nJWT_SECRET=180-social-studio-production-jwt-secret-key-2026\nSTORAGE_PROVIDER=local\nAWS_REGION=us-east-1\n" > apps/180-social-studio-backend/.env
             else
               echo "Existing .env found on server, preserving production configuration."
             fi
@@ -71,11 +61,6 @@ INNER_EOF
             echo "=== [4/6] Installing dependencies and generating client ==="
             pnpm install
             pnpm db:generate
-
-            if [ -n "$DATABASE_URL" ]; then
-              echo "Synchronizing schema=social_studio on PostgreSQL..."
-              pnpm db:push --accept-data-loss || true
-            fi
 
             echo "=== [5/6] Starting / Reloading PM2 Service ==="
             pm2 reload ecosystem.config.cjs || pm2 start ecosystem.config.cjs
@@ -97,11 +82,10 @@ INNER_EOF
         uses: actions/checkout@v4
 
       - name: Setup Java (Temurin 17)
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
-          cache: 'gradle'
 
       - name: Setup Flutter SDK
         uses: subosito/flutter-action@v2
@@ -118,7 +102,7 @@ INNER_EOF
           RESTORED=0
 
           if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "$KEYSTORE_BASE64" | tr -d '\r\n ' | base64 -di > apps/social-studio-mobile/android/app/upload-keystore.jks 2>/dev/null || rm -f apps/social-studio-mobile/android/app/upload-keystore.jks
+            echo "$KEYSTORE_BASE64" | tr -d '\r\n ' | base64 -d > apps/social-studio-mobile/android/app/upload-keystore.jks 2>/dev/null || rm -f apps/social-studio-mobile/android/app/upload-keystore.jks
             if [ -s apps/social-studio-mobile/android/app/upload-keystore.jks ]; then
               RESTORED=1
             fi
@@ -140,12 +124,7 @@ INNER_EOF
               -dname "CN=180Workspace, OU=Mobile, O=Simplicion, L=SanFrancisco, S=CA, C=US"
           fi
 
-          cat <<EOF > apps/social-studio-mobile/android/key.properties
-          storePassword=180workspace2026
-          keyPassword=180workspace2026
-          keyAlias=upload
-          storeFile=upload-keystore.jks
-          EOF
+          printf "storePassword=180workspace2026\nkeyPassword=180workspace2026\nkeyAlias=upload\nstoreFile=upload-keystore.jks\n" > apps/social-studio-mobile/android/key.properties
 
       - name: Configure Firebase google-services.json
         env:
@@ -153,34 +132,6 @@ INNER_EOF
         run: |
           if [ -n "$GOOGLE_SERVICES_JSON" ]; then
             echo "$GOOGLE_SERVICES_JSON" > apps/social-studio-mobile/android/app/google-services.json
-          elif [ ! -f apps/social-studio-mobile/android/app/google-services.json ]; then
-            cat <<'EOF' > apps/social-studio-mobile/android/app/google-services.json
-          {
-            "project_info": {
-              "project_number": "487071639506",
-              "project_id": "worksapce-fa299",
-              "storage_bucket": "worksapce-fa299.firebasestorage.app"
-            },
-            "client": [
-              {
-                "client_info": {
-                  "mobilesdk_app_id": "1:487071639506:android:ebcb694cbda28dff194a0b",
-                  "android_client_info": {
-                    "package_name": "com.workspace180.social_studio_mobile"
-                  }
-                },
-                "oauth_client": [],
-                "api_key": [
-                  {
-                    "current_key": "dummy_client_key_for_ci_pipeline"
-                  }
-                ],
-                "services": {}
-              }
-            ],
-            "configuration_version": "1"
-          }
-          EOF
           fi
 
       - name: Install Flutter Dependencies
