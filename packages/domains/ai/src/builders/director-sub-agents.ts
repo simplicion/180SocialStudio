@@ -52,6 +52,117 @@ export function brollResearchAgent(args: { words: Word[]; baseIR: EditIR; assetI
   return out;
 }
 
+
+/**
+ * Motion Graphic Agent: Autonomous Kinetic Card Insertion
+ * Analyzes spoken entities and metrics in the transcript and returns
+ * high-production creator cards (Hormozi stat counters, Vox explainers, SaaS callouts).
+ */
+export function motionGraphicAgent(args: {
+  words: Array<{ text: string; startMs: number; endMs: number; isEmphasis?: boolean }>;
+  baseIR: EditIR;
+  assetId: string;
+  max?: number;
+}): CreativeOperation[] {
+  const out: CreativeOperation[] = [];
+  const maxCards = args.max ?? 3;
+  if (!args.words || args.words.length === 0) return out;
+
+  const totalSec = RationalTimeMath.toSeconds(args.baseIR.meta.totalDuration);
+  const placedTimestamps: number[] = [];
+
+  const canPlaceAt = (t: number) => {
+    if (t < 1.0 || t > totalSec - 3.0) return false;
+    return !placedTimestamps.some((pt) => Math.abs(pt - t) < 6.0);
+  };
+
+  // 1. Scan for High-Impact Metric Numbers ($10k, 50%, 10x, 3 million) -> Hormozi Counter
+  const metricRegex = /(\$?\d+([.,]\d+)?\s*(k|m|b|%|x|\+)?\b|million|billion|thousand)/i;
+  for (let i = 0; i < args.words.length; i++) {
+    const w = args.words[i];
+    if (metricRegex.test(w.text)) {
+      const t = mapSourceToTimeline(args.baseIR, args.assetId, w.startMs / 1000);
+      if (t != null && canPlaceAt(t)) {
+        const windowWords = args.words.slice(Math.max(0, i - 1), Math.min(args.words.length, i + 4));
+        const contextPhrase = windowWords.map((ww) => ww.text).join(" ").replace(/[^\w\s$%-]/g, "").trim();
+
+        out.push(
+          op({
+            type: "renderMotionGraphic",
+            templateId: "hormozi-counter",
+            timelineStartSec: round2(t),
+            durationSec: 3.5,
+            position: "lower_third",
+            metricValue: w.text.toUpperCase(),
+            metricLabel: "Key Spoken Metric",
+            title: contextPhrase || "Performance Highlight",
+            tag: "METRIC REVEAL",
+            reason: `Autonomous Director: Spoken metric "${w.text}" punctuated with Hormozi kinetic counter`,
+          })
+        );
+        placedTimestamps.push(t);
+        if (out.length >= maxCards) return out;
+      }
+    }
+  }
+
+  // 2. Scan for Explanatory / Thesis Cues ("secret", "step", "rule", "formula", "strategy", "reason", "takeaway") -> Vox Explainer
+  const explainerRegex = /\b(secret|step|rule|formula|strategy|reason|takeaway|proven|insight)\b/i;
+  for (let i = 0; i < args.words.length; i++) {
+    const w = args.words[i];
+    if (explainerRegex.test(w.text)) {
+      const t = mapSourceToTimeline(args.baseIR, args.assetId, w.startMs / 1000);
+      if (t != null && canPlaceAt(t)) {
+        const nextWords = args.words.slice(i, Math.min(args.words.length, i + 6)).map((ww) => ww.text).join(" ").trim();
+        out.push(
+          op({
+            type: "renderMotionGraphic",
+            templateId: "vox-explainer",
+            timelineStartSec: round2(t),
+            durationSec: 3.8,
+            position: "lower_third",
+            title: nextWords.length > 35 ? nextWords.slice(0, 32) + "..." : nextWords,
+            subtitle: "Breakdown & Strategic Execution",
+            tag: "CORE PRINCIPLE",
+            accentColor: "#3B82F6",
+            reason: `Autonomous Director: Explanatory concept "${w.text}" highlighted with Vox kinetic card`,
+          })
+        );
+        placedTimestamps.push(t);
+        if (out.length >= maxCards) return out;
+      }
+    }
+  }
+
+  // 3. Scan for Software / Platform Cues ("platform", "feature", "workflow", "system", "automation") -> SaaS Callout
+  const saasRegex = /\b(platform|feature|system|workflow|software|app|automation|studio)\b/i;
+  for (let i = 0; i < args.words.length; i++) {
+    const w = args.words[i];
+    if (saasRegex.test(w.text)) {
+      const t = mapSourceToTimeline(args.baseIR, args.assetId, w.startMs / 1000);
+      if (t != null && canPlaceAt(t)) {
+        out.push(
+          op({
+            type: "renderMotionGraphic",
+            templateId: "saas-callout",
+            timelineStartSec: round2(t),
+            durationSec: 3.2,
+            position: "lower_third",
+            title: "Automated System Workflow",
+            subtitle: "Powered by 180 Social Studio",
+            accentColor: "#10B981",
+            reason: `Autonomous Director: Platform highlight "${w.text}" rendered with SaaS glassmorphic pill`,
+          })
+        );
+        placedTimestamps.push(t);
+        if (out.length >= maxCards) return out;
+      }
+    }
+  }
+
+  return out;
+}
+
 export interface SfxSuggestion { title: string; url: string; durationSec?: number; license?: string | null; attribution?: string; query: string }
 
 /** Sound agent: brand mood → music bed from the catalogue; optional Freesound SFX suggestions. */

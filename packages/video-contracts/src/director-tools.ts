@@ -35,6 +35,7 @@ import {
   CleanVoiceOpSchema,
   SpeedRampOpSchema,
   ProcessFootageOpSchema,
+  RenderMotionGraphicOpSchema,
 } from "./creative-plan.schema";
 
 /**
@@ -150,6 +151,7 @@ export const DIRECTOR_TOOL_SPECS: DirectorToolSpec[] = [
   { name: "rotateClip", schema: RotateClipOpSchema, description: "Rotate (absolute 0/90/180/270 clockwise) and/or mirror the footage. clipId 'all' for the whole video. Use for sideways or upside-down footage." },
   { name: "autoSoundDesign", schema: AutoSoundDesignOpSchema, description: "Automatically synthesize acoustic sound design across the entire video: whooshes under zooms/cuts, UI pops on caption highlights, and sub-bass drops on punchlines." },
   { name: "addSoundEffect", schema: AddSoundEffectOpSchema, description: "Place a specific acoustic sound effect (whoosh, pop, sub_drop, riser, impact, glitch, bell) at a precise timeline second to punctuate key moments." },
+  { name: "renderMotionGraphic", schema: RenderMotionGraphicOpSchema, description: "Render an advanced, high-production kinetic motion graphic card overlay (Vox explainer lower-third, Alex Hormozi metric counter with live numbers, minimalist SaaS callout, quote reveal, or split-comparison). Placed when high-impact points, metrics ($/numbers/percentages), quotes, or key takeaways are spoken." },
 ];
 
 export const FINISH_TOOL_NAME = "finish_edit";

@@ -15,6 +15,7 @@ import '../auth/auth_provider.dart';
 import '../manager/manager_copilot_sheet.dart';
 import '../projects/project_provider.dart';
 import '../projects/project_switcher.dart';
+import '../studio/auto_clipper_sheet.dart';
 
 /// One entry per web workspace tab (`/social-projects/:id?tab=`), plus mobile extras.
 class ProjectSection {
@@ -28,6 +29,7 @@ class ProjectSection {
     ProjectSection('engagement', 'Engagement', Icons.bolt_rounded),
     ProjectSection('analytics', 'Analytics', Icons.insights_rounded),
     ProjectSection('evergreen', 'Evergreen queue', Icons.autorenew_rounded),
+    ProjectSection('auto_clipper', 'Auto Clipper', Icons.movie_filter_rounded),
   ];
 
   static ProjectSection? byTab(String tab) =>
@@ -641,21 +643,27 @@ class _Overview extends ConsumerWidget {
           _Header(project: project),
           SectionHeader('Workspace'),
           GridView.count(
-            crossAxisCount: 4,
+            crossAxisCount: 5,
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             mainAxisSpacing: 8,
             crossAxisSpacing: 8,
-            childAspectRatio: 0.88,
+            childAspectRatio: 0.78,
             children: [
               for (final s in ProjectSection.all)
                 SectionCard(
                   padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-                  onTap: () => context.push('/projects/${project.id}/${s.tab}'),
+                  onTap: () {
+                    if (s.tab == 'auto_clipper') {
+                      showAutoClipperStudioSheet(context, projectId: project.id);
+                    } else {
+                      context.push('/projects/${project.id}/${s.tab}');
+                    }
+                  },
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(s.icon, color: AppTheme.primary, size: 20),
+                      Icon(s.icon, color: s.tab == 'auto_clipper' ? AppTheme.accent : AppTheme.primary, size: 20),
                       const SizedBox(height: 6),
                       Text(
                         s.label,

@@ -561,6 +561,30 @@ export const AddBackgroundMusicOpSchema = z.object({
   reason: z.string().optional(),
 });
 
+
+export const RenderMotionGraphicOpSchema = z.object({
+  type: z.literal("renderMotionGraphic"),
+  timelineStartSec: z.number().nonnegative().describe("Timeline timestamp in seconds where the kinetic motion graphic enters."),
+  durationSec: z.number().positive().max(30).default(3.5).describe("Duration in seconds that the motion graphic card stays active."),
+  templateId: z.enum([
+    "vox-explainer",
+    "hormozi-counter",
+    "saas-callout",
+    "quote-reveal",
+    "split-comparison",
+  ]).default("vox-explainer").describe("Creator-grade motion graphic template ID."),
+  title: z.string().describe("Main heading or bold statement."),
+  subtitle: z.string().optional().describe("Secondary detail or explanatory text."),
+  metricValue: z.string().optional().describe("E.g. '$100K+', '3.5x', '94%' for metric counter cards."),
+  metricLabel: z.string().optional().describe("Label under the metric, e.g. 'Revenue increase'."),
+  tag: z.string().optional().describe("Category badge tag, e.g. 'PROVEN METRIC', 'STEP 1', 'CASE STUDY'."),
+  position: z.enum(["lower_third", "center", "top_right", "bottom_left"]).default("lower_third"),
+  accentColor: z.string().regex(/^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$/).optional().describe("Hex accent color for card highlight (e.g. #3B82F6)."),
+  reason: z.string().optional().describe("Why the AI Director autonomously placed this motion graphic."),
+});
+
+export type RenderMotionGraphicOp = z.infer<typeof RenderMotionGraphicOpSchema>;
+
 export const CreativeOperationSchema = z.discriminatedUnion("type", [
   RemoveRangeOpSchema,
   RippleDeleteOpSchema,
@@ -607,6 +631,7 @@ export const CreativeOperationSchema = z.discriminatedUnion("type", [
   AutoCaptionsOpSchema,
   ClearCaptionsOpSchema,
   AddBackgroundMusicOpSchema,
+  RenderMotionGraphicOpSchema,
 ]);
 
 export type CreativeOperation = z.infer<typeof CreativeOperationSchema>;

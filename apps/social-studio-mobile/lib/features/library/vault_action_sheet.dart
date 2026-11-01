@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/common.dart';
 import '../../data/models/vault_item.dart';
+import 'url_media_import_sheet.dart';
 import 'vault_provider.dart';
 
 const List<int> _folderColors = [
@@ -75,6 +76,16 @@ void showVaultActionSheet(BuildContext context, WidgetRef ref) {
               onTap: () {
                 Navigator.pop(ctx);
                 _pickMediaFiles(context, ref);
+              },
+            ),
+            _ActionTile(
+              icon: Icons.link_rounded,
+              color: const Color(0xFF8B5CF6),
+              title: 'Import from Link (YouTube, IG, TikTok)',
+              subtitle: 'Download video or extract voice audio directly from web URLs',
+              onTap: () {
+                Navigator.pop(ctx);
+                showUrlMediaImportSheet(context, ref);
               },
             ),
             _ActionTile(

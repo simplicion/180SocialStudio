@@ -24,7 +24,7 @@ function loadRootEnv() {
       val = val.slice(1, -1);
     }
     env[key] = val;
-    if (!process.env[key]) {
+    if (true) {
       process.env[key] = val;
     }
   }

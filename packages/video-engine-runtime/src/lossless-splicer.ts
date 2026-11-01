@@ -1,3 +1,4 @@
+import { FfmpegHardwareAccelerator } from "./ffmpeg-hardware";
 import ffmpeg from "./ffmpeg-setup";
 import * as fs from "fs";
 import * as path from "path";
@@ -36,6 +37,7 @@ export class LosslessSplicer {
       throw new Error("No video clips found in EditIR timeline.");
     }
 
+    const hw = await FfmpegHardwareAccelerator.resolveEncoderProfile();
     const segmentPaths: string[] = [];
     const totalClips = mainTrack.clips.length;
 
@@ -147,8 +149,8 @@ export class LosslessSplicer {
 
           command = command
             .videoFilters(vFilters.join(","))
-            .videoCodec("libx264")
-            .outputOptions(["-y", "-pix_fmt yuv420p", "-preset fast", "-crf 18", "-movflags +faststart"]);
+            .videoCodec(hw.codecName)
+            .outputOptions(hw.outputOptions);
 
           const durSec = RationalTimeMath.toSeconds(clip.sourceRange.duration);
           const fadeOutStart = Math.max(0.01, durSec - 0.05);

@@ -22,6 +22,7 @@ import 'caption_languages.dart';
 import 'caption_tools.dart';
 import 'studio_controller.dart';
 import 'sticker_maker.dart';
+import 'motion_graphics_sheet.dart';
 import 'studio_session_screen.dart' show timecode;
 import 'text_motion.dart';
 import 'text_templates.dart';
@@ -50,6 +51,7 @@ enum StudioTool {
   zoom('Zoom', Icons.zoom_in_rounded),
   broll('B-roll', Icons.layers_rounded),
   sticker('Stickers', Icons.emoji_emotions_rounded),
+  cards('Cards', Icons.auto_awesome_motion_rounded),
   transition('Transition', Icons.compare_rounded);
 
   StudioTool(this.label, this.icon);
@@ -105,6 +107,7 @@ Future<void> showStudioTool(BuildContext context, StudioTool tool, StudioControl
           StudioTool.zoom => _ZoomSheet(c: c, onEdit: onEdit),
           StudioTool.broll => _BrollSheet(c: c, onEdit: onEdit),
           StudioTool.sticker => _StickerSheet(c: c, onEdit: onEdit),
+          StudioTool.cards => MotionGraphicsSheet(c: c, onEdit: onEdit),
           StudioTool.transition => _TransitionSheet(c: c, onEdit: onEdit),
           StudioTool.library => _LibrarySheet(c: c, onEdit: onEdit),
           StudioTool.director => SizedBox.shrink(),

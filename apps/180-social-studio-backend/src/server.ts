@@ -2,7 +2,9 @@ import path from 'path';
 import dotenv from 'dotenv';
 
 // Load environment variables from .env
-dotenv.config({ path: path.resolve(process.cwd(), '.env') });
+// Load environment variables from .env
+dotenv.config({ path: path.resolve(process.cwd(), '.env'), override: true });
+dotenv.config({ path: path.resolve(__dirname, '../.env'), override: true });
 
 import express, { Request, Response, NextFunction } from 'express';
 import http from 'http';

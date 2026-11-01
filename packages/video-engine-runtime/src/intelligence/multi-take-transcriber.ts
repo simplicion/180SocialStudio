@@ -236,7 +236,7 @@ export class MultiTakeTranscriber {
     const fileName = path.basename(filePath);
     return new Promise((resolve) => {
       ffmpeg.ffprobe(filePath, (err, meta) => {
-        const dur = meta?.format?.duration ? parseFloat(meta.format.duration) : 10.0;
+        const dur = typeof meta?.format?.duration === "number" ? meta.format.duration : parseFloat(String(meta?.format?.duration || 10.0));
         resolve({
           filePath,
           fileName,

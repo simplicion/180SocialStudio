@@ -17,6 +17,7 @@ export * from './agent-runs';
 export * from './media/media-analysis.service';
 export * from './media/transcriber';
 export * from './media/local-speech-transcriber';
+export * from './media/local-whisper';
 
 // Memory & Real-Time Context Aggregator (Redis-Backed Mem0 + Vector Memory)
 export * from './memory/mem0-memory.service';

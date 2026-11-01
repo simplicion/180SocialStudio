@@ -14,11 +14,12 @@
   "dependencies": {
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@ffprobe-installer/ffprobe": "^2.1.2",
-    "@workspace/video-contracts": "workspace:*",
     "@workspace/ai": "workspace:*",
+    "@workspace/video-contracts": "workspace:*",
     "commander": "^12.0.0",
     "fluent-ffmpeg": "^2.1.3",
     "sharp": "^0.35.5",
+    "yt-dlp-exec": "^1.0.2",
     "zod": "^3.22.4"
   },
   "devDependencies": {

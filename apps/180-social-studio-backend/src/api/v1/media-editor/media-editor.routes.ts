@@ -5,6 +5,7 @@ import { requireDesktopDevice, requireNativeDevice } from "../desktop/desktop-de
 import { audioUpload, transcribeHandler } from "./media-transcription";
 import { translateCaptionsHandler } from "./caption-translation";
 import { directorContextHandler } from "./director-context";
+import { ingestMetadataHandler, ingestDownloadHandler, ingestAutoClipHandler, queueJobStatusHandler } from "./media-ingest.routes";
 
 const router: Router = Router();
 
@@ -294,16 +295,14 @@ router.get("/stock/unified", async (req, res) => {
 router.get("/stock/music", async (req, res) => {
   try {
     const { query, limit = "10", minDurationSec } = req.query;
-    if (!query || typeof query !== "string" || !query.trim()) {
-      return res.status(400).json({ success: false, error: "QUERY_REQUIRED", message: "Query parameter is required (mood/genre keywords, e.g. 'upbeat energetic')" });
-    }
-    if (query.length > 120) {
+    const musicQuery = (typeof query === "string" && query.trim().length > 0) ? query.trim() : "upbeat";
+    if (musicQuery.length > 120) {
       return res.status(400).json({ success: false, error: "QUERY_TOO_LONG", message: "Query must be at most 120 characters" });
     }
     const minDur = typeof minDurationSec === "string" ? parseFloat(minDurationSec) : NaN;
     const { BgmSearchTool } = require("@workspace/video-engine-runtime");
     const result = await BgmSearchTool.searchTracks({
-      query,
+      query: musicQuery,
       limit: parseInt(limit as string, 10) || 10,
       minDurationSec: Number.isFinite(minDur) && minDur > 0 ? minDur : undefined,
     });
@@ -346,6 +345,11 @@ router.get("/ai-status", async (req, res) => {
 // Installer downloads are served by `/download/:platform` in routes/index.routes.ts (a real release URL or an honest 404).
 // A second copy of that route used to live here and answered with a text file named like an installer; it was
 // unreachable dead code and has been removed so it cannot come back.
+
+router.get("/ingest/metadata", ingestMetadataHandler);
+router.post("/ingest/download", ingestDownloadHandler);
+router.post("/ingest/auto-clip", ingestAutoClipHandler);
+router.get("/ingest/jobs/:jobId", queueJobStatusHandler);
 
 export default router;
 

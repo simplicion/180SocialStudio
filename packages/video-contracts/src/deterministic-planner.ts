@@ -525,6 +525,64 @@ export class DeterministicPlanner {
       });
     }
 
+    
+    // 15. HyperFrames Kinetic Motion Graphics (Vox, Hormozi, SaaS cards)
+    const wantsMotionGraphics =
+      p.includes("motion graphic") ||
+      p.includes("stat card") ||
+      p.includes("explainer card") ||
+      p.includes("hyperframes") ||
+      p.includes("visual card") ||
+      p.includes("metric card") ||
+      (!isSurgical && isHighEnergy);
+
+    if ((wantsMotionGraphics || !isSurgical) && graph.transcript && graph.transcript.length > 0) {
+      const metricRegex = /(\$?\d+([.,]\d+)?\s*(k|m|b|%|x|\+)?\b|million|billion|thousand)/i;
+      const explainerRegex = /\b(secret|step|rule|formula|strategy|reason|takeaway|proven|insight)\b/i;
+      let cardCount = 0;
+
+      for (let i = 0; i < graph.transcript.length; i++) {
+        const w = graph.transcript[i];
+        if (cardCount >= (wantsMotionGraphics ? 3 : 2)) break;
+
+        if (metricRegex.test(w.word) && w.startSeconds > 1.0 && w.startSeconds < context.projectDurationSec - 3.0) {
+          const windowWords = graph.transcript.slice(Math.max(0, i - 1), Math.min(graph.transcript.length, i + 4));
+          const contextPhrase = windowWords.map((ww) => ww.word).join(" ").replace(/[^\w\s$%-]/g, "").trim();
+
+          operations.push({
+            type: "renderMotionGraphic",
+            templateId: "hormozi-counter",
+            timelineStartSec: Math.round(w.startSeconds * 100) / 100,
+            durationSec: 3.5,
+            position: "lower_third",
+            metricValue: w.word.toUpperCase(),
+            metricLabel: "Key Spoken Metric",
+            title: contextPhrase || "Performance Highlight",
+            tag: "PROVEN STAT",
+            reason: `Autonomous Director: Spoken metric "${w.word}" punctuated with Hormozi kinetic counter`,
+          });
+          cardCount++;
+          i += 6;
+        } else if (explainerRegex.test(w.word) && w.startSeconds > 1.0 && w.startSeconds < context.projectDurationSec - 3.0) {
+          const nextWords = graph.transcript.slice(i, Math.min(graph.transcript.length, i + 6)).map((ww) => ww.word).join(" ").trim();
+          operations.push({
+            type: "renderMotionGraphic",
+            templateId: "vox-explainer",
+            timelineStartSec: Math.round(w.startSeconds * 100) / 100,
+            durationSec: 3.8,
+            position: "lower_third",
+            title: nextWords.length > 35 ? nextWords.slice(0, 32) + "..." : nextWords,
+            subtitle: "Breakdown & Strategic Execution",
+            tag: "KEY TAKEAWAY",
+            accentColor: "#3B82F6",
+            reason: `Autonomous Director: Concept "${w.word}" elevated with Vox kinetic card`,
+          });
+          cardCount++;
+          i += 6;
+        }
+      }
+    }
+
     let explanation = "";
     if (targetShortenDurationSec) {
       explanation = `Shortened project to approximately ${targetShortenDurationSec}s while retaining high-retention highlights and framing for ${targetAspect}.`;
