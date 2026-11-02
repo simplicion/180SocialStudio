@@ -71,20 +71,52 @@ redis.call('SET', KEYS[1], newTat, 'PX', math.ceil(newTat - now) + 1000)
 return 0`;
 
 export class RedisLimiterStore implements LimiterStore {
-    constructor(private redis: any) {}
+    private fallback = new MemoryLimiterStore();
+
+    constructor(private redis: any) {
+        if (redis && typeof redis.on === 'function') {
+            redis.on('error', () => {
+                // Prevent unhandled error event crashes
+            });
+        }
+    }
 
     async take(key: string, cost: number, limitPerMin: number, nowMs: number): Promise<RateDecision> {
-        const interval = 60_000 / limitPerMin;
-        const wait = Number(await this.redis.eval(GCRA_LUA, 1, key, cost, interval, 60_000, nowMs));
-        return wait > 0 ? { allowed: false, retryAfterMs: wait } : { allowed: true, retryAfterMs: 0 };
+        try {
+            if (this.redis.status && this.redis.status !== 'ready' && this.redis.status !== 'connecting') {
+                return this.fallback.take(key, cost, limitPerMin, nowMs);
+            }
+            const interval = 60_000 / limitPerMin;
+            const wait = Number(await this.redis.eval(GCRA_LUA, 1, key, cost, interval, 60_000, nowMs));
+            return wait > 0 ? { allowed: false, retryAfterMs: wait } : { allowed: true, retryAfterMs: 0 };
+        } catch (err: any) {
+            console.warn('[EngagementRateLimiter] Redis take failed, falling back to in-memory limiter:', err?.message || err);
+            return this.fallback.take(key, cost, limitPerMin, nowMs);
+        }
     }
 
     async claim(key: string, ttlMs: number): Promise<boolean> {
-        return (await this.redis.set(key, '1', 'PX', ttlMs, 'NX')) === 'OK';
+        try {
+            if (this.redis.status && this.redis.status !== 'ready' && this.redis.status !== 'connecting') {
+                return this.fallback.claim(key, ttlMs);
+            }
+            return (await this.redis.set(key, '1', 'PX', ttlMs, 'NX')) === 'OK';
+        } catch (err: any) {
+            console.warn('[EngagementRateLimiter] Redis claim failed, falling back to in-memory store:', err?.message || err);
+            return this.fallback.claim(key, ttlMs);
+        }
     }
 
     async release(key: string): Promise<void> {
-        await this.redis.del(key);
+        try {
+            if (this.redis.status && this.redis.status !== 'ready') {
+                await this.fallback.release(key);
+                return;
+            }
+            await this.redis.del(key);
+        } catch {
+            await this.fallback.release(key);
+        }
     }
 }
 
@@ -99,7 +131,16 @@ function resolveStore(): LimiterStore {
         // ioredis is provided by the host app (backend / worker); resolved lazily so the package stays importable.
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const Redis = require('ioredis');
-        resolved = new RedisLimiterStore(new Redis(url, { maxRetriesPerRequest: 2, lazyConnect: false }));
+        const redisInstance = new Redis(url, {
+            maxRetriesPerRequest: 1,
+            connectTimeout: 2000,
+            commandTimeout: 2000,
+            enableOfflineQueue: false,
+            lazyConnect: true,
+            retryStrategy: () => null,
+        });
+        redisInstance.on('error', () => {});
+        resolved = new RedisLimiterStore(redisInstance);
         return resolved;
     }
     if (process.env.NODE_ENV === 'production') {

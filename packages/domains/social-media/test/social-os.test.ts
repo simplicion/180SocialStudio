@@ -51,7 +51,7 @@ test('brand: new fields validate, normalise and reject bad values with paths', (
         website: 'https://acme.coffee', industry: 'Specialty coffee', country: 'in', language: 'en-us',
         colors: { secondary: '#aabbcc' },
         restrictions: { forbiddenTopics: ['politics', 'Politics'], claimsToAvoid: ['cures anxiety'], regulatoryNotes: 'FSSAI labelling' },
-        postingFrequency: { perWeek: 5, platforms: { ig: 3, x: 2 } },
+        postingFrequency: { perWeek: 5, platforms: { ig: 3, linkedin: 2 } },
         objectives: { primary: 'Grow home-brewer community', secondary: null },
         autonomy: { editing: 'AUTO' },
     });
@@ -59,7 +59,7 @@ test('brand: new fields validate, normalise and reject bad values with paths', (
     assert.equal(p.language, 'en-US');
     assert.equal(p.colors?.secondary, '#AABBCC');
     assert.deepEqual(p.restrictions?.forbiddenTopics, ['politics']);
-    assert.deepEqual(p.postingFrequency?.platforms, { instagram: 3, twitter: 2 });
+    assert.deepEqual(p.postingFrequency?.platforms, { instagram: 3, linkedin: 2 });
     const bad: [any, string][] = [
         [{ website: 'ftp://x.com' }, 'website'], [{ website: 'not a url' }, 'website'], [{ country: 'IND' }, 'country'],
         [{ language: 'english!' }, 'language'], [{ colors: { secondary: 'blue' } }, 'colors.secondary'],

@@ -414,7 +414,7 @@ void showProfileAndAccountsSheet(BuildContext context, WidgetRef ref) {
                     icon: Icons.radar_rounded,
                     iconColor: AppTheme.accent,
                     title: 'Command Center',
-                    subtitle: 'Monitor, create and check for Instagram, LinkedIn, YouTube, X and Facebook',
+                    subtitle: 'Monitor, create and check for Instagram, LinkedIn, YouTube and Facebook',
                     onTap: () {
                       Navigator.of(sheetContext).pop();
                       context.push('/command-center');

@@ -9,7 +9,6 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../../core/config/app_config.dart';
 import '../../core/providers.dart';
 import '../../core/services/push_notifications.dart';
 import '../../core/theme/app_theme.dart';
@@ -463,13 +462,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             const SizedBox(height: 24),
           ],
 
-          // Section: About (real values only)
+          // Section: About
           _sectionHeader(context, 'About', Icons.info_outline_rounded),
           SizedBox(height: 8),
           _card(context, Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Workspace server', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+            Text('180 Social Studio', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
             SizedBox(height: 4),
-            Text(AppConfig.apiBaseUrl, style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
+            Text('Version 1.0.0 (Build 180) · Production', style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
           ])),
 
           SizedBox(height: 24),
