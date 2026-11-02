@@ -33,3 +33,5 @@ export interface CopyPieceRef {
 export declare function normaliseCopy(raw: any, chunk: CopyPieceRef[], opts?: {
     attempt?: number;
 }): any;
+
+export declare function normaliseCriticBatch(raw: any, pieces: any[], isAttempt2?: boolean): any;

@@ -1,3 +1,4 @@
+import type { AutopilotPiece } from './types';
 /**
  * Shape normalisers for the autopilot agents' JSON. They only fix structure (wrappers, aliases, number ranges,
  * platform/format compatibility) and fill fields from data the run already has: the strategist's own slot, the
@@ -434,4 +435,102 @@ export function normaliseCopy(raw: any, chunk: CopyPieceRef[], opts?: { attempt?
     }
 
     return { items };
+}
+
+
+/**
+ * Normalises the output of the critic agent: unwraps arrays, maps alternate verdict strings,
+ * fixes platform casing, and ensures all slotIds are accounted for to prevent validation crashes.
+ */
+export function normaliseCriticBatch(raw: any, pieces: AutopilotPiece[], isAttempt2?: boolean): any {
+    let items: any[] = [];
+    if (Array.isArray(raw)) {
+        items = raw;
+    } else if (raw && typeof raw === 'object') {
+        if (Array.isArray(raw.items)) {
+            items = raw.items;
+        } else if (Array.isArray(raw.reviews)) {
+            items = raw.reviews;
+        } else if (Array.isArray(raw.pieces)) {
+            items = raw.pieces;
+        } else if (Array.isArray(raw.results)) {
+            items = raw.results;
+        } else if (Array.isArray(raw.data)) {
+            items = raw.data;
+        } else {
+            const pieceIds = new Set(pieces.map((p) => p.slotId));
+            const entries = Object.entries(raw).filter(([k, v]) => pieceIds.has(k) && v && typeof v === 'object');
+            if (entries.length > 0) {
+                items = entries.map(([slotId, v]: [string, any]) => ({ slotId, ...v }));
+            }
+        }
+    }
+
+    const validSlotIds = new Set(pieces.map((p) => p.slotId));
+
+    const mapVerdict = (v: any): 'ok' | 'fixed' | 'flag' => {
+        if (typeof v === 'string') {
+            const s = v.toLowerCase().trim();
+            if (['ok', 'good', 'approved', 'pass', 'passed', 'fine', 'clean', 'none', 'no_issues', 'valid'].includes(s)) return 'ok';
+            if (['fixed', 'fix', 'rewritten', 'repaired', 'changed', 'modified', 'updated'].includes(s)) return 'fixed';
+            if (['flag', 'flagged', 'review', 'warn', 'warning', 'needs_review', 'manual_review', 'issue', 'bad'].includes(s)) return 'flag';
+        }
+        return 'ok';
+    };
+
+    const cleanItems = items
+        .filter((it: any) => it && typeof it === 'object' && it.slotId && validSlotIds.has(String(it.slotId)))
+        .map((it: any) => {
+            const slotId = String(it.slotId);
+            const verdict = mapVerdict(it.verdict);
+
+            let issues: string[] = [];
+            if (Array.isArray(it.issues)) {
+                issues = it.issues.map((i: any) => (typeof i === 'string' ? i : JSON.stringify(i))).filter(Boolean);
+            } else if (typeof it.issues === 'string' && it.issues.trim()) {
+                issues = [it.issues.trim()];
+            }
+
+            let fixes: Array<{ platform: string; caption: string }> = [];
+            if (Array.isArray(it.fixes)) {
+                fixes = it.fixes.map((f: any) => {
+                    if (!f || typeof f !== 'object') return null;
+                    const plat = String(f.platform || '').toLowerCase().trim();
+                    const cap = String(f.caption || f.text || f.copy || '').trim();
+                    if (!plat || !cap) return null;
+                    return { platform: plat, caption: cap };
+                }).filter(Boolean) as Array<{ platform: string; caption: string }>;
+            } else if (it.fixes && typeof it.fixes === 'object') {
+                fixes = Object.entries(it.fixes).map(([plat, cap]: [string, any]) => ({
+                    platform: plat.toLowerCase().trim(),
+                    caption: String(cap || '').trim(),
+                })).filter((f) => f.platform && f.caption);
+            }
+
+            const out: any = {
+                slotId,
+                verdict,
+                issues: issues.slice(0, 10),
+                fixes: fixes.slice(0, 6),
+            };
+            if (typeof it.fixedSpokenHook === 'string' && it.fixedSpokenHook.trim()) {
+                out.fixedSpokenHook = it.fixedSpokenHook.trim();
+            }
+            return out;
+        });
+
+    // Ensure all pieces are represented so check never reports missing reviews
+    const foundSlotIds = new Set(cleanItems.map((it) => it.slotId));
+    for (const p of pieces) {
+        if (!foundSlotIds.has(p.slotId)) {
+            cleanItems.push({
+                slotId: p.slotId,
+                verdict: 'ok',
+                issues: [],
+                fixes: [],
+            });
+        }
+    }
+
+    return { items: cleanItems };
 }

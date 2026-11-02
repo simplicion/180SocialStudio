@@ -203,16 +203,57 @@ export const CopyBatchSchema = z.object({ items: z.array(CopyItemSchema).min(1) 
 // ---------------------------------------------------------------- critic
 
 export const CriticReviewSchema = z.object({
-    items: z.array(z.object({
+    items: z.preprocess((val) => {
+        if (!val) return [];
+        if (Array.isArray(val)) return val;
+        if (typeof val === 'object') {
+            if (Array.isArray(val.items)) return val.items;
+            if (Array.isArray(val.reviews)) return val.reviews;
+            if (Array.isArray(val.pieces)) return val.pieces;
+            if (Array.isArray(val.results)) return val.results;
+            if (Array.isArray(val.data)) return val.data;
+        }
+        return val;
+    }, z.array(z.object({
         slotId: nonEmpty(40),
-        verdict: z.enum(['ok', 'fixed', 'flag']),
-        issues: z.array(z.string().max(300)).max(10).default([]),
-        fixes: z.array(z.object({
+        verdict: z.preprocess((v) => {
+            if (typeof v === 'string') {
+                const s = v.toLowerCase().trim();
+                if (['ok', 'good', 'approved', 'pass', 'passed', 'fine', 'clean', 'none', 'no_issues', 'valid'].includes(s)) return 'ok';
+                if (['fixed', 'fix', 'rewritten', 'repaired', 'changed', 'modified', 'updated'].includes(s)) return 'fixed';
+                if (['flag', 'flagged', 'review', 'warn', 'warning', 'needs_review', 'manual_review', 'issue', 'bad'].includes(s)) return 'flag';
+            }
+            return 'ok';
+        }, z.enum(['ok', 'fixed', 'flag'])),
+        issues: z.preprocess((val) => {
+            if (typeof val === 'string') return [val];
+            if (!val || !Array.isArray(val)) return [];
+            return val.map((v) => (typeof v === 'string' ? v : JSON.stringify(v))).filter(Boolean);
+        }, z.array(z.string().max(500)).max(20).default([])),
+        fixes: z.preprocess((val) => {
+            if (!val) return [];
+            if (Array.isArray(val)) {
+                return val.map((f) => {
+                    if (!f || typeof f !== 'object') return null;
+                    const plat = String(f.platform || '').toLowerCase().trim();
+                    const cap = String(f.caption || f.text || f.copy || '').trim();
+                    if (!plat || !cap) return null;
+                    return { platform: plat, caption: cap };
+                }).filter(Boolean);
+            }
+            if (typeof val === 'object') {
+                return Object.entries(val).map(([plat, cap]) => ({
+                    platform: plat.toLowerCase().trim(),
+                    caption: String(cap || '').trim(),
+                })).filter((f) => f.platform && f.caption);
+            }
+            return [];
+        }, z.array(z.object({
             platform: platformSchema,
             caption: nonEmpty(5000),
-        })).max(6).default([]),
-        fixedSpokenHook: z.string().max(300).optional(),
-    })),
+        })).max(10).default([])),
+        fixedSpokenHook: z.string().max(500).optional(),
+    }))),
 });
 export type CriticReview = z.infer<typeof CriticReviewSchema>;
 

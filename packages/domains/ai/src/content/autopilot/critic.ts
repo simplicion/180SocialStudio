@@ -10,6 +10,7 @@ import { AutopilotLLM, UsageMeter } from './llm';
 import { runJsonAgent } from './json-agent';
 import { AGENT_TOKEN_CAPS } from './budget';
 import { CriticReviewSchema } from './schemas';
+import { normaliseCriticBatch } from './normalizers';
 import { PLATFORM_RULES, composeCaption } from './platform-rules';
 import type { AutopilotBrandContext, AutopilotPiece, PieceCopy } from './types';
 
@@ -161,53 +162,66 @@ export async function runCriticAgent(params: {
     const { pieces, brand } = params;
     if (!pieces.length) return;
     const ids = new Set(pieces.map((p) => p.slotId));
-    const { value } = await runJsonAgent({
-        llm: params.llm,
-        role: 'critic',
-        meter: params.meter,
-        maxTokens: Math.min(AGENT_TOKEN_CAPS.criticMax, AGENT_TOKEN_CAPS.criticBase + pieces.length * AGENT_TOKEN_CAPS.criticPerPiece),
-        schema: CriticReviewSchema,
-        system: 'You are a strict brand editor. You check social posts against the brand rules and fix what breaks them. You change as little as possible.',
-        prompt: [
-            brand.promptContext,
-            '',
-            `Forbidden words (must never appear): ${brand.forbiddenWords.join(', ') || '(none)'}`,
-            `Tone: ${brand.tone}`,
-            '',
-            'Review each piece. verdict "ok" = on brand. "fixed" = you rewrote a caption or the spoken hook (return the full new text). "flag" = a human must look (say why in issues).',
-            'Only include fixes for platforms whose caption you changed.',
-            '',
-            'Pieces:',
-            JSON.stringify(pieces.map((p) => ({
-                slotId: p.slotId,
-                spokenHook: p.spokenHook,
-                captions: Object.fromEntries(Object.entries(p.captions).map(([k, v]) => [k, v?.caption])),
-            }))),
-            '',
-            'Return JSON: {"items":[{"slotId":"...","verdict":"ok|fixed|flag","issues":["..."],"fixes":[{"platform":"instagram","caption":"..."}],"fixedSpokenHook":"optional"}]}',
-        ].join('\n'),
-        check: (r) => {
-            const got = new Set(r.items.map((i) => i.slotId));
-            const problems: string[] = [];
-            for (const id of ids) if (!got.has(id)) problems.push(`missing review for slotId ${id}`);
-            for (const id of got) if (!ids.has(id)) problems.push(`unknown slotId ${id}`);
-            return problems;
-        },
-    });
+    try {
+        const { value } = await runJsonAgent({
+            llm: params.llm,
+            role: 'critic',
+            meter: params.meter,
+            maxTokens: Math.min(AGENT_TOKEN_CAPS.criticMax, AGENT_TOKEN_CAPS.criticBase + pieces.length * AGENT_TOKEN_CAPS.criticPerPiece),
+            schema: CriticReviewSchema,
+            normalize: (raw, meta) => normaliseCriticBatch(raw, pieces, meta?.attempt === 2),
+            tolerateCheckOnRepair: true,
+            system: 'You are a strict brand editor. You check social posts against the brand rules and fix what breaks them. You change as little as possible.',
+            prompt: [
+                brand.promptContext,
+                '',
+                `Forbidden words (must never appear): ${brand.forbiddenWords.join(', ') || '(none)'}`,
+                `Tone: ${brand.tone}`,
+                '',
+                'Review each piece. verdict "ok" = on brand. "fixed" = you rewrote a caption or the spoken hook (return the full new text). "flag" = a human must look (say why in issues).',
+                'Only include fixes for platforms whose caption you changed.',
+                '',
+                'Pieces:',
+                JSON.stringify(pieces.map((p) => ({
+                    slotId: p.slotId,
+                    spokenHook: p.spokenHook,
+                    captions: Object.fromEntries(Object.entries(p.captions).map(([k, v]) => [k, v?.caption])),
+                }))),
+                '',
+                'Return JSON: {"items":[{"slotId":"...","verdict":"ok|fixed|flag","issues":["..."],"fixes":[{"platform":"instagram","caption":"..."}],"fixedSpokenHook":"optional"}]}',
+            ].join('\n'),
+            check: (r) => {
+                const got = new Set(r.items.map((i) => i.slotId));
+                const problems: string[] = [];
+                for (const id of ids) if (!got.has(id)) problems.push(`missing review for slotId ${id}`);
+                for (const id of got) if (!ids.has(id)) problems.push(`unknown slotId ${id}`);
+                return problems;
+            },
+        });
 
-    const byId = new Map(pieces.map((p) => [p.slotId, p]));
-    for (const item of value.items) {
-        const p = byId.get(item.slotId);
-        if (!p) continue;
-        p.critic.verdict = item.verdict;
-        p.critic.issues.push(...item.issues);
-        for (const fix of item.fixes) {
-            const copy: PieceCopy | undefined = p.captions[fix.platform];
-            if (copy && p.platforms.includes(fix.platform)) copy.caption = fix.caption;
+        const byId = new Map(pieces.map((p) => [p.slotId, p]));
+        for (const item of value.items) {
+            const p = byId.get(item.slotId);
+            if (!p) continue;
+            p.critic.verdict = item.verdict;
+            p.critic.issues.push(...item.issues);
+            for (const fix of item.fixes) {
+                const copy: PieceCopy | undefined = p.captions[fix.platform];
+                if (copy && p.platforms.includes(fix.platform)) copy.caption = fix.caption;
+            }
+            if (item.fixedSpokenHook && item.fixedSpokenHook.trim()) {
+                p.spokenHook = item.fixedSpokenHook.trim();
+                if (p.script) p.script.hook = p.spokenHook;
+            }
         }
-        if (item.fixedSpokenHook && item.fixedSpokenHook.trim()) {
-            p.spokenHook = item.fixedSpokenHook.trim();
-            if (p.script) p.script.hook = p.spokenHook;
+    } catch (err: any) {
+        // Resilient fallback: LLM tone review blip should never crash calendar generation.
+        // Hard rules (forbidden words, hashtag caps, caption limits, duplicates) are guaranteed by enforceBrandRules.
+        console.warn(`[runCriticAgent] LLM review skipped on error (${err?.message || err}). Falling back to deterministic brand rules.`);
+        for (const p of pieces) {
+            if (!p.critic) {
+                p.critic = { verdict: 'ok', issues: [] };
+            }
         }
     }
 }

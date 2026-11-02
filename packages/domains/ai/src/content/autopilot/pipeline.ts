@@ -541,7 +541,11 @@ export async function runAutopilotPipeline(input: AutopilotRunInput, deps: Pipel
     // 8. Critic
     await progress('critic', 84, 'Quality-control agent: brand words, claims, duplicates and SOP checks');
     emit('CriticStarted', { pieces: pieces.length });
-    await mapLimit(pieceWeeks, concurrency, (week) => runCriticAgent({ llm: deps.llm, brand: input.brand, pieces: week, meter }));
+    try {
+        await mapLimit(pieceWeeks, concurrency, (week) => runCriticAgent({ llm: deps.llm, brand: input.brand, pieces: week, meter }));
+    } catch (err: any) {
+        console.warn('[pipeline] Critic agent swarm encountered error, continuing with deterministic rules:', err?.message || err);
+    }
     enforceBrandRules(pieces, input.brand);
     attachCraftReport(pieces);
     emit('CriticCompleted', { pieces: pieces.length, needsReview: pieces.filter((p) => p.status === 'needs_review').length, fixed: pieces.filter((p) => p.critic.verdict === 'fixed').length });
@@ -584,7 +588,11 @@ export async function regenerateAutopilotPiece(params: {
     await runCopyBatch([next], input, deps, meter, text);
     await runPlatformCraftAgent({ llm: deps.llm, brand: input.brand, pieces: [next], meter, log: deps.log });
     runVoiceGuard([next]);
-    await runCriticAgent({ llm: deps.llm, brand: input.brand, pieces: [next], meter });
+    try {
+        await runCriticAgent({ llm: deps.llm, brand: input.brand, pieces: [next], meter });
+    } catch (err: any) {
+        console.warn('[regeneratePiece] Critic agent skipped on error:', err?.message || err);
+    }
     enforceBrandRules([next], input.brand);
     attachCraftReport([next]);
     return { piece: next, usage: meter.totals() };

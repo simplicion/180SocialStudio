@@ -205,6 +205,7 @@ export function createBuiltinViralAutopilotLLM(): AutopilotLLM {
                     slotId: p.slotId,
                     verdict: 'ok',
                     issues: [],
+                    fixes: [],
                 }));
                 resultJson = JSON.stringify({ items });
             } else if (role === 'research') {
