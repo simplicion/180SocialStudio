@@ -25,10 +25,10 @@ export const BRAND_TYPES = ['company', 'creator', 'agency'] as const;
 export type BrandType = (typeof BRAND_TYPES)[number];
 
 /** Platforms with a publish adapter (WS4). `x`→`twitter`, `youtube_shorts`→`youtube` are accepted as aliases. */
-export const BRAND_PLATFORMS = ['instagram', 'facebook', 'youtube', 'linkedin', 'twitter', 'tiktok'] as const;
+export const BRAND_PLATFORMS = ['instagram', 'facebook', 'youtube', 'linkedin', 'tiktok'] as const;
 export type BrandPlatform = (typeof BRAND_PLATFORMS)[number];
 const PLATFORM_ALIASES: Record<string, BrandPlatform> = {
-    x: 'twitter', 'x/twitter': 'twitter', youtube_shorts: 'youtube', 'youtube-shorts': 'youtube', shorts: 'youtube',
+    youtube_shorts: 'youtube', 'youtube-shorts': 'youtube', shorts: 'youtube',
     ig: 'instagram', fb: 'facebook', meta: 'facebook',
 };
 
@@ -433,7 +433,7 @@ const LEGACY_FABRICATED = {
     colors: { primary: '#6366F1', accent: '#EC4899', background: '#090A0E', text: '#FFFFFF' } as Record<string, string>,
     font: ['Inter'],
     captionStylePreset: ['HORMOZI_BOUNCE'],
-    targetPlatforms: ['instagram,youtube_shorts,linkedin,twitter'],
+    targetPlatforms: ['instagram,youtube_shorts,linkedin'],
 };
 
 const str = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim() : null);

@@ -60,14 +60,13 @@ class TeleprompterSetupSheet extends ConsumerStatefulWidget {
 
 class _TeleprompterSetupSheetState extends ConsumerState<TeleprompterSetupSheet> {
   late final TextEditingController _folderNameCtl;
-  late final TextEditingController _hookCtl;
   late final TextEditingController _scriptCtl;
 
   bool _createNewFolder = true;
   String? _selectedFolderId;
   int _selectedColor = 0xFF4F46E5; // Indigo
-  double _speed = 1.2;
-  double _fontSize = 22.0;
+  static const double _speed = 1.2;
+  static const double _fontSize = 22.0;
   bool _saving = false;
 
   static const _palette = [
@@ -86,7 +85,6 @@ class _TeleprompterSetupSheetState extends ConsumerState<TeleprompterSetupSheet>
     _folderNameCtl = TextEditingController(
       text: widget.initialFolder?.name ?? 'Take Shoot · $nowFormatted',
     );
-    _hookCtl = TextEditingController(text: widget.prefillHook ?? '');
     _scriptCtl = TextEditingController(text: widget.prefillScript ?? '');
 
     if (widget.initialFolder != null) {
@@ -99,7 +97,6 @@ class _TeleprompterSetupSheetState extends ConsumerState<TeleprompterSetupSheet>
   @override
   void dispose() {
     _folderNameCtl.dispose();
-    _hookCtl.dispose();
     _scriptCtl.dispose();
     super.dispose();
   }
@@ -131,7 +128,7 @@ class _TeleprompterSetupSheetState extends ConsumerState<TeleprompterSetupSheet>
   Future<void> _startShooting() async {
     final effectiveProjectId = widget.projectId ?? ref.read(activeProjectProvider).valueOrNull?.id;
     final scriptText = _scriptCtl.text.trim();
-    final hookText = _hookCtl.text.trim();
+    final hookText = widget.prefillHook?.trim() ?? '';
 
     setState(() => _saving = true);
 
@@ -207,8 +204,8 @@ class _TeleprompterSetupSheetState extends ConsumerState<TeleprompterSetupSheet>
     final readSec = _estReadSeconds;
 
     return DraggableScrollableSheet(
-      initialChildSize: 0.88,
-      minChildSize: 0.5,
+      initialChildSize: 0.76,
+      minChildSize: 0.45,
       maxChildSize: 0.95,
       builder: (ctx, scroll) => Container(
         decoration: BoxDecoration(
@@ -397,14 +394,9 @@ class _TeleprompterSetupSheetState extends ConsumerState<TeleprompterSetupSheet>
               ),
             ],
 
-            const SizedBox(height: 8),
-            Text(
-              'All takes recorded during this shoot will automatically be saved into this folder.',
-              style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
-            ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 18),
 
-            // ── SECTION 2: Script & Hook ──
+            // ── SECTION 2: Script ──
             Row(
               children: [
                 Icon(Icons.description_rounded, color: AppTheme.accent, size: 18),
@@ -434,21 +426,12 @@ class _TeleprompterSetupSheetState extends ConsumerState<TeleprompterSetupSheet>
                   ),
               ],
             ),
-            const SizedBox(height: 8),
-
-            TextField(
-              controller: _hookCtl,
-              style: const TextStyle(fontSize: 13, color: Colors.white),
-              decoration: fieldDecoration(
-                'Hook / Title (e.g. Stop scrolling if you want to scale...)',
-                prefix: const Icon(Icons.bolt_rounded, size: 18, color: Color(0xFFF59E0B)),
-              ),
-            ),
             const SizedBox(height: 10),
 
             TextField(
               controller: _scriptCtl,
-              maxLines: 6,
+              minLines: 5,
+              maxLines: 7,
               onChanged: (_) => setState(() {}),
               style: const TextStyle(fontSize: 14, height: 1.45, color: Colors.white),
               decoration: InputDecoration(
@@ -461,7 +444,7 @@ class _TeleprompterSetupSheetState extends ConsumerState<TeleprompterSetupSheet>
                 focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppTheme.primary, width: 1.5)),
               ),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
 
             // Word count & read time indicator
             Row(
@@ -469,133 +452,10 @@ class _TeleprompterSetupSheetState extends ConsumerState<TeleprompterSetupSheet>
                 Icon(Icons.timer_outlined, size: 14, color: AppTheme.textMuted),
                 const SizedBox(width: 4),
                 Text(
-                  '$wordCount words · ~$readSec seconds at ${_speed.toStringAsFixed(1)}x speed',
+                  '$wordCount words · ~$readSec seconds',
                   style: TextStyle(fontSize: 11.5, color: AppTheme.textSecondary),
                 ),
               ],
-            ),
-            const SizedBox(height: 20),
-
-            // ── SECTION 3: Teleprompter Scrolling Speed & Display ──
-            Row(
-              children: [
-                Icon(Icons.speed_rounded, color: AppTheme.accent, size: 18),
-                const SizedBox(width: 8),
-                Text(
-                  'Prompter Scrolling Speed',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppTheme.textPrimary),
-                ),
-                const Spacer(),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: AppTheme.primary.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    '${_speed.toStringAsFixed(1)}x speed',
-                    style: TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold, fontSize: 12),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-
-            Row(
-              children: [
-                const Text('Slow', style: TextStyle(fontSize: 11, color: Colors.white54)),
-                Expanded(
-                  child: Slider(
-                    value: _speed,
-                    min: 0.5,
-                    max: 3.0,
-                    divisions: 25,
-                    activeColor: AppTheme.primary,
-                    inactiveColor: Colors.white24,
-                    onChanged: (val) => setState(() => _speed = val),
-                  ),
-                ),
-                const Text('Fast', style: TextStyle(fontSize: 11, color: Colors.white54)),
-              ],
-            ),
-
-            // Speed Presets
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                for (final (label, val) in [
-                  ('0.8x Slow', 0.8),
-                  ('1.2x Normal', 1.2),
-                  ('1.6x Brisk', 1.6),
-                  ('2.0x Fast', 2.0),
-                ])
-                  InkWell(
-                    borderRadius: BorderRadius.circular(8),
-                    onTap: () => setState(() => _speed = val),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                      decoration: BoxDecoration(
-                        color: (_speed - val).abs() < 0.05
-                            ? AppTheme.primary.withValues(alpha: 0.25)
-                            : AppTheme.surface,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: (_speed - val).abs() < 0.05
-                              ? AppTheme.primary
-                              : AppTheme.border,
-                        ),
-                      ),
-                      child: Text(
-                        label,
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: (_speed - val).abs() < 0.05 ? FontWeight.bold : FontWeight.normal,
-                          color: (_speed - val).abs() < 0.05 ? AppTheme.primary : AppTheme.textSecondary,
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 16),
-
-            // Font Size Selection
-            Row(
-              children: [
-                const Icon(Icons.format_size_rounded, color: Colors.white70, size: 18),
-                const SizedBox(width: 8),
-                const Text('Text Font Size', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-                const Spacer(),
-                Text('${_fontSize.toInt()} px', style: const TextStyle(color: Colors.white70, fontSize: 12)),
-              ],
-            ),
-            const SizedBox(height: 8),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  for (final (label, size) in [
-                    ('Small (18px)', 18.0),
-                    ('Medium (22px)', 22.0),
-                    ('Large (28px)', 28.0),
-                    ('Extra (34px)', 34.0),
-                  ])
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: ChoiceChip(
-                        label: Text(label, style: const TextStyle(fontSize: 11)),
-                        selected: (_fontSize - size).abs() < 1.0,
-                        onSelected: (_) => setState(() => _fontSize = size),
-                        selectedColor: AppTheme.primary.withValues(alpha: 0.25),
-                        backgroundColor: AppTheme.surfaceElevated,
-                        labelStyle: TextStyle(
-                          color: (_fontSize - size).abs() < 1.0 ? AppTheme.primary : Colors.white70,
-                          fontWeight: (_fontSize - size).abs() < 1.0 ? FontWeight.bold : FontWeight.normal,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
             ),
             const SizedBox(height: 24),
 

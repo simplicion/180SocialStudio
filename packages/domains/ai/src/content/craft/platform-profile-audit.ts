@@ -59,7 +59,7 @@ function boolRule(id: string, name: string, max: number, priority: number, pick:
 
 const keywordIn = (text: string, i: PlatformProfileInput) => !i.keyword || text.toLowerCase().includes(i.keyword.toLowerCase());
 
-const RULES: Record<Exclude<CraftPlatform, 'instagram'>, Rule[]> = {
+const RULES: Partial<Record<CraftPlatform, Rule[]>> = {
     linkedin: [
         textRule('headline', 'Headline says who you help and the outcome', 20, 1, (i) => i.bio, (t, i) => {
             if (!t) return [0, 'Headline is empty.'];
@@ -154,7 +154,7 @@ export function auditPlatformProfile(platform: CraftPlatform, input: PlatformPro
         return { ...report, platform, scoredFields: report.items.length };
     }
     const items: RubricItemAudit[] = [];
-    for (const rule of RULES[platform]) {
+    for (const rule of RULES[platform] || []) {
         const r = rule(input);
         if (!r) continue;
         items.push({ ...r, status: r.awardedPoints >= r.maxPoints ? 'FULL' : r.awardedPoints > 0 ? 'PARTIAL' : 'FAIL' });

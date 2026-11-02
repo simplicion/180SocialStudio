@@ -6,7 +6,7 @@ import { getDb } from '../publishing/http';
 import { SocialDomainError, notFound, requireCompanyId } from '../tenant-scope';
 import { AI_INBOX_MODES, AiInboxMode } from './ai-engagement-agent';
 
-export const AI_INBOX_PLATFORMS = ['instagram', 'facebook', 'linkedin', 'threads', 'youtube', 'x'] as const;
+export const AI_INBOX_PLATFORMS = ['instagram', 'facebook', 'linkedin', 'threads', 'youtube'] as const;
 
 const SETTINGS_SELECT = {
     id: true,

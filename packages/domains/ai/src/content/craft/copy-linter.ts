@@ -62,7 +62,7 @@ const ASKS = [
 const FILLER_TAGS = new Set([
     '#viral', '#fyp', '#explore', '#explorepage', '#foryou', '#foryoupage', '#trending', '#instagood', '#love',
     '#follow', '#like4like', '#followforfollow', '#reels', '#reelsinstagram', '#viralreels', '#instadaily',
-    '#linkedin', '#twitter', '#facebook', '#youtube', '#shorts', '#motivation', '#success',
+    '#linkedin', '#facebook', '#youtube', '#shorts', '#motivation', '#success',
 ]);
 
 const GREETING_RE = /^(hey|hi|hello|guys|welcome|so,?\s|happy \w+|good (morning|evening)|i'?m (excited|thrilled|happy) to)/i;
@@ -222,8 +222,7 @@ export class PlatformCopyLinter {
             checks,
             score,
             passed: !checks.some((c) => c.status === 'FAIL'),
-            recommendations: checks.filter((c) => c.status !== 'PASS').map((c) => c.detail),
-            thread: platform === 'x' && weighted > spec.captionMaxChars ? splitIntoThread(text) : undefined,
+            recommendations: checks.filter((c) => c.status !== 'PASS').map((c) => c.detail),            thread: undefined,
         };
     }
 

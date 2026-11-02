@@ -293,7 +293,30 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
       const audioRes = await YtDlpService.extractAudio(val.normalizedUrl!, { outputDir });
       audioWavPath = audioRes.audioPath;
     } else {
-      audioWavPath = urlOrPath;
+      const inputPath = path.resolve(urlOrPath);
+      if (!fs.existsSync(inputPath)) {
+        throw new Error(`Local media file not found: ${inputPath}`);
+      }
+      sourceTitle = path.basename(inputPath, path.extname(inputPath));
+      const extractedAudio = path.join(outputDir, `local_audio_${Date.now()}.wav`);
+      await new Promise<void>((resolve, reject) => {
+        ffmpeg(inputPath)
+          .noVideo()
+          .audioCodec("pcm_s16le")
+          .audioChannels(1)
+          .audioFrequency(16000)
+          .output(extractedAudio)
+          .on("end", () => resolve())
+          .on("error", (err) => reject(err))
+          .run();
+      });
+      audioWavPath = extractedAudio;
+      totalDurationSec = await new Promise<number>((resolve) => {
+        ffmpeg.ffprobe(inputPath, (err, metadata) => {
+          if (err || !metadata?.format?.duration) resolve(60);
+          else resolve(Math.round(metadata.format.duration));
+        });
+      });
     }
 
     try {
@@ -373,6 +396,23 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             rawClipPath = dl.outputPath;
           } catch (err: any) {
             console.warn(`[AutoClipper] Section download warning for short ${i + 1}:`, err?.message);
+          }
+        } else {
+          const sectionFile = path.join(outputDir, `clip_raw_${i + 1}_${Date.now()}.mp4`);
+          try {
+            await new Promise<void>((resolve, reject) => {
+              ffmpeg(urlOrPath)
+                .setStartTime(start)
+                .setDuration(dur)
+                .outputOptions(["-c copy"])
+                .output(sectionFile)
+                .on("end", () => resolve())
+                .on("error", (err) => reject(err))
+                .run();
+            });
+            rawClipPath = sectionFile;
+          } catch (err: any) {
+            console.warn(`[AutoClipper] Local section extraction warning for short ${i + 1}:`, err?.message);
           }
         }
 

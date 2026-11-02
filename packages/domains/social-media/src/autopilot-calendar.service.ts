@@ -87,7 +87,7 @@ function objectivesAsGoals(profile: any): string[] {
 export const AUTOPILOT_STALE_MS = 15 * 60 * 1000;
 
 const X_TO_ACCOUNT_PLATFORM: Record<AutopilotPlatform, string> = {
-    instagram: 'instagram', facebook: 'facebook', youtube: 'youtube', linkedin: 'linkedin', tiktok: 'tiktok', x: 'twitter',
+    instagram: 'instagram', facebook: 'facebook', youtube: 'youtube', linkedin: 'linkedin', tiktok: 'tiktok',
 };
 const MEDIA_TYPE: Record<string, string> = { reel: 'video', carousel: 'carousel', static: 'image', text: 'text' };
 

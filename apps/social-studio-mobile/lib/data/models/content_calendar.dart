@@ -311,7 +311,7 @@ class CalendarConfig {
   String personalGoals;
   String? projectId;
 
-  static const platformOptions = ['Instagram', 'LinkedIn', 'Twitter/X', 'Facebook', 'Threads', 'YouTube Shorts'];
+  static const platformOptions = ['Instagram', 'LinkedIn', 'Facebook', 'Threads', 'YouTube Shorts'];
   static const durationOptions = ['1 week', '2 weeks', '1 month'];
   static const frequencyOptions = ['1x a week', '3x a week', '5x a week', 'Daily'];
 

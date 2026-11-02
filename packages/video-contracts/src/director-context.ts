@@ -215,7 +215,6 @@ export function aspectForPlatform(platform?: string, contentType?: string): Aspe
   if (/(instagram|facebook)/.test(p)) return /(video|reel)/.test(p) || !contentType ? "9:16" : "4:5";
   if (/linkedin/.test(p)) return "4:5";
   if (/(youtube)/.test(p)) return /short/.test(p) ? "9:16" : "16:9";
-  if (/(twitter|\bx\b)/.test(p)) return "16:9";
   return null;
 }
 
@@ -227,7 +226,6 @@ export function platformLabel(platform?: string, contentType?: string): string {
   if (p.includes("youtube")) return c.includes("short") || p.includes("short") ? "Shorts" : "YouTube";
   if (p.includes("linkedin")) return "LinkedIn";
   if (p.includes("facebook")) return "Facebook";
-  if (p === "x" || p.includes("twitter")) return "X";
   return platform || "social";
 }
 

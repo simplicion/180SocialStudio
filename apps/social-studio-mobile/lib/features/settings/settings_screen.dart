@@ -1,4 +1,3 @@
-import 'ai_provider_sheet.dart';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -356,46 +355,57 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
           SizedBox(height: 24),
 
-          // Section: AI Engine & Intelligence Keys
-          _sectionHeader(context, 'AI Engine & API Keys', Icons.auto_awesome_rounded),
+          // Section: 180 Studio Viral AI Engine
+          _sectionHeader(context, '180 Studio Viral AI', Icons.auto_awesome_rounded),
           const SizedBox(height: 8),
           _card(
             context,
-            InkWell(
-              onTap: () => AiProviderSheet.show(context),
-              borderRadius: BorderRadius.circular(12),
-              child: Padding(
-                padding: const EdgeInsets.all(4),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: AppTheme.primary.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Icon(Icons.psychology_rounded, color: AppTheme.primary, size: 24),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primary.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'AI Models & Keys',
-                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'Google Gemini, OpenAI GPT-4o, Claude, or 180 Studio Viral AI',
-                            style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
-                          ),
-                        ],
-                      ),
+                    child: Icon(Icons.bolt_rounded, color: AppTheme.primary, size: 24),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Text(
+                              'Built-in Viral AI Engine',
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                            ),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: AppTheme.success.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                'Active',
+                                style: TextStyle(color: AppTheme.success, fontSize: 10, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Zero setup required. Managed server-side with your creator subscription.',
+                          style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                        ),
+                      ],
                     ),
-                    Icon(Icons.chevron_right_rounded, color: AppTheme.textMuted),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -484,7 +494,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 Divider(height: 16),
                 _updateItem(
                   '📱 Real-Time Channel Previews',
-                  'Interactive pixel-faithful previews for Instagram, YouTube Shorts, LinkedIn, Facebook, and Twitter/X inside the post composer.',
+                  'Interactive pixel-faithful previews for Instagram, YouTube Shorts, LinkedIn, and Facebook inside the post composer.',
                 ),
                 Divider(height: 16),
                 _updateItem(

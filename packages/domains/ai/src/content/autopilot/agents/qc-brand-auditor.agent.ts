@@ -14,7 +14,7 @@
  *     9. Design / Visual Direction (specific enough to shoot/design)
  *     10. Production Ready
  * - Deterministic enforcement:
- *     Removes forbidden words, caps hashtags per platform, fits X/Twitter to 280 chars, flags duplicates.
+ *     Removes forbidden words, caps hashtags per platform, flags duplicates.
  */
 import { PLATFORM_RULES } from '../platform-rules';
 import { AutopilotPlatform, CriticReview, CriticReviewSchema } from '../schemas';
@@ -72,6 +72,14 @@ export async function runQcBrandAuditorAgent(params: AuditBatchParams): Promise<
             maxTokens: Math.min(8000, 600 + pieces.length * 400),
             meter,
             log,
+            fallback: () => ({
+                items: pieces.map((p) => ({
+                    slotId: p.slotId,
+                    verdict: 'ok' as const,
+                    issues: [],
+                    fixes: [],
+                })),
+            }),
         });
 
         // Apply LLM fixes

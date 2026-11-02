@@ -11,7 +11,7 @@ export type HookType = (typeof HOOK_TYPES)[number];
 export const CONTENT_FORMATS = ['reel', 'carousel', 'static', 'text'] as const;
 export type ContentFormat = (typeof CONTENT_FORMATS)[number];
 
-export const AUTOPILOT_PLATFORMS = ['instagram', 'facebook', 'youtube', 'linkedin', 'tiktok', 'x'] as const;
+export const AUTOPILOT_PLATFORMS = ['instagram', 'facebook', 'youtube', 'linkedin', 'tiktok'] as const;
 export type AutopilotPlatform = (typeof AUTOPILOT_PLATFORMS)[number];
 
 export const PSYCHOLOGICAL_JOBS = [
@@ -207,11 +207,11 @@ export const CriticReviewSchema = z.object({
         if (!val) return [];
         if (Array.isArray(val)) return val;
         if (typeof val === 'object') {
-            if (Array.isArray(val.items)) return val.items;
-            if (Array.isArray(val.reviews)) return val.reviews;
-            if (Array.isArray(val.pieces)) return val.pieces;
-            if (Array.isArray(val.results)) return val.results;
-            if (Array.isArray(val.data)) return val.data;
+            if (Array.isArray((val as any).items)) return (val as any).items;
+            if (Array.isArray((val as any).reviews)) return (val as any).reviews;
+            if (Array.isArray((val as any).pieces)) return (val as any).pieces;
+            if (Array.isArray((val as any).results)) return (val as any).results;
+            if (Array.isArray((val as any).data)) return (val as any).data;
         }
         return val;
     }, z.array(z.object({

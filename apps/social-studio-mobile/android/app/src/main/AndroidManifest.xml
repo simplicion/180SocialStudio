@@ -95,7 +95,6 @@
         <package android:name="com.instagram.barcelona" />
         <package android:name="com.facebook.katana" />
         <package android:name="com.linkedin.android" />
-        <package android:name="com.twitter.android" />
         <package android:name="com.reddit.frontpage" />
         <package android:name="com.zhiliaoapp.musically" />
         <package android:name="com.ss.android.ugc.trill" />
@@ -117,10 +116,6 @@
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="https" />
-        </intent>
-        <intent>
-            <action android:name="android.intent.action.VIEW" />
-            <data android:scheme="twitter" />
         </intent>
         <intent>
             <action android:name="android.intent.action.VIEW" />

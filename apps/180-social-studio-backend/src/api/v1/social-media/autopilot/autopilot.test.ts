@@ -147,7 +147,7 @@ const PROJECT = { id: 'p1', companyId: 'co-1', projectType: 'social_media', dele
 const OTHER = { id: 'p2', companyId: 'co-2', projectType: 'social_media', deletedAt: null, name: 'Other Co', socialSettings: {} };
 const BRAND = {
     brandType: 'company', brandPositioning: 'Specialty coffee without the snobbery', tone: 'Warm, witty', targetAudience: 'Home baristas',
-    forbiddenWords: ['cheap', 'guarantee'], defaultHashtags: ['#acmecoffee'], standardCtas: ['Shop the roast'], targetPlatforms: ['instagram', 'tiktok', 'linkedin', 'twitter'],
+    forbiddenWords: ['cheap', 'guarantee'], defaultHashtags: ['#acmecoffee'], standardCtas: ['Shop the roast'], targetPlatforms: ['instagram', 'tiktok', 'linkedin'],
 };
 
 function setup(opts: FakeOptions & { search?: WebSearchProvider | null; noKey?: boolean; now?: Date; hold?: boolean } = {}) {
@@ -247,18 +247,18 @@ test('full 30-day pipeline: valid pieces, all 5 hook types, scripts for reels, c
     const day1 = rows.find((r) => readAutopilotPayload(r)!.day === 1);
     assert.equal(new Date(day1.dateScheduled).toISOString(), '2026-10-01T13:00:00.000Z');
 
-    // Drafts linked by calendarPieceId, one variant per platform, X mapped to "twitter".
+    // Drafts linked by calendarPieceId, one variant per platform.
     assert.equal(env.tables.socialPost.length, 30);
     for (const post of env.tables.socialPost) {
         assert.equal(post.status, 'draft');
         assert.equal(post.companyId, 'co-1');
         assert.ok(rows.some((r) => r.id === post.calendarPieceId));
     }
-    assert.ok(env.tables.socialPostVariant.some((v) => v.platform === 'twitter'));
-    assert.ok(!env.tables.socialPostVariant.some((v) => v.platform === 'x'));
+    assert.ok(env.tables.socialPostVariant.some((v) => v.platform === 'linkedin'));
+    assert.ok(!env.tables.socialPostVariant.some((v) => v.platform === 'x' || v.platform === 'twitter'));
 });
 
-test('critic removes forbidden words and hashtags, caps hashtags per platform, fits X to 280 chars', async () => {
+test('critic removes forbidden words and hashtags, caps hashtags per platform', async () => {
     const env = setup({ days: 7 });
     const { jobId, calendarId } = await start(env.service, { days: 7 });
     await Promise.all(env.jobs);

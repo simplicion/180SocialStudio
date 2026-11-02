@@ -1,3 +1,39 @@
+import multer from "multer";
+import crypto from "crypto";
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const dir = path.resolve(process.cwd(), "uploads", "auto-shorts");
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname) || ".mp4";
+    const name = `upload_${Date.now()}_${crypto.randomUUID().slice(0, 8)}${ext}`;
+    cb(null, name);
+  },
+});
+
+export const videoUploadMiddleware = multer({
+  storage,
+  limits: { fileSize: 500 * 1024 * 1024 }, // 500MB
+}).single("video");
+
+export async function ingestUploadHandler(req: Request, res: Response) {
+  const file = (req as any).file;
+  if (!file) {
+    return res.status(400).json({ success: false, error: "VIDEO_FILE_REQUIRED", message: "Upload a video file as multipart field 'video'." });
+  }
+
+  const relUrl = `/uploads/auto-shorts/${path.basename(file.path)}`;
+  return res.status(200).json({
+    success: true,
+    localPath: file.path,
+    url: relUrl,
+    filename: file.originalname,
+    size: file.size,
+  });
+}
 import { Request, Response } from "express";
 import { YtDlpService, AutoClipperService, ProductionRenderQueue } from "@workspace/video-engine-runtime";
 import path from "path";
@@ -5,32 +41,39 @@ import fs from "fs";
 
 export function sanitizeMediaError(rawError: any): string {
   if (!rawError) return "An unexpected error occurred while processing the video.";
-  let msg = typeof rawError === "string" ? rawError : rawError.message || String(rawError);
+  const fullText = [
+    typeof rawError === "string" ? rawError : "",
+    rawError?.message || "",
+    rawError?.stderr || "",
+    rawError?.stdout || "",
+  ].filter(Boolean).join(" ");
 
-  if (msg.includes("Sign in to confirm you're not a bot")) {
-    return "YouTube requires verification for this video. Please try another link or ensure cookies are configured.";
+  if (
+    fullText.includes("Sign in to confirm you're not a bot") ||
+    fullText.includes("Sign in to confirm you’re not a bot") ||
+    fullText.toLowerCase().includes("not a bot")
+  ) {
+    return "YouTube has restricted automated access for this link on cloud servers. Please upload the video directly from your device using the Upload Video button.";
   }
-  if (msg.includes("Video unavailable") || msg.includes("Private video")) {
+  if (fullText.includes("Video unavailable") || fullText.includes("Private video")) {
     return "This video is unavailable, private, or has been removed.";
   }
-  if (msg.includes("ffmpeg is not installed")) {
+  if (fullText.includes("ffmpeg is not installed")) {
     return "Media processing engine is initializing audio codecs. Please retry in a moment.";
   }
-  if (msg.includes("Invalid URL") || msg.includes("not in the supported video platform allowlist")) {
+  if (fullText.includes("Invalid URL") || fullText.includes("not in the supported video platform allowlist")) {
     return "Please enter a valid YouTube, Instagram, TikTok, or Vimeo link.";
   }
 
-  // Strip local system paths like /home/ubuntu/... or C:\Users\...
+  let msg = typeof rawError === "string" ? rawError : rawError?.message || String(rawError);
   msg = msg.replace(/(?:\/[a-zA-Z0-9_\-\.]+)+/g, "");
   msg = msg.replace(/(?:[a-zA-Z]:\\[a-zA-Z0-9_\-\.\\]+)/g, "");
-
-  // Strip shell command failure noise
   msg = msg.replace(/Command failed with exit code \d+:?/i, "").trim();
   msg = msg.replace(/Deprecated Feature:[^.]+\./i, "").trim();
   msg = msg.replace(/^ERROR:\s*/i, "").trim();
 
   if (!msg || msg.length < 5) {
-    return "Failed to process video. Please verify the URL is accessible and try again.";
+    return "Failed to process video. Please verify the URL or upload the video directly.";
   }
 
   return msg.length > 250 ? msg.slice(0, 250) + "..." : msg;
@@ -63,13 +106,18 @@ export async function ingestMetadataHandler(req: Request, res: Response) {
 export async function ingestDownloadHandler(req: Request, res: Response) {
   try {
     const { url, extractAudio = false, timeRange } = req.body || {};
-    if (!url || typeof url !== "string") {
-      return res.status(400).json({ success: false, error: "URL_REQUIRED", message: "Video URL is required." });
-    }
-
-    const val = YtDlpService.validateUrl(url);
-    if (!val.valid) {
-      return res.status(400).json({ success: false, error: "INVALID_URL", message: val.error });
+    const { localPath } = req.body || {};
+    let targetSource = "";
+    if (localPath && typeof localPath === "string" && fs.existsSync(localPath)) {
+      targetSource = localPath;
+    } else if (url && typeof url === "string" && url.trim().length > 0) {
+      const val = YtDlpService.validateUrl(url);
+      if (!val.valid) {
+        return res.status(400).json({ success: false, error: "INVALID_URL", message: val.error });
+      }
+      targetSource = val.normalizedUrl!;
+    } else {
+      return res.status(400).json({ success: false, error: "SOURCE_REQUIRED", message: "Either a valid video URL or uploaded video path is required." });
     }
 
     const uploadsDir = path.resolve(process.cwd(), "uploads", "ingest");
@@ -142,7 +190,7 @@ export async function ingestAutoClipHandler(req: Request, res: Response) {
 
     if (sync) {
       // Direct execution
-      const result = await AutoClipperService.autoClip(val.normalizedUrl!, {
+      const result = await AutoClipperService.autoClip(targetSource, {
         maxShorts,
         targetShortDurationSec,
         aspectRatio,
@@ -160,7 +208,7 @@ export async function ingestAutoClipHandler(req: Request, res: Response) {
       "auto-clip",
       async (updateProgress) => {
         updateProgress(10);
-        const res = await AutoClipperService.autoClip(val.normalizedUrl!, {
+        const res = await AutoClipperService.autoClip(targetSource, {
           maxShorts,
           targetShortDurationSec,
           aspectRatio,

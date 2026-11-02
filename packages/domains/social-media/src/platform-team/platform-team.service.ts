@@ -165,7 +165,7 @@ export class PlatformTeamService {
         const savesPer1k = saves !== null && base > 0 ? Math.round((saves / base) * 10000) / 10 : null;
         if (sharesPer1k !== null && sharesPer1k >= 10) findings.push(`${sharesPer1k} shares per 1,000 reached: people are sending this. Make a follow-up on the same angle.`);
         if (nonFollower !== null && nonFollower < 30) findings.push(`${nonFollower}% of reach was non-followers: the post stayed inside your audience. The topic or hook was too narrow for cold viewers.`);
-        if (comments !== null && base > 0 && comments / base < 0.002 && ['linkedin', 'x', 'facebook'].includes(platform)) findings.push('Very few comments for the reach: end with a question people can answer from experience.');
+        if (comments !== null && base > 0 && comments / base < 0.002 && ['linkedin', 'facebook'].includes(platform)) findings.push('Very few comments for the reach: end with a question people can answer from experience.');
         return { platform, views, outlierMultiple, sharesPer1k, savesPer1k, rewardedSignals: PLATFORM_CRAFT[platform].rewardedSignals, findings };
     }
 

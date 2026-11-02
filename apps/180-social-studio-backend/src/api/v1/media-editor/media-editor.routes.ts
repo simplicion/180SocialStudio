@@ -5,7 +5,7 @@ import { requireDesktopDevice, requireNativeDevice } from "../desktop/desktop-de
 import { audioUpload, transcribeHandler } from "./media-transcription";
 import { translateCaptionsHandler } from "./caption-translation";
 import { directorContextHandler } from "./director-context";
-import { ingestMetadataHandler, ingestDownloadHandler, ingestAutoClipHandler, queueJobStatusHandler } from "./media-ingest.routes";
+import { ingestMetadataHandler, ingestDownloadHandler, ingestAutoClipHandler, queueJobStatusHandler, ingestUploadHandler, videoUploadMiddleware } from "./media-ingest.routes";
 
 const router: Router = Router();
 
@@ -348,6 +348,7 @@ router.get("/ai-status", async (req, res) => {
 
 router.get("/ingest/metadata", ingestMetadataHandler);
 router.post("/ingest/download", ingestDownloadHandler);
+router.post("/ingest/upload", videoUploadMiddleware, ingestUploadHandler);
 router.post("/ingest/auto-clip", ingestAutoClipHandler);
 router.get("/ingest/jobs/:jobId", queueJobStatusHandler);
 

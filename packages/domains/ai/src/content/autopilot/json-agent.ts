@@ -19,6 +19,8 @@ export interface JsonAgentCall<T> {
     check?: (value: T) => string[];
     /** If true, soft semantic check warnings on attempt 2 are logged as warnings rather than throwing AI_INVALID_OUTPUT (as long as schema validation passed). */
     tolerateCheckOnRepair?: boolean;
+    /** Safe fallback factory if both LLM attempts fail to produce valid output. */
+    fallback?: (errors: string[]) => T;
     log?: (event: string, data: Record<string, unknown>) => void;
 }
 

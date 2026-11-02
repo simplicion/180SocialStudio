@@ -17,7 +17,6 @@ export const PLATFORM_RULES: Record<AutopilotPlatform, PlatformRules> = {
     youtube: { maxCaptionChars: 5000, maxHashtags: 3, formats: ['reel'] },
     linkedin: { maxCaptionChars: 3000, maxHashtags: 5, formats: ['reel', 'carousel', 'static', 'text'] },
     tiktok: { maxCaptionChars: 2200, maxHashtags: 5, formats: ['reel'] },
-    x: { maxCaptionChars: 280, maxHashtags: 2, formats: ['text', 'static', 'reel'] },
 };
 
 const ALIASES: Record<string, AutopilotPlatform> = {
@@ -26,7 +25,6 @@ const ALIASES: Record<string, AutopilotPlatform> = {
     youtube: 'youtube', youtube_shorts: 'youtube', shorts: 'youtube', yt: 'youtube',
     linkedin: 'linkedin',
     tiktok: 'tiktok',
-    x: 'x', twitter: 'x',
 };
 
 /** Maps free-form platform names ("YouTube Shorts", "Twitter") to autopilot platform ids. Unknown names are dropped. */

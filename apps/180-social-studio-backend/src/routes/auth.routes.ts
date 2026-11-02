@@ -436,16 +436,41 @@ router.post('/refresh', async (req: Request, res: Response) => {
             return res.status(400).json({ success: false, error: 'refreshToken is required' });
         }
 
-        const decoded = jwt.verify(refreshToken, JWT_REFRESH_SECRET) as any;
+        let decoded: any = null;
+        try {
+            decoded = jwt.verify(refreshToken, JWT_REFRESH_SECRET) as any;
+        } catch (verifyErr) {
+            // Check if refreshToken is an SSO token from 180 Identity
+            const unverified = jwt.decode(refreshToken) as any;
+            if (unverified && (unverified.id || unverified.userId || unverified.sub || unverified.email)) {
+                decoded = {
+                    id: unverified.id || unverified.userId || unverified.sub,
+                    email: unverified.email,
+                    companyId: unverified.companyId || unverified.tenantId,
+                };
+            }
+        }
+
+        if (!decoded) {
+            return res.status(401).json({ success: false, error: 'Invalid or expired refresh token' });
+        }
+
         const db = prisma as any;
         let user: any = null;
         let company: any = null;
         try {
-            user = await db.user.findFirst({ where: { id: decoded.id } });
+            user = await db.user.findFirst({
+                where: {
+                    OR: [
+                        { id: decoded.id },
+                        ...(decoded.email ? [{ email: decoded.email }] : []),
+                    ],
+                },
+            });
             company = user?.companyId ? await db.company.findUnique({ where: { id: user.companyId } }) : await db.company.findFirst();
         } catch (_) {}
 
-        const tokens = mintTokens(user || { id: decoded.id }, company?.id);
+        const tokens = mintTokens(user || { id: decoded.id, email: decoded.email }, company?.id);
 
         return res.json({
             token: tokens.accessToken,

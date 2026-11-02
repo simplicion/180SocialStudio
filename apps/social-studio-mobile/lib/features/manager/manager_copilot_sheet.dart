@@ -10,7 +10,6 @@ import '../../core/widgets/common.dart';
 import '../../data/models/manager_chat.dart';
 
 import '../projects/project_provider.dart';
-import '../settings/ai_provider_sheet.dart';
 
 /// Helper to show the 180 Manager AI Copilot from any screen.
 void show180ManagerCopilot(BuildContext context, {String? projectId}) {
@@ -158,14 +157,7 @@ class _ManagerCopilotSheetState extends ConsumerState<ManagerCopilotSheet> {
   }
 
   Future<void> _handleAction(ManagerActionModel act) async {
-    if (act.type == 'open_ai_settings') {
-      AiProviderSheet.show(context, onSaved: () {
-        if (mounted) {
-          showSuccess(context, 'AI Provider connected! You can now ask 180 Manager any question.');
-        }
-      });
-      return;
-    }
+    
 
     if (act.type == 'quick_reply') {
       final prompt = act.payload['text'] as String? ?? act.label;
@@ -312,11 +304,7 @@ class _ManagerCopilotSheetState extends ConsumerState<ManagerCopilotSheet> {
                     ],
                   ),
                 ),
-                IconButton(
-                  icon: Icon(Icons.tune_rounded, size: 20, color: AppTheme.textSecondary),
-                  onPressed: () => AiProviderSheet.show(context),
-                  tooltip: 'AI Engine Settings',
-                ),
+                
                 IconButton(
                   icon: Icon(Icons.close_rounded, size: 20, color: AppTheme.textSecondary),
                   onPressed: () => Navigator.of(context).pop(),
@@ -545,27 +533,7 @@ class _ManagerCopilotSheetState extends ConsumerState<ManagerCopilotSheet> {
                           ],
                         ),
                       ],
-                      if (msg.suggestedActions.any((a) => a.type == 'open_ai_settings')) ...[
-                        const SizedBox(height: 12),
-                        ElevatedButton.icon(
-                          onPressed: () {
-                            AiProviderSheet.show(context, onSaved: () {
-                              if (mounted) {
-                                showSuccess(context, 'AI Provider connected! You can now ask 180 Manager any question.');
-                              }
-                            });
-                          },
-                          icon: const Icon(Icons.auto_awesome, size: 16),
-                          label: const Text('Connect AI Engine (Gemini / OpenAI)'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppTheme.primary,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                            textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                      ],
+                      
                     ],
                   ),
                 ),

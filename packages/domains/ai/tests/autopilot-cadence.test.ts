@@ -29,7 +29,7 @@ test('alternate: reel on odd days, carousel on even days (mode or preset)', () =
 
 test('invalid mixes are refused with a reason, never silently changed', () => {
     assert.throws(() => planCadence(7, mix({ dailyReels: 0, dailyCarousels: 0 }), ['instagram']), /at least one/);
-    assert.throws(() => planCadence(7, mix({ dailyReels: 0, dailyCarousels: 1 }), ['youtube', 'x']), /carousels/);
+    assert.throws(() => planCadence(7, mix({ dailyReels: 0, dailyCarousels: 1 }), ['youtube']), /carousels/);
     assert.throws(() => planCadence(31, mix({ dailyReels: 2, dailyCarousels: 2 }), ['instagram']), /124 pieces/);
 });
 

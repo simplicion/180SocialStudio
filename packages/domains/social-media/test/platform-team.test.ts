@@ -33,8 +33,7 @@ function setup(over: { accounts?: any[]; posts?: any[]; conversations?: any[]; p
 }
 
 test('parsePlatform accepts aliases and rejects unknown names with 400', () => {
-    assert.equal(parsePlatform('twitter'), 'x');
-    assert.equal(parsePlatform('LinkedIn'), 'linkedin');
+        assert.equal(parsePlatform('LinkedIn'), 'linkedin');
     assert.throws(() => parsePlatform('myspace'), (e: any) => e.statusCode === 400);
 });
 
@@ -48,7 +47,7 @@ test('deterministic tools validate input and use the rules of the platform', () 
     assert.throws(() => svc.outliers({ records: [{ account: 'a', views: 5000, hook: 'x' }] }), /baseline/, 'a baseline is never assumed');
     const ranked = svc.outliers({ records: [{ account: 'a', views: 50000, medianViews: 5000, hook: 'Nobody tells you your first 30 posts flop' }] });
     assert.equal(ranked.ranked[0].outlierMultiple, 10);
-    assert.equal(svc.auditProfile('x', { handle: 'h' }).totalScore, 0);
+    assert.equal(svc.auditProfile('linkedin', { handle: 'h' }).totalScore, 0);
 });
 
 test('post audit judges only the metrics supplied', () => {
@@ -57,8 +56,8 @@ test('post audit judges only the metrics supplied', () => {
     assert.equal(a.outlierMultiple, 6);
     assert.equal(a.sharesPer1k, null);
     assert.equal(a.findings.length, 2);
-    assert.deepEqual(svc.auditPost('x', { views: 100 }).findings, []);
-    assert.throws(() => svc.auditPost('x', {}), (e: any) => e.code === 'INVALID_INPUT');
+    assert.deepEqual(svc.auditPost('linkedin', { views: 100 }).findings, []);
+    assert.throws(() => svc.auditPost('linkedin', {}), (e: any) => e.code === 'INVALID_INPUT');
 });
 
 test('comment triage buckets real text and never drafts a reply', () => {
@@ -76,13 +75,13 @@ test('comment triage buckets real text and never drafts a reply', () => {
 
 test('overview: every query is scoped to company and project; an empty project reports zeros, not samples', async () => {
     const { svc, calls } = setup();
-    const o = await svc.overview('x', { companyId: 'c1', projectId: 'p1' });
+    const o = await svc.overview('instagram', { companyId: 'c1', projectId: 'p1' });
     assert.ok(calls.length >= 7);
     for (const c of calls) {
         assert.equal(c.where.companyId, 'c1', `${c.model}.${c.op} scoped by company`);
         if (c.model !== 'project') assert.equal(c.where.projectId, 'p1', `${c.model}.${c.op} scoped by project`);
     }
-    assert.deepEqual(calls.find((c) => c.model === 'socialAccount')!.where.platform, { in: ['twitter', 'x'] });
+    assert.deepEqual(calls.find((c) => c.model === 'socialAccount')!.where.platform, { in: ['instagram'] });
     assert.equal(o.connected, false);
     assert.deepEqual(o.pipeline, { published30d: 0, scheduledUpcoming: 0, failed30d: 0 });
     assert.deepEqual(o.queue, []);

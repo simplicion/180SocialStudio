@@ -350,13 +350,31 @@ class _AutopilotGeneratorState extends ConsumerState<AutopilotGenerator> {
                     overflow: TextOverflow.ellipsis,
                   ),
                   onPressed: () async {
-                    final d = await showDatePicker(
+                    final picked = await showDateRangePicker(
                       context: context,
-                      initialDate: _start,
+                      initialDateRange: DateTimeRange(
+                        start: _start,
+                        end: _start.add(Duration(days: _days - 1)),
+                      ),
                       firstDate: DateTime.now().subtract(const Duration(days: 1)),
                       lastDate: DateTime.now().add(const Duration(days: 365)),
+                      builder: (ctx, child) => Theme(
+                        data: Theme.of(ctx).copyWith(
+                          colorScheme: Theme.of(ctx).colorScheme.copyWith(
+                            primary: AppTheme.primary,
+                            onPrimary: Colors.white,
+                            surface: AppTheme.surfaceElevated,
+                          ),
+                        ),
+                        child: child!,
+                      ),
                     );
-                    if (d != null) setState(() => _start = d);
+                    if (picked != null) {
+                      setState(() {
+                        _start = picked.start;
+                        _days = picked.end.difference(picked.start).inDays + 1;
+                      });
+                    }
                   },
                 ),
                 SectionHeader('Content Cadence & Mix'),

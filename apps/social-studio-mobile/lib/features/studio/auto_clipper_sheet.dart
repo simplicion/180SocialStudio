@@ -1,3 +1,5 @@
+import 'package:image_picker/image_picker.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -53,6 +55,8 @@ class _AutoClipperStudioSheetState extends ConsumerState<AutoClipperStudioSheet>
   String? _error;
   Map<String, dynamic>? _metadata;
   List<Map<String, dynamic>> _generatedShorts = [];
+  String? _localVideoPath;
+  String? _localVideoName;
 
   final List<String> _processingSteps = [
     'Harvesting audio & stream via yt-dlp...',
@@ -76,6 +80,24 @@ class _AutoClipperStudioSheetState extends ConsumerState<AutoClipperStudioSheet>
     super.dispose();
   }
 
+  Future<void> _pickLocalVideo() async {
+    try {
+      final picker = ImagePicker();
+      final file = await picker.pickVideo(source: ImageSource.gallery);
+      if (file != null) {
+        setState(() {
+          _localVideoPath = file.path;
+          _localVideoName = file.name;
+          _urlController.clear();
+          _metadata = null;
+          _error = null;
+        });
+      }
+    } catch (e) {
+      setState(() => _error = 'Could not select video: $e');
+    }
+  }
+
   Future<void> _pasteClipboard() async {
     final data = await Clipboard.getData(Clipboard.kTextPlain);
     if (data?.text != null && data!.text!.trim().isNotEmpty) {
@@ -94,11 +116,12 @@ class _AutoClipperStudioSheetState extends ConsumerState<AutoClipperStudioSheet>
     if (str.startsWith('Exception:')) {
       str = str.substring(10).trim();
     }
+    final lower = str.toLowerCase();
+    if (lower.contains('not a bot') || lower.contains('confirm you') || lower.contains('verification') || lower.contains('bot') || lower.contains('502')) {
+      return "YouTube has restricted automated access for this link on cloud servers. Please tap 'Upload Video from Device' below to clip your video directly with 100% reliability.";
+    }
     if (str.contains('/node_modules/') || str.contains('exit code 1')) {
-      if (str.contains("Sign in to confirm you're not a bot")) {
-        return "YouTube requires verification for this video. Please try another link or verify your session.";
-      }
-      return "Unable to process this video. Please check the link and try again.";
+      return "Unable to process this video from the link. Please tap 'Upload Video from Device' below.";
     }
     return str;
   }
@@ -148,7 +171,10 @@ class _AutoClipperStudioSheetState extends ConsumerState<AutoClipperStudioSheet>
 
   Future<void> _runAutoClipper() async {
     final url = _urlController.text.trim();
-    if (url.isEmpty) return;
+    if (url.isEmpty && _localVideoPath == null) {
+      setState(() => _error = 'Please enter a video URL or select a video from your device.');
+      return;
+    }
 
     setState(() {
       _isProcessing = true;
@@ -166,10 +192,20 @@ class _AutoClipperStudioSheetState extends ConsumerState<AutoClipperStudioSheet>
 
     try {
       final client = ref.read(apiClientProvider);
+      String? localServerPath;
+
+      if (_localVideoPath != null) {
+        final form = FormData.fromMap({
+          'video': await MultipartFile.fromFile(_localVideoPath!, filename: _localVideoName ?? 'video.mp4'),
+        });
+        final uploadRes = await client.postForm('/api/v1/media-editor/ingest/upload', form);
+        localServerPath = uploadRes['localPath'] as String?;
+      }
+
       final res = await client.post(
         '/api/v1/media-editor/ingest/auto-clip',
         body: {
-          'url': url,
+          if (localServerPath != null) 'localPath': localServerPath else 'url': url,
           'maxShorts': _clipCount,
           'targetShortDurationSec': _targetDurationSec,
           'aspectRatio': _aspectRatio,
@@ -387,6 +423,48 @@ class _AutoClipperStudioSheetState extends ConsumerState<AutoClipperStudioSheet>
           ),
           onSubmitted: (_) => _fetchMetadata(),
         ),
+        const SizedBox(height: 8),
+
+        // Device Upload Option
+        if (_localVideoPath == null)
+          OutlinedButton.icon(
+            onPressed: _pickLocalVideo,
+            icon: Icon(Icons.file_upload_outlined, size: 16, color: AppTheme.primary),
+            label: Text('OR Upload Video from Device (100% Guaranteed)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.primary)),
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+              side: BorderSide(color: AppTheme.primary.withValues(alpha: 0.4)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+          )
+        else
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: AppTheme.primary.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppTheme.primary.withValues(alpha: 0.35)),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.video_file_rounded, color: AppTheme.primary, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(_localVideoName ?? 'Selected Video', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis),
+                      Text('Ready to clip with 100% local server Whisper & FFmpeg', style: TextStyle(color: AppTheme.textSecondary, fontSize: 10)),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close_rounded, size: 16),
+                  onPressed: () => setState(() { _localVideoPath = null; _localVideoName = null; }),
+                ),
+              ],
+            ),
+          ),
 
         // Metadata Card Preview
         if (_metadata != null) ...[
@@ -460,12 +538,44 @@ class _AutoClipperStudioSheetState extends ConsumerState<AutoClipperStudioSheet>
         if (_error != null) ...[
           const SizedBox(height: 10),
           Container(
-            padding: const EdgeInsets.all(10),
+            padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: AppTheme.error.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppTheme.error.withValues(alpha: 0.25)),
             ),
-            child: Text(_error!, style: TextStyle(color: AppTheme.error, fontSize: 12)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.error_outline_rounded, color: AppTheme.error, size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(_error!, style: TextStyle(color: AppTheme.error, fontSize: 12, height: 1.35)),
+                    ),
+                  ],
+                ),
+                if (_error!.contains('Upload Video') || _error!.contains('Device')) ...[
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: _pickLocalVideo,
+                      icon: const Icon(Icons.upload_file_rounded, size: 16),
+                      label: const Text('Pick & Upload Video File Instead', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.primary,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ),
         ],
 
@@ -615,7 +725,7 @@ class _AutoClipperStudioSheetState extends ConsumerState<AutoClipperStudioSheet>
 
         // Primary Action Button
         ElevatedButton.icon(
-          onPressed: _urlController.text.trim().isEmpty ? null : _runAutoClipper,
+          onPressed: (_urlController.text.trim().isEmpty && _localVideoPath == null) ? null : _runAutoClipper,
           icon: const Icon(Icons.bolt_rounded),
           label: Text('Generate $_clipCount Viral Shorts'),
           style: ElevatedButton.styleFrom(

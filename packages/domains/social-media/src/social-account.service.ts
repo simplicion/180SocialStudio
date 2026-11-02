@@ -8,7 +8,7 @@ import { getDb } from './publishing/http';
 const PENDING_PUBLISH_STATUSES = ['scheduled', 'approved'];
 
 export interface ConnectAccountDTO {
-    platform: 'instagram' | 'facebook' | 'linkedin' | 'tiktok' | 'youtube' | 'x' | 'twitter';
+    platform: 'instagram' | 'facebook' | 'linkedin' | 'tiktok' | 'youtube';
     platformAccountId: string;
     accountName: string;
     username: string;

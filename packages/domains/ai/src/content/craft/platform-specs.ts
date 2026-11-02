@@ -7,7 +7,7 @@
  * and the Platform Command Center API.
  */
 
-export const CRAFT_PLATFORMS = ['instagram', 'linkedin', 'youtube', 'x', 'facebook', 'tiktok'] as const;
+export const CRAFT_PLATFORMS = ['instagram', 'linkedin', 'youtube', 'facebook', 'tiktok'] as const;
 export type CraftPlatform = (typeof CRAFT_PLATFORMS)[number];
 
 export interface PlatformCraftSpec {
@@ -109,28 +109,6 @@ export const PLATFORM_CRAFT: Record<CraftPlatform, PlatformCraftSpec> = {
         ],
         rewardedSignals: ['viewed vs swiped away (Shorts)', 'average view duration', 'click-through rate', 'returning viewers', 'subscribers gained per view'],
     },
-    x: {
-        platform: 'x',
-        label: 'X (Twitter)',
-        captionMaxChars: 280,
-        foldChars: 280,
-        foldLabel: 'Show more (long posts)',
-        hashtagMax: 2,
-        links: 'penalized',
-        linkAdvice: 'Posts with external links get less reach. Put the link in a reply to your own post.',
-        urlWeight: 23,
-        openingLineMaxWords: 14,
-        video: { wpm: 165, hookWindowSec: 2, idealSec: [15, 45], maxSec: 140, aspect: '16:9 or 1:1' },
-        playbook: [
-            'Each post is 280 characters max (URLs count as 23). Longer ideas become a thread: post 1 is the whole hook and stands alone.',
-            'No preamble: the first words are the claim, number or opinion.',
-            'Threads: number posts "1/", each post is one complete point, the last post restates the takeaway and asks for a repost or reply.',
-            'Max 1-2 hashtags, or none. Never stack hashtags.',
-            'No external link in post 1; put it in a reply.',
-            'Write like a person talking: short sentences, plain words, no corporate tone.',
-        ],
-        rewardedSignals: ['replies and reply depth', 'reposts and quotes', 'bookmarks', 'profile clicks', 'dwell time on thread'],
-    },
     facebook: {
         platform: 'facebook',
         label: 'Facebook',
@@ -179,7 +157,6 @@ const ALIASES: Record<string, CraftPlatform> = {
     instagram: 'instagram', ig: 'instagram', instagram_reels: 'instagram',
     linkedin: 'linkedin', li: 'linkedin',
     youtube: 'youtube', yt: 'youtube', youtube_shorts: 'youtube', shorts: 'youtube',
-    x: 'x', twitter: 'x',
     facebook: 'facebook', fb: 'facebook', meta: 'facebook',
     tiktok: 'tiktok',
 };

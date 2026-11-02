@@ -1,4 +1,5 @@
 import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -117,7 +118,9 @@ class _ExportSheetState extends ConsumerState<_ExportSheet> {
     );
     Navigator.pop(context);
     // Straight into the post editor with the video attached: add title/caption per platform, then publish.
-    context.push(c.pieceId != null ? '/posts/${post.id}/edit' : '/posts/${post.id}');
+    context.push(
+      c.pieceId != null ? '/posts/${post.id}/edit' : '/posts/${post.id}',
+    );
   }
 
   Future<void> _pickPostAndSubmit() async {
@@ -128,7 +131,7 @@ class _ExportSheetState extends ConsumerState<_ExportSheet> {
     }
     final post = await showModalBottomSheet<SocialPost>(
       context: context,
-    useRootNavigator: true,
+      useRootNavigator: true,
       backgroundColor: AppTheme.surface,
       builder: (_) => _PostPicker(projectId: projectId),
     );
@@ -183,10 +186,7 @@ class _ExportSheetState extends ConsumerState<_ExportSheet> {
                 },
               ),
             ] else if (result == null) ...[
-              Text(
-                e.stage,
-                style: TextStyle(color: AppTheme.textSecondary),
-              ),
+              Text(e.stage, style: TextStyle(color: AppTheme.textSecondary)),
               SizedBox(height: 8),
               LinearProgressIndicator(
                 value: e.stage == 'Rendering…' ? e.progress : null,
@@ -209,7 +209,10 @@ class _ExportSheetState extends ConsumerState<_ExportSheet> {
                   FilledButton.tonalIcon(
                     onPressed: () {
                       Navigator.pop(context);
-                      showInfo(context, 'Export running in background. Progress is shown in your status bar notifications.');
+                      showInfo(
+                        context,
+                        'Export running in background. Progress is shown in your status bar notifications.',
+                      );
                     },
                     icon: const Icon(Icons.arrow_downward_rounded, size: 16),
                     label: const Text('Run in background'),
@@ -355,7 +358,8 @@ class _ExportSheetState extends ConsumerState<_ExportSheet> {
                       extra: {
                         'localMediaPath': result.outputPath,
                         'mediaType': 'video',
-                        if (c.hook != null && c.hook!.trim().isNotEmpty) 'title': c.hook!.trim(),
+                        if (c.hook != null && c.hook!.trim().isNotEmpty)
+                          'title': c.hook!.trim(),
                       },
                     );
                   },
@@ -372,12 +376,14 @@ class _ExportSheetState extends ConsumerState<_ExportSheet> {
                 onPressed: () {
                   showModalBottomSheet(
                     context: context,
-    useRootNavigator: true,
+                    useRootNavigator: true,
                     isScrollControlled: true,
                     backgroundColor: Colors.transparent,
                     builder: (ctx) => CentralizedManualPublishSheet(
                       package: UserAssistedPublishPackage(
-                        id: c.postId ?? 'studio_${DateTime.now().millisecondsSinceEpoch}',
+                        id:
+                            c.postId ??
+                            'studio_${DateTime.now().millisecondsSinceEpoch}',
                         projectId: c.projectId ?? '',
                         mediaPath: result.outputPath,
                         mimeType: 'video/mp4',
@@ -385,13 +391,6 @@ class _ExportSheetState extends ConsumerState<_ExportSheet> {
                         caption: e.credits.isNotEmpty
                             ? 'Created with 180 Studio\n\n${e.credits.join('\n')}'
                             : 'Created with 180 Studio',
-                        xPayload: XPublishPayload(
-                          text: e.credits.isNotEmpty
-                              ? 'Created with 180 Studio\n\n${e.credits.join('\n')}'
-                              : 'Created with 180 Studio',
-                          mediaPath: result.outputPath,
-                          projectId: c.projectId,
-                        ),
                       ),
                     ),
                   );
@@ -433,51 +432,93 @@ class _ExportSettingsFormState extends State<_ExportSettingsForm> {
   @override
   Widget build(BuildContext context) {
     final canvas = widget.c.ir?.canvas;
-    final short = canvas == null ? 1080 : (canvas.width < canvas.height ? canvas.width : canvas.height);
+    final short = canvas == null
+        ? 1080
+        : (canvas.width < canvas.height ? canvas.width : canvas.height);
     final canvasFps = (canvas?.fps ?? 30).round();
-    final sizes = [for (final p in const [1080, 720, 480]) if (p < short) p];
+    final sizes = [
+      for (final p in const [1080, 720, 480])
+        if (p < short) p,
+    ];
     Widget group(String label, List<Widget> chips) => Padding(
-          padding: EdgeInsets.only(bottom: 12),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(label, style: TextStyle(color: AppTheme.textSecondary)),
-            SizedBox(height: 6),
-            Wrap(spacing: 8, runSpacing: 8, children: chips),
-          ]),
-        );
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      group('Resolution', [
-        ChoiceChip(label: Text('${short}p (full)'), selected: s.maxShortSide == null, onSelected: (_) => setState(() => s = s.copyWith(clearMaxShortSide: true))),
-        for (final p in sizes)
-          ChoiceChip(label: Text('${p}p'), selected: s.maxShortSide == p, onSelected: (_) => setState(() => s = s.copyWith(maxShortSide: p))),
-      ]),
-      group('Frame rate', [
-        ChoiceChip(label: Text('$canvasFps fps (project)'), selected: s.fps == null, onSelected: (_) => setState(() => s = s.copyWith(clearFps: true))),
-        for (final f in const [24, 30, 60])
-          if (f != canvasFps) ChoiceChip(label: Text('$f fps'), selected: s.fps == f, onSelected: (_) => setState(() => s = s.copyWith(fps: f))),
-      ]),
-      group('Quality', [
-        ChoiceChip(label: Text('Standard'), selected: s.quality != 'high', onSelected: (_) => setState(() => s = s.copyWith(quality: 'standard'))),
-        ChoiceChip(label: Text('High (bigger file)'), selected: s.quality == 'high', onSelected: (_) => setState(() => s = s.copyWith(quality: 'high'))),
-      ]),
-      SwitchListTile(
-        contentPadding: EdgeInsets.zero,
-        title: Text('Platform loudness'),
-        subtitle: Text('Brings the voice to ${ExportSettings.targetLufs.round()} LUFS like Reels and Shorts, without clipping'),
-        value: s.normalizeLoudness,
-        onChanged: (v) => setState(() => s = s.copyWith(normalizeLoudness: v)),
+      padding: EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: TextStyle(color: AppTheme.textSecondary)),
+          SizedBox(height: 6),
+          Wrap(spacing: 8, runSpacing: 8, children: chips),
+        ],
       ),
-      SizedBox(
-        height: 48,
-        child: FilledButton.icon(
-          onPressed: () {
-            widget.c.exportSettings = s;
-            widget.c.startExport();
-          },
-          icon: Icon(Icons.movie_creation_outlined),
-          label: Text('Export video'),
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        group('Resolution', [
+          ChoiceChip(
+            label: Text('${short}p (full)'),
+            selected: s.maxShortSide == null,
+            onSelected: (_) =>
+                setState(() => s = s.copyWith(clearMaxShortSide: true)),
+          ),
+          for (final p in sizes)
+            ChoiceChip(
+              label: Text('${p}p'),
+              selected: s.maxShortSide == p,
+              onSelected: (_) =>
+                  setState(() => s = s.copyWith(maxShortSide: p)),
+            ),
+        ]),
+        group('Frame rate', [
+          ChoiceChip(
+            label: Text('$canvasFps fps (project)'),
+            selected: s.fps == null,
+            onSelected: (_) => setState(() => s = s.copyWith(clearFps: true)),
+          ),
+          for (final f in const [24, 30, 60])
+            if (f != canvasFps)
+              ChoiceChip(
+                label: Text('$f fps'),
+                selected: s.fps == f,
+                onSelected: (_) => setState(() => s = s.copyWith(fps: f)),
+              ),
+        ]),
+        group('Quality', [
+          ChoiceChip(
+            label: Text('Standard'),
+            selected: s.quality != 'high',
+            onSelected: (_) =>
+                setState(() => s = s.copyWith(quality: 'standard')),
+          ),
+          ChoiceChip(
+            label: Text('High (bigger file)'),
+            selected: s.quality == 'high',
+            onSelected: (_) => setState(() => s = s.copyWith(quality: 'high')),
+          ),
+        ]),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: Text('Platform loudness'),
+          subtitle: Text(
+            'Brings the voice to ${ExportSettings.targetLufs.round()} LUFS like Reels and Shorts, without clipping',
+          ),
+          value: s.normalizeLoudness,
+          onChanged: (v) =>
+              setState(() => s = s.copyWith(normalizeLoudness: v)),
         ),
-      ),
-    ]);
+        SizedBox(
+          height: 48,
+          child: FilledButton.icon(
+            onPressed: () {
+              widget.c.exportSettings = s;
+              widget.c.startExport();
+            },
+            icon: Icon(Icons.movie_creation_outlined),
+            label: Text('Export video'),
+          ),
+        ),
+      ],
+    );
   }
 }
 

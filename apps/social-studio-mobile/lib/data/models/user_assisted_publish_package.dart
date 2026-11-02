@@ -37,27 +37,19 @@ class UniversalPlatformPayload {
     return '$caption$tagsText'.trim();
   }
 
-  /// Converts to legacy XPublishPayload
-  XPublishPayload toXPayload() => XPublishPayload(
-        text: fullText,
-        mediaPath: mediaPath,
-        mimeType: mimeType,
-        sourceContentId: sourceContentId,
-        calendarItemId: calendarItemId,
-        projectId: projectId,
-      );
-
   /// Converts to legacy RedditPublishPayload
   RedditPublishPayload toRedditPayload() => RedditPublishPayload(
-        subreddit: subreddit,
-        title: title ?? (caption.length > 80 ? '${caption.substring(0, 77)}...' : caption),
-        body: caption,
-        mediaPath: mediaPath,
-        mimeType: mimeType,
-        sourceContentId: sourceContentId,
-        calendarItemId: calendarItemId,
-        projectId: projectId,
-      );
+    subreddit: subreddit,
+    title:
+        title ??
+        (caption.length > 80 ? '${caption.substring(0, 77)}...' : caption),
+    body: caption,
+    mediaPath: mediaPath,
+    mimeType: mimeType,
+    sourceContentId: sourceContentId,
+    calendarItemId: calendarItemId,
+    projectId: projectId,
+  );
 
   factory UniversalPlatformPayload.fromPlatform({
     required SocialPlatform platform,
@@ -93,11 +85,14 @@ class UniversalPlatformPayload {
       platform: plat,
       caption: jStrOr(j['caption'] ?? j['text'], ''),
       title: jStr(j['title']),
-      hashtags: (j['hashtags'] as List?)?.map((e) => e.toString()).toList() ?? [],
+      hashtags:
+          (j['hashtags'] as List?)?.map((e) => e.toString()).toList() ?? [],
       mediaPath: jStr(j['mediaPath']) ?? jStr(j['mediaUri']),
       mimeType: jStrOr(j['mimeType'], 'video/mp4'),
       subreddit: jStr(j['subreddit']),
-      extraMetadata: (j['extraMetadata'] is Map) ? Map<String, dynamic>.from(j['extraMetadata'] as Map) : {},
+      extraMetadata: (j['extraMetadata'] is Map)
+          ? Map<String, dynamic>.from(j['extraMetadata'] as Map)
+          : {},
       sourceContentId: jStr(j['sourceContentId']),
       calendarItemId: jStr(j['calendarItemId']),
       projectId: jStr(j['projectId']),
@@ -105,56 +100,18 @@ class UniversalPlatformPayload {
   }
 
   Json toJson() => compact({
-        'platform': platform.id,
-        'caption': caption,
-        'title': title,
-        'hashtags': hashtags.isNotEmpty ? hashtags : null,
-        'mediaPath': mediaPath,
-        'mimeType': mimeType,
-        'subreddit': subreddit,
-        'extraMetadata': extraMetadata.isNotEmpty ? extraMetadata : null,
-        'sourceContentId': sourceContentId,
-        'calendarItemId': calendarItemId,
-        'projectId': projectId,
-      });
-}
-
-/// Payload prepared specifically for X (Twitter) user-assisted handoff.
-class XPublishPayload {
-  XPublishPayload({
-    required this.text,
-    this.mediaPath,
-    this.mimeType = 'video/mp4',
-    this.sourceContentId,
-    this.calendarItemId,
-    this.projectId,
+    'platform': platform.id,
+    'caption': caption,
+    'title': title,
+    'hashtags': hashtags.isNotEmpty ? hashtags : null,
+    'mediaPath': mediaPath,
+    'mimeType': mimeType,
+    'subreddit': subreddit,
+    'extraMetadata': extraMetadata.isNotEmpty ? extraMetadata : null,
+    'sourceContentId': sourceContentId,
+    'calendarItemId': calendarItemId,
+    'projectId': projectId,
   });
-
-  final String text;
-  final String? mediaPath;
-  final String mimeType;
-  final String? sourceContentId;
-  final String? calendarItemId;
-  final String? projectId;
-
-  factory XPublishPayload.fromJson(Json j) => XPublishPayload(
-        text: jStrOr(j['text'], ''),
-        mediaPath: jStr(j['mediaPath']) ?? jStr(j['mediaUri']),
-        mimeType: jStrOr(j['mimeType'], 'video/mp4'),
-        sourceContentId: jStr(j['sourceContentId']),
-        calendarItemId: jStr(j['calendarItemId']),
-        projectId: jStr(j['projectId']),
-      );
-
-  Json toJson() => compact({
-        'platform': 'x',
-        'text': text,
-        'mediaPath': mediaPath,
-        'mimeType': mimeType,
-        'sourceContentId': sourceContentId,
-        'calendarItemId': calendarItemId,
-        'projectId': projectId,
-      });
 }
 
 /// Payload prepared specifically for Reddit user-assisted handoff.
@@ -193,33 +150,33 @@ class RedditPublishPayload {
   }
 
   factory RedditPublishPayload.fromJson(Json j) => RedditPublishPayload(
-        subreddit: jStr(j['subreddit']),
-        title: jStrOr(j['title'], ''),
-        body: jStr(j['body']),
-        mediaPath: jStr(j['mediaPath']) ?? jStr(j['mediaUri']),
-        mimeType: jStrOr(j['mimeType'], 'video/mp4'),
-        flairId: jStr(j['flairId']),
-        markNsfw: jBool(j['markNsfw']),
-        markSpoiler: jBool(j['markSpoiler']),
-        sourceContentId: jStr(j['sourceContentId']),
-        calendarItemId: jStr(j['calendarItemId']),
-        projectId: jStr(j['projectId']),
-      );
+    subreddit: jStr(j['subreddit']),
+    title: jStrOr(j['title'], ''),
+    body: jStr(j['body']),
+    mediaPath: jStr(j['mediaPath']) ?? jStr(j['mediaUri']),
+    mimeType: jStrOr(j['mimeType'], 'video/mp4'),
+    flairId: jStr(j['flairId']),
+    markNsfw: jBool(j['markNsfw']),
+    markSpoiler: jBool(j['markSpoiler']),
+    sourceContentId: jStr(j['sourceContentId']),
+    calendarItemId: jStr(j['calendarItemId']),
+    projectId: jStr(j['projectId']),
+  );
 
   Json toJson() => compact({
-        'platform': 'reddit',
-        'subreddit': normalizedSubreddit.isNotEmpty ? normalizedSubreddit : null,
-        'title': title,
-        'body': body,
-        'mediaPath': mediaPath,
-        'mimeType': mimeType,
-        'flairId': flairId,
-        'markNsfw': markNsfw ? true : null,
-        'markSpoiler': markSpoiler ? true : null,
-        'sourceContentId': sourceContentId,
-        'calendarItemId': calendarItemId,
-        'projectId': projectId,
-      });
+    'platform': 'reddit',
+    'subreddit': normalizedSubreddit.isNotEmpty ? normalizedSubreddit : null,
+    'title': title,
+    'body': body,
+    'mediaPath': mediaPath,
+    'mimeType': mimeType,
+    'flairId': flairId,
+    'markNsfw': markNsfw ? true : null,
+    'markSpoiler': markSpoiler ? true : null,
+    'sourceContentId': sourceContentId,
+    'calendarItemId': calendarItemId,
+    'projectId': projectId,
+  });
 }
 
 /// Universal publishing package for user-assisted platform handoffs.
@@ -232,7 +189,6 @@ class UserAssistedPublishPackage {
     this.mimeType = 'video/mp4',
     this.title,
     this.caption,
-    this.xPayload,
     this.redditPayload,
     this.platformPayloads = const {},
     this.status = 'ready',
@@ -246,7 +202,6 @@ class UserAssistedPublishPackage {
   final String mimeType;
   final String? title;
   final String? caption;
-  final XPublishPayload? xPayload;
   final RedditPublishPayload? redditPayload;
   final Map<SocialPlatform, UniversalPlatformPayload> platformPayloads;
   final String status;
@@ -272,8 +227,9 @@ class UserAssistedPublishPackage {
       mimeType: jStrOr(j['mimeType'], 'video/mp4'),
       title: jStr(j['title']),
       caption: jStr(j['caption']),
-      xPayload: j['xPayload'] is Map ? XPublishPayload.fromJson(jMap(j['xPayload'])) : null,
-      redditPayload: j['redditPayload'] is Map ? RedditPublishPayload.fromJson(jMap(j['redditPayload'])) : null,
+      redditPayload: j['redditPayload'] is Map
+          ? RedditPublishPayload.fromJson(jMap(j['redditPayload']))
+          : null,
       platformPayloads: payloads,
       status: jStrOr(j['status'], 'ready'),
       createdAt: jDate(j['createdAt']),
@@ -281,19 +237,18 @@ class UserAssistedPublishPackage {
   }
 
   Json toJson() => compact({
-        'id': id,
-        'projectId': projectId,
-        'calendarItemId': calendarItemId,
-        'mediaPath': mediaPath,
-        'mimeType': mimeType,
-        'title': title,
-        'caption': caption,
-        'xPayload': xPayload?.toJson(),
-        'redditPayload': redditPayload?.toJson(),
-        'platformPayloads': platformPayloads.isNotEmpty
-            ? platformPayloads.map((k, v) => MapEntry(k.id, v.toJson()))
-            : null,
-        'status': status,
-        'createdAt': createdAt?.toIso8601String(),
-      });
+    'id': id,
+    'projectId': projectId,
+    'calendarItemId': calendarItemId,
+    'mediaPath': mediaPath,
+    'mimeType': mimeType,
+    'title': title,
+    'caption': caption,
+    'redditPayload': redditPayload?.toJson(),
+    'platformPayloads': platformPayloads.isNotEmpty
+        ? platformPayloads.map((k, v) => MapEntry(k.id, v.toJson()))
+        : null,
+    'status': status,
+    'createdAt': createdAt?.toIso8601String(),
+  });
 }

@@ -108,7 +108,7 @@ void main() {
             ],
           },
         });
-      await pumpApp(tester, b, location: '/command-center?platform=x');
+      await pumpApp(tester, b, location: '/command-center?platform=instagram');
       await tester.tap(find.text('Check'));
       await settle(tester);
       await tester.enterText(find.widgetWithText(TextField, 'Hook or opening line'), 'Stop flossing less when your gums bleed');
@@ -116,7 +116,7 @@ void main() {
       await settle(tester);
       expect(find.text('74/100 · strong'), findsOneWidget);
       expect(find.text('Shape: Negative Command'), findsOneWidget);
-      final call = b.last('POST', '$sm/platform-team/x/hooks/score')!;
+      final call = b.last('POST', '$sm/platform-team/instagram/hooks/score')!;
       expect(call.json['hooks'], ['Stop flossing less when your gums bleed']);
     });
 

@@ -41,12 +41,6 @@ const ALLOWED_HOSTS = [
   "fb.watch",
   "linkedin.com",
   "www.linkedin.com",
-  "tiktok.com",
-  "www.tiktok.com",
-  "vimeo.com",
-  "www.vimeo.com",
-  "twitter.com",
-  "x.com",
 ];
 
 const PRIVATE_IP_REGEX = /^(127\.|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|192\.168\.|169\.254\.|::1|localhost)/i;
@@ -144,7 +138,7 @@ export class YtDlpService {
   private static buildBaseFlags(options: { isYouTube?: boolean } = {}): any {
     const flags: any = {
       noWarnings: true,
-      noCallHome: true,
+      
       preferFreeFormats: true,
     };
 
@@ -158,9 +152,18 @@ export class YtDlpService {
       flags.cookies = cookies;
     }
 
+    const denoPath = fs.existsSync("/usr/local/bin/deno")
+      ? "/usr/local/bin/deno"
+      : fs.existsSync(path.join(os.homedir(), ".deno", "bin", "deno"))
+      ? path.join(os.homedir(), ".deno", "bin", "deno")
+      : undefined;
+    if (denoPath) {
+      flags.jsRuntimes = `deno:${denoPath}`;
+    }
+
     if (options.isYouTube) {
-      // Primary YouTube bot-protection bypass via mobile app client APIs
-      flags.extractorArgs = "youtube:player_client=android,ios,mweb";
+      // Primary YouTube bot-protection bypass via visionos/web client APIs
+      flags.extractorArgs = "youtube:player_client=visionos,web";
     }
 
     return flags;
@@ -172,9 +175,11 @@ export class YtDlpService {
   private static async executeWithFallback(url: string, baseFlags: any, isYouTube: boolean): Promise<any> {
     const clients = isYouTube
       ? [
-          "youtube:player_client=android,ios,mweb",
-          "youtube:player_client=android_creator,android,ios",
-          "youtube:player_client=ios,mweb",
+          "youtube:player_client=visionos,web",
+          "youtube:player_client=web,tv",
+          "youtube:player_client=android,web",
+          "youtube:player_client=mweb,web",
+          undefined,
         ]
       : [undefined];
 
@@ -187,7 +192,7 @@ export class YtDlpService {
       } catch (err: any) {
         lastError = err;
         const msg = String(err?.message || err || "");
-        if (msg.includes("Sign in to confirm you're not a bot") || msg.includes("Requested format is not available")) {
+        if (msg.includes("not a bot") || msg.includes("Sign in to confirm") || msg.includes("Requested format is not available") || msg.includes("Skipping unsupported client")) {
           console.warn(`[YtDlpService] Retrying yt-dlp with alternative client after bot notice...`);
           continue;
         }

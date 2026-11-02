@@ -1,6 +1,6 @@
 /**
  * Platform Team endpoints. Mounted at /api/v1/social-media/platform-team/:platform
- * (platform = instagram | linkedin | youtube | x | twitter | facebook | tiktok).
+ * (platform = instagram | linkedin | youtube | facebook | tiktok).
  *
  *   GET  /spec              craft rules for the platform (fold, hashtag cap, playbook)
  *   GET  /overview?projectId=   monitoring: accounts, pipeline, queue craft scores, triaged inbox, live metrics

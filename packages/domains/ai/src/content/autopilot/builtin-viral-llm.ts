@@ -56,7 +56,7 @@ export function createBuiltinViralAutopilotLLM(): AutopilotLLM {
                     reel: ['instagram', 'tiktok', 'youtube'],
                     carousel: ['instagram', 'linkedin'],
                     static: ['instagram', 'facebook'],
-                    text: ['linkedin', 'x'],
+                    text: ['linkedin'],
                 };
 
                 const viralAngles = [

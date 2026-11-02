@@ -85,7 +85,7 @@ export const scheduleSocialPostTool: AIToolDefinition = {
     requiredPermissions: ['social:manage', 'social:all'],
     category: 'social',
     parameters: {
-        platform: { type: 'string', description: 'Target platform: linkedin, twitter, instagram, facebook', required: true },
+        platform: { type: 'string', description: 'Target platform: linkedin, instagram, facebook, youtube', required: true },
         content: { type: 'string', description: 'Post copy text', required: true },
         scheduledTime: { type: 'string', description: 'ISO date string or scheduled publish time' }
     },

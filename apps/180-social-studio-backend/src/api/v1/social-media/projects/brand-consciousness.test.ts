@@ -81,7 +81,7 @@ test('validation: normalizes colours, fonts, platform aliases, hashtags and lega
     const p = parseBrandPatch({
         colors: { primary: '#aabbcc', accent: '' },
         font: 'playfair display',
-        targetPlatforms: ['Instagram', 'x', 'youtube_shorts', 'instagram'],
+        targetPlatforms: ['Instagram', 'linkedin', 'youtube_shorts', 'instagram'],
         hashtags: ['coffee', '#coffee', ' ##roast '],
         forbiddenWords: [' cheap ', 'Cheap', ''],
         brandPositioning: 'Third-wave coffee for home baristas',
@@ -90,7 +90,7 @@ test('validation: normalizes colours, fonts, platform aliases, hashtags and lega
     });
     assert.deepEqual(p.colors, { primary: '#AABBCC', accent: null });
     assert.equal(p.font, 'Playfair Display');
-    assert.deepEqual(p.targetPlatforms, ['instagram', 'twitter', 'youtube']);
+    assert.deepEqual(p.targetPlatforms, ['instagram', 'linkedin', 'youtube']);
     assert.deepEqual(p.hashtags, ['#coffee', '#roast']);
     assert.deepEqual(p.forbiddenWords, ['cheap']);
     assert.equal(p.positioning, 'Third-wave coffee for home baristas');
@@ -153,7 +153,7 @@ test('read: legacy rows drop the old fabricated defaults instead of presenting t
             brandType: 'company', brandPositioning: 'Authoritative Industry Leader', brandTagline: 'Real tagline',
             brandColors: { primary: '#6366F1', accent: '#123456', background: '#090A0E', text: '#FFFFFF' },
             brandFont: 'Inter', captionStylePreset: 'HORMOZI_BOUNCE', watermarkEnabled: true,
-            targetPlatforms: ['instagram', 'youtube_shorts', 'linkedin', 'twitter'],
+            targetPlatforms: ['instagram', 'youtube_shorts', 'linkedin'],
         },
     });
     assert.equal(b.tone, null);

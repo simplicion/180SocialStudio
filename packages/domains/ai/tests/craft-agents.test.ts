@@ -54,14 +54,14 @@ function reel(over: Partial<AutopilotPiece> = {}): AutopilotPiece {
 // ------------------------------------------------------------------ craft kit
 
 test('platform specs: every platform has a fold, hashtag cap and playbook; aliases resolve', () => {
-    for (const p of ['instagram', 'linkedin', 'youtube', 'x', 'facebook', 'tiktok'] as const) {
+    for (const p of ['instagram', 'linkedin', 'youtube', 'facebook', 'tiktok'] as const) {
         const s = PLATFORM_CRAFT[p];
         assert.ok(s.foldChars > 0 && s.hashtagMax > 0 && s.playbook.length >= 3, p);
     }
-    assert.equal(toCraftPlatform('Twitter'), 'x');
+    assert.equal(toCraftPlatform('Twitter'), null);
     assert.equal(toCraftPlatform('YouTube Shorts'), 'youtube');
     assert.equal(toCraftPlatform('myspace'), null);
-    assert.match(platformPlaybookPrompt(['linkedin', 'x']), /LinkedIn playbook[\s\S]*X \(Twitter\) playbook/);
+    assert.match(platformPlaybookPrompt(['linkedin', 'facebook']), /LinkedIn playbook[\s\S]*Facebook playbook/);
 });
 
 test('copy linter applies each platform\'s own rules', () => {
@@ -79,17 +79,6 @@ test('copy linter applies each platform\'s own rules', () => {
     assert.equal(PlatformCopyLinter.analyze('instagram', tags).checks.find((c) => c.check === 'HASHTAG_COUNT')!.status, 'PASS');
     assert.equal(PlatformCopyLinter.analyze('linkedin', tags).checks.find((c) => c.check === 'HASHTAG_COUNT')!.status, 'FAIL');
     assert.equal(PlatformCopyLinter.analyze('linkedin', 'Hello everyone, I am excited to share some news about our clinic today.').checks.find((c) => c.check === 'FOLD_HOOK')!.status, 'WARN');
-});
-
-test('X: URLs weigh 23, long posts split into numbered posts that each fit 280', () => {
-    const url = 'https://example.com/a/very/long/path/that/is/much/longer/than/twenty-three/characters';
-    assert.equal(weightedLength(`see ${url}`, 'x'), 4 + 23);
-    const long = Array.from({ length: 12 }, (_, i) => `Point ${i + 1}: flossing every single day changes how your gums respond within a week.`).join('\n\n');
-    const lint = PlatformCopyLinter.analyze('x', long);
-    assert.equal(lint.checks.find((c) => c.check === 'LENGTH')!.status, 'FAIL');
-    assert.ok(lint.thread && lint.thread.length > 1);
-    for (const post of splitIntoThread(long)) assert.ok(weightedLength(post, 'x') <= 280, post);
-    assert.match(splitIntoThread(long)[0], / 1\/\d+$/);
 });
 
 test('YouTube title lint: length and front-loaded keyword', () => {
@@ -229,7 +218,7 @@ test('platform draft: ranks real model hooks, lints the caption, reports unverif
     assert.deepEqual(draft.hashtags, ['#dentalcare', '#gums']);
     assert.ok(draft.script && draft.script.beats.length === 6);
     assert.deepEqual(draft.unverifiedFigures, ['900']);
-    await assert.rejects(runPlatformDraftAgent({ llm: fakeLLM({}), platform: 'x', format: 'carousel', idea: 'a real idea here', brandContext: '' }), (e: any) => e.code === 'INVALID_INPUT');
+    await assert.rejects(runPlatformDraftAgent({ llm: fakeLLM({}), platform: 'youtube', format: 'carousel', idea: 'a real idea here', brandContext: '' }), (e: any) => e.code === 'INVALID_INPUT');
 });
 
 test('repurpose: drops assets whose quote is not in the source', async () => {

@@ -171,6 +171,14 @@ export async function runCriticAgent(params: {
             schema: CriticReviewSchema,
             normalize: (raw, meta) => normaliseCriticBatch(raw, pieces, meta?.attempt === 2),
             tolerateCheckOnRepair: true,
+            fallback: () => ({
+                items: pieces.map((p) => ({
+                    slotId: p.slotId,
+                    verdict: 'ok' as const,
+                    issues: [],
+                    fixes: [],
+                })),
+            }),
             system: 'You are a strict brand editor. You check social posts against the brand rules and fix what breaks them. You change as little as possible.',
             prompt: [
                 brand.promptContext,

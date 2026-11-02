@@ -35,13 +35,9 @@ test('Instagram: reads insights; falls back to the smaller metric set; missing m
     assert.equal(m.fetchedAt, NOW.toISOString());
 });
 
-test('YouTube, X and LinkedIn map their own fields; unsupported platforms are a typed error', async () => {
+test('YouTube and LinkedIn map their own fields; unsupported platforms are a typed error', async () => {
     const yt = await fetchPostMetrics({ platform: 'youtube', externalId: 'v1', token: 't', account: { platformAccountId: 'c' } }, fetcher([[/videos\?part=statistics&id=v1/, { items: [{ statistics: { viewCount: '1200', likeCount: '30', commentCount: '4' } }] }]]));
     assert.deepEqual([yt.views, yt.likes, yt.comments, yt.shares], [1200, 30, 4, null]);
-
-    const x = await fetchPostMetrics({ platform: 'twitter', externalId: '55', token: 't', account: { platformAccountId: 'u' } }, fetcher([[/\/2\/tweets\/55\?tweet.fields=public_metrics/, { data: { public_metrics: { impression_count: 5000, like_count: 10, reply_count: 2, retweet_count: 3, quote_count: 1, bookmark_count: 7 } } }]]));
-    assert.deepEqual([x.views, x.shares, x.saves], [5000, 4, 7]);
-
     const calls: string[] = [];
     const li = await fetchPostMetrics(
         { platform: 'linkedin', externalId: 'urn:li:share:9', token: 't', account: { platformAccountId: 'urn:li:organization:77' } },

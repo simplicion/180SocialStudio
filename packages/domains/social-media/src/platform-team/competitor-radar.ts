@@ -21,7 +21,7 @@ import { SocialDomainError, VAULT_ACCOUNT_SELECT, requireCompanyId } from '../te
 import type { MetricsFetcher } from './post-metrics';
 import { expectOk, providerFetch } from '../publishing/http';
 
-export const RADAR_PLATFORMS = ['instagram', 'youtube', 'x'] as const;
+export const RADAR_PLATFORMS = ['instagram', 'youtube'] as const;
 export const MAX_WATCHED = 10;
 const HANDLE_RE = /^[A-Za-z0-9._-]{1,60}$/;
 
@@ -57,7 +57,7 @@ const num = (v: unknown): number | null => (v === null || v === undefined || v =
 const firstLine = (t: unknown) => String(t || '').split(/\r?\n/).map((l) => l.trim()).find(Boolean)?.slice(0, 240) || '';
 
 export function cleanHandle(raw: unknown): string {
-    const h = String(raw ?? '').trim().replace(/^https?:\/\/(www\.)?(instagram|youtube|x|twitter)\.com\//i, '').replace(/^@/, '').replace(/[/?#].*$/, '');
+    const h = String(raw ?? '').trim().replace(/^https?:\/\/(www\.)?(instagram|youtube)\.com\//i, '').replace(/^@/, '').replace(/[/?#].*$/, '');
     if (!HANDLE_RE.test(h)) throw new SocialDomainError('INVALID_INPUT', 400, `"${String(raw).slice(0, 60)}" is not a valid handle.`);
     return h;
 }
@@ -128,17 +128,6 @@ async function scanYouTube(handle: string, token: string, fetchJson: MetricsFetc
     })));
 }
 
-async function scanX(handle: string, token: string, fetchJson: MetricsFetcher): Promise<RadarAccount> {
-    const base = (process.env.X_API_BASE_URL?.trim() || 'https://api.x.com').replace(/\/+$/, '');
-    const u = await fetchJson('x', `${base}/2/users/by/username/${encodeURIComponent(handle)}?user.fields=public_metrics`, token, 'X user');
-    if (!u.data?.id) throw new SocialDomainError('NOT_FOUND', 404, `X has no account @${handle}.`);
-    const t = await fetchJson('x', `${base}/2/users/${encodeURIComponent(u.data.id)}/tweets?max_results=30&exclude=retweets,replies&tweet.fields=public_metrics,created_at`, token, 'X posts');
-    return rankAccount(handle, num(u.data.public_metrics?.followers_count), (t.data || []).map((p: any) => ({
-        url: `https://x.com/${handle}/status/${p.id}`, text: p.text || '', publishedAt: p.created_at || null,
-        views: num(p.public_metrics?.impression_count), likes: num(p.public_metrics?.like_count), comments: num(p.public_metrics?.reply_count),
-    })));
-}
-
 const asObj = (v: unknown): Record<string, any> => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, any>) : {});
 
 export interface RadarDeps { db?: any; fetchJson?: MetricsFetcher; getToken?: (account: any) => Promise<string>; now?: () => Date }
@@ -197,7 +186,7 @@ export async function scanRadar(params: { companyId: string; projectId: string; 
     if (!current.handles.length) throw new SocialDomainError('INVALID_INPUT', 400, 'Add at least one account to watch first.');
 
     const account = await db.socialAccount.findFirst({
-        where: { companyId, projectId: params.projectId, platform: { in: platform === 'x' ? ['twitter', 'x'] : [platform] }, isActive: true },
+        where: { companyId, projectId: params.projectId, platform, isActive: true },
         select: VAULT_ACCOUNT_SELECT,
     });
     if (!account) throw new SocialDomainError('ACCOUNT_REQUIRED', 409, `Connect your own ${platform} account first; the platform only allows reading other accounts through a connected one.`);
@@ -206,7 +195,7 @@ export async function scanRadar(params: { companyId: string; projectId: string; 
     const accounts: RadarAccount[] = [];
     for (const handle of current.handles as string[]) {
         try {
-            accounts.push(platform === 'instagram' ? await scanInstagram(handle, account, token, fetchJson) : platform === 'youtube' ? await scanYouTube(handle, token, fetchJson) : await scanX(handle, token, fetchJson));
+            accounts.push(platform === 'instagram' ? await scanInstagram(handle, account, token, fetchJson) : await scanYouTube(handle, token, fetchJson));
         } catch (err: any) {
             accounts.push({ handle, followers: null, basis: 'engagements', baseline: null, posts: [], error: String(err?.message || err).slice(0, 300) });
         }
