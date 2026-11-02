@@ -84,8 +84,8 @@ export class SocialInboxService {
      * Sends a reply on the real platform (DM or public comment reply) and records it only once the provider accepted
      * it. Rate-limited sends answer 429 RATE_LIMITED with `retryAfterMs`.
      */
-    static async sendMessage(conversationId: string, content: string, senderType: 'agent' | 'ai_bot' = 'agent') {
-        const companyId = requireCompanyId(requestContext.getStore()?.companyId as string);
+    static async sendMessage(conversationId: string, content: string, senderType: 'agent' | 'ai_bot' = 'agent', companyIdArg?: string) {
+        const companyId = requireCompanyId(companyIdArg || (requestContext.getStore()?.companyId as string));
         const { sendToConversation } = require('./engagement/conversation-sender');
         const r = await sendToConversation(companyId, conversationId, content, senderType === 'ai_bot' ? 'ai_bot' : 'agent');
         if (r.status === 'rate_limited') {
@@ -280,7 +280,7 @@ Return ONLY JSON: [{"tone": "short tone label", "text": "reply"}]`;
                 // 1A. Direct Conversations & Message Thread History
                 try {
                     const convUrl = metaGraphUrl(
-                        `${encodeURIComponent(platformAccountId)}/conversations?platform=instagram&fields=id,updated_time,participants,messages{id,created_time,from,message,to}&limit=50`,
+                        `${encodeURIComponent(platformAccountId)}/conversations?platform=instagram&fields=id,updated_time,participants{id,username,name,profile_pic},messages{id,created_time,from,message,to}&limit=50`,
                         token,
                         'instagram'
                     );
@@ -297,6 +297,7 @@ Return ONLY JSON: [{"tone": "short tone label", "text": "reply"}]`;
                             const other = participants.find((p: any) => String(p.id) !== platformAccountId) || participants[0];
                             const participantName = other?.name || other?.username || (other?.id ? `User ${String(other.id).slice(-4)}` : 'Instagram User');
                             const participantHandle = other?.username || other?.id || 'anonymous';
+                            const participantAvatar = other?.profile_pic || (participantHandle && participantHandle !== 'anonymous' ? `https://unavatar.io/instagram/${participantHandle}?fallback=https://api.dicebear.com/7.x/initials/png?seed=${encodeURIComponent(participantHandle)}` : null);
 
                             const msgs = Array.isArray(thread.messages?.data) ? thread.messages.data : [];
                             const latest = msgs[0];
@@ -316,6 +317,7 @@ Return ONLY JSON: [{"tone": "short tone label", "text": "reply"}]`;
                                     lastMessageAt: lastTime,
                                     ...(participantName ? { participantName } : {}),
                                     ...(participantHandle ? { participantHandle } : {}),
+                                    ...(participantAvatar ? { participantAvatar } : {}),
                                     ...(targetProjectId ? { projectId: targetProjectId } : {}),
                                 },
                                 create: {
@@ -326,6 +328,7 @@ Return ONLY JSON: [{"tone": "short tone label", "text": "reply"}]`;
                                     platformThreadId: threadId,
                                     participantName: participantName || participantHandle || 'Participant',
                                     participantHandle: participantHandle || 'anonymous',
+                                    participantAvatar,
                                     lastMessageSnippet: snippet.substring(0, 120),
                                     lastMessageAt: lastTime,
                                     isRead: false,
@@ -410,6 +413,7 @@ Return ONLY JSON: [{"tone": "short tone label", "text": "reply"}]`;
                                 const fromUser = c.from?.username || c.username || 'Instagram User';
                                 const fromHandle = c.from?.username || c.username || 'anonymous';
                                 const text = c.text || '';
+                                const participantAvatar = c.from?.profile_picture_url || (fromHandle && fromHandle !== 'anonymous' ? `https://unavatar.io/instagram/${fromHandle}?fallback=https://api.dicebear.com/7.x/initials/png?seed=${encodeURIComponent(fromHandle)}` : null);
                                 if (!text) continue;
                                 const commentTime = c.timestamp ? new Date(c.timestamp) : new Date();
 
@@ -424,6 +428,7 @@ Return ONLY JSON: [{"tone": "short tone label", "text": "reply"}]`;
                                     update: {
                                         lastMessageSnippet: text.substring(0, 120),
                                         lastMessageAt: commentTime,
+                                        ...(participantAvatar ? { participantAvatar } : {}),
                                         ...(targetProjectId ? { projectId: targetProjectId } : {}),
                                     },
                                     create: {
@@ -434,6 +439,7 @@ Return ONLY JSON: [{"tone": "short tone label", "text": "reply"}]`;
                                         platformThreadId: `comment:${cid}`,
                                         participantName: fromUser,
                                         participantHandle: fromHandle,
+                                        participantAvatar,
                                         lastMessageSnippet: text.substring(0, 120),
                                         lastMessageAt: commentTime,
                                         isRead: false,
@@ -571,6 +577,7 @@ Return ONLY JSON: [{"tone": "short tone label", "text": "reply"}]`;
                             const other = participants.find((p: any) => String(p.id) !== platformAccountId) || participants[0];
                             const participantName = other?.name || 'Facebook User';
                             const participantHandle = other?.name ? String(other.name).toLowerCase().replace(/\s+/g, '.') : other?.id || 'facebook.user';
+                            const participantAvatar = other?.id ? `https://graph.facebook.com/${other.id}/picture?type=square` : `https://unavatar.io/facebook/${participantHandle}?fallback=https://api.dicebear.com/7.x/initials/png?seed=${encodeURIComponent(participantName)}`;
 
                             const msgs = Array.isArray(thread.messages?.data) ? thread.messages.data : [];
                             const latest = msgs[0];
@@ -599,6 +606,7 @@ Return ONLY JSON: [{"tone": "short tone label", "text": "reply"}]`;
                                     platformThreadId: threadId,
                                     participantName,
                                     participantHandle,
+                                    participantAvatar,
                                     lastMessageSnippet: snippet.substring(0, 120),
                                     lastMessageAt: lastTime,
                                     isRead: false,
@@ -667,6 +675,8 @@ Return ONLY JSON: [{"tone": "short tone label", "text": "reply"}]`;
                                 if (!cid) continue;
                                 const fromUser = c.from?.name || 'Facebook User';
                                 const fromHandle = c.from?.name ? String(c.from.name).toLowerCase().replace(/\s+/g, '.') : 'anonymous';
+                                const fromId = c.from?.id;
+                                const participantAvatar = fromId ? `https://graph.facebook.com/${fromId}/picture?type=square` : `https://unavatar.io/facebook/${fromHandle}?fallback=https://api.dicebear.com/7.x/initials/png?seed=${encodeURIComponent(fromUser)}`;
                                 const text = c.message || '';
                                 if (!text) continue;
                                 const commentTime = c.created_time ? new Date(c.created_time) : new Date();
@@ -682,6 +692,7 @@ Return ONLY JSON: [{"tone": "short tone label", "text": "reply"}]`;
                                     update: {
                                         lastMessageSnippet: text.substring(0, 120),
                                         lastMessageAt: commentTime,
+                                        ...(participantAvatar ? { participantAvatar } : {}),
                                         ...(targetProjectId ? { projectId: targetProjectId } : {}),
                                     },
                                     create: {
@@ -692,6 +703,7 @@ Return ONLY JSON: [{"tone": "short tone label", "text": "reply"}]`;
                                         platformThreadId: `comment:${cid}`,
                                         participantName: fromUser,
                                         participantHandle: fromHandle,
+                                        participantAvatar,
                                         lastMessageSnippet: text.substring(0, 120),
                                         lastMessageAt: commentTime,
                                         isRead: false,
@@ -739,6 +751,7 @@ Return ONLY JSON: [{"tone": "short tone label", "text": "reply"}]`;
                             if (!text) continue;
                             const actor = c.actor || 'LinkedIn Member';
                             const cleanHandle = String(actor).replace(/^urn:li:(person|organization):/, '');
+                            const participantAvatar = cleanHandle ? `https://unavatar.io/linkedin/${cleanHandle}?fallback=https://api.dicebear.com/7.x/initials/png?seed=${encodeURIComponent(cleanHandle)}` : null;
 
                             const conv = await db.socialConversation.upsert({
                                 where: {
@@ -761,6 +774,7 @@ Return ONLY JSON: [{"tone": "short tone label", "text": "reply"}]`;
                                     platformThreadId: `comment:${cid}`,
                                     participantName: cleanHandle || 'LinkedIn Member',
                                     participantHandle: cleanHandle || 'linkedin.member',
+                                    participantAvatar,
                                     lastMessageSnippet: text.substring(0, 120),
                                     lastMessageAt: new Date(),
                                     isRead: false,
@@ -833,6 +847,7 @@ Return ONLY JSON: [{"tone": "short tone label", "text": "reply"}]`;
             platformThreadId: `test_${Date.now()}`,
             participantName: 'Alex Rivera',
             participantHandle: 'alex.rivera.brand',
+            participantAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80',
             messageContent: 'Hey! Loved your recent video on personal branding. Are you currently taking new 1-on-1 strategy clients?',
             platformMessageId: `msg_${Date.now()}`,
         });

@@ -446,6 +446,9 @@ model SocialEngagementRule {
   actionPublicReplies     String[]                @default([])
   actionSendDm            Boolean                 @default(true)
   actionDmTemplate        String                  @db.Text
+  requireFollow                 Boolean                 @default(false)
+  actionDmBeforeFollowTemplate  String?                 @db.Text
+  actionDmAfterFollowTemplate   String?                 @db.Text
   createdAt               DateTime                @default(now())
   updatedAt               DateTime                @updatedAt
 
@@ -466,6 +469,8 @@ model SocialInteractionLog {
   platform                String
   recipientHandle         String
   status                  String                  // "success", "failed"
+  followStatus            String?
+  beforeDmSent            String?                 @db.Text
   commentLiked            Boolean                 @default(false)
   publicReplySent         String?                 @db.Text
   dmSent                  String?                 @db.Text

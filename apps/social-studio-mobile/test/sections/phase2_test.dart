@@ -84,7 +84,7 @@ void main() {
               : {'success': true, 'jobId': 'apj_1', 'calendarId': 'cal1', 'status': 'completed', 'stage': 'done', 'progress': 100, 'totalPieces': 30});
         });
       final h = await pumpApp(tester, b, location: '/planner/new');
-      await tester.tap(find.text('Generate 30-day calendar'));
+      await tester.tap(find.textContaining('Generate 30-'));
       await settle(tester);
       expect(find.text('Writing hooks and scripts'), findsOneWidget);
       final body = b.last('POST', '$sm/projects/p1/autopilot/calendar')!.json;
@@ -103,7 +103,7 @@ void main() {
         ..json('GET', '$sm/projects/:id/autopilot/jobs/:jobId',
             {'success': true, 'jobId': 'apj_live', 'calendarId': 'cal1', 'status': 'running', 'stage': 'research', 'progress': 10});
       await pumpApp(tester, b, location: '/planner/new');
-      await tester.tap(find.text('Generate 30-day calendar'));
+      await tester.tap(find.textContaining('Generate 30-'));
       await settle(tester);
       expect(find.text('Researching your niche'), findsOneWidget);
       expect(b.calls('GET', '$sm/projects/p1/autopilot/jobs/apj_live'), isNotEmpty);
@@ -117,12 +117,12 @@ void main() {
           'error': {'code': 'AI_NOT_CONFIGURED', 'message': 'No AI provider is configured for this workspace.'},
         });
       await pumpApp(tester, b, location: '/planner/new');
-      await tester.tap(find.text('Generate 30-day calendar'));
+      await tester.tap(find.textContaining('Generate 30-'));
       await settle(tester);
       expect(find.text('No AI provider is configured for this workspace.'), findsOneWidget);
-      await tester.tap(find.text('Use the classic generator'));
+      await tester.tap(find.text('Try again'));
       await settle(tester);
-      expect(find.text('Brand name *'), findsOneWidget);
+      expect(find.textContaining('Generate 30-'), findsOneWidget);
     });
   });
 
@@ -137,6 +137,8 @@ void main() {
             'error': {'code': 'IMAGE_MODEL_NOT_CONFIGURED', 'message': 'No image model'}},
         }, status: 202);
       await pumpApp(tester, b, location: '/planner/cal1');
+      await tester.tap(find.text('2').first);
+      await settle(tester);
       await tester.tap(find.text('3 myths about shipping'));
       await settle(tester);
       expect(find.byType(PieceSheet), findsOneWidget);

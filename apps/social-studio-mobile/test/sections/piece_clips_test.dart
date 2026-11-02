@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:social_studio_mobile/data/models/vault_item.dart';
 import 'package:social_studio_mobile/features/library/vault_provider.dart';
@@ -37,6 +38,8 @@ void main() {
     await drive(tester, items.addItem(name: 'Clip 1', type: VaultItemType.video, localPath: '/clips/p1/a.mp4', pieceId: 'piece1', takeIndex: 1));
     await drive(tester, items.addItem(name: 'Elsewhere', type: VaultItemType.video, localPath: '/clips/p1/c.mp4', pieceId: 'piece9', takeIndex: 1));
 
+    await tester.tap(find.text('2').first);
+    await settle(tester);
     await tester.tap(find.text('3 myths about shipping'));
     await settle(tester);
     expect(find.text('Clips (2)'), findsOneWidget);

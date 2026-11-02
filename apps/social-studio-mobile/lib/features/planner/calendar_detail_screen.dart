@@ -175,8 +175,8 @@ class _CalendarDetailScreenState extends ConsumerState<CalendarDetailScreen> {
               ),
             ],
 
-            // Pieces list (by week)
-            if (c.pieces.isNotEmpty) ...[
+            // Pieces list (by week) - shown only when switched to list view
+            if (c.pieces.isNotEmpty && !_isGridView) ...[
               SizedBox(height: 16),
               for (final week in c.piecesByWeek.entries) ...[
                 SectionHeader('Week ${week.key}'),
@@ -508,8 +508,10 @@ class _DayPieceCard extends StatelessWidget {
             label: piece.contentType.isEmpty ? 'Post' : piece.contentType,
             color: isVideo ? AppTheme.accent : isCarousel ? AppTheme.success : AppTheme.accentBlue,
           ),
-          SizedBox(width: 6),
-          StatusChip(label: piece.status.label, color: piece.status.color),
+          if (piece.status != PieceStatus.unknown) ...[
+            SizedBox(width: 6),
+            StatusChip(label: piece.status.label, color: piece.status.color),
+          ],
           if (brief != null && brief.timedBeats.isNotEmpty) ...[
             SizedBox(width: 6),
             StatusChip(label: 'Script ${brief.spokenSeconds.toStringAsFixed(0)}s', color: AppTheme.accent),
@@ -520,6 +522,7 @@ class _DayPieceCard extends StatelessWidget {
               child: Text(
                 '🧠 ${piece.psychologicalJob ?? brief?.psychologicalJob}',
                 overflow: TextOverflow.ellipsis,
+                maxLines: 1,
                 style: TextStyle(fontSize: 11, color: AppTheme.primary, fontWeight: FontWeight.w600),
               ),
             ),
@@ -560,28 +563,43 @@ class _DayPieceCard extends StatelessWidget {
         SizedBox(height: 10),
         Row(children: [
           Expanded(
+            flex: 2,
             child: OutlinedButton.icon(
-              style: OutlinedButton.styleFrom(visualDensity: VisualDensity.compact),
+              style: OutlinedButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+                minimumSize: const Size(0, 36),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
               onPressed: () {
                 Navigator.pop(context);
                 showModalBottomSheet<void>(
                   context: context,
-    useRootNavigator: true,
+                  useRootNavigator: true,
                   isScrollControlled: true,
                   backgroundColor: AppTheme.surface,
                   builder: (_) => PieceSheet(calendar: calendar, piece: piece),
                 );
               },
-              icon: Icon(Icons.description_rounded, size: 14),
-              label: Text('Brief'),
+              icon: Icon(Icons.description_rounded, size: 13),
+              label: Text(
+                'Brief',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+              ),
             ),
           ),
           if (isVideo || brief?.hasScript == true) ...[
             SizedBox(width: 6),
             Expanded(
+              flex: 3,
               child: FilledButton.tonalIcon(
                 style: FilledButton.styleFrom(
                   visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+                  minimumSize: const Size(0, 36),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   backgroundColor: AppTheme.primary.withValues(alpha: 0.15),
                   foregroundColor: AppTheme.primary,
                 ),
@@ -595,15 +613,24 @@ class _DayPieceCard extends StatelessWidget {
                     },
                   );
                 },
-                icon: Icon(Icons.menu_book_rounded, size: 14),
-                label: Text('Full script'),
+                icon: Icon(Icons.menu_book_rounded, size: 13),
+                label: Text(
+                  'Full script',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                ),
               ),
             ),
             SizedBox(width: 6),
             Expanded(
+              flex: 2,
               child: FilledButton.icon(
                 style: FilledButton.styleFrom(
                   visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+                  minimumSize: const Size(0, 36),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   backgroundColor: AppTheme.accent,
                   foregroundColor: Colors.white,
                 ),
@@ -616,16 +643,25 @@ class _DayPieceCard extends StatelessWidget {
                     'pieceId': piece.id,
                   });
                 },
-                icon: Icon(Icons.videocam_rounded, size: 14),
-                label: Text('Shoot'),
+                icon: Icon(Icons.videocam_rounded, size: 13),
+                label: Text(
+                  'Shoot',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                ),
               ),
             ),
           ] else if (isCarousel && calendar.projectId != null) ...[
-            SizedBox(width: 8),
+            SizedBox(width: 6),
             Expanded(
+              flex: 2,
               child: FilledButton.icon(
                 style: FilledButton.styleFrom(
                   visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+                  minimumSize: const Size(0, 36),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   backgroundColor: AppTheme.success,
                   foregroundColor: Colors.white,
                 ),
@@ -634,8 +670,13 @@ class _DayPieceCard extends StatelessWidget {
                   showCarouselSheet(context,
                       projectId: calendar.projectId!, pieceId: piece.id, title: piece.headline);
                 },
-                icon: Icon(Icons.view_carousel_rounded, size: 14),
-                label: Text('Design'),
+                icon: Icon(Icons.view_carousel_rounded, size: 13),
+                label: Text(
+                  'Design',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                ),
               ),
             ),
           ],
@@ -683,7 +724,7 @@ class _PieceTile extends StatelessWidget {
                   piece.platform,
                   piece.contentType,
                   if (hasScript && brief != null && brief.timedBeats.isNotEmpty) 'Script ${brief.spokenSeconds.toStringAsFixed(0)}s',
-                  piece.status.label,
+                  if (piece.status != PieceStatus.unknown) piece.status.label,
                 ].where((s) => s.isNotEmpty).join(' · '),
                 style: Theme.of(context).textTheme.labelSmall,
               ),
@@ -1033,17 +1074,29 @@ class _PieceSheetState extends ConsumerState<PieceSheet> {
         Row(children: [
           Expanded(
             child: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+                minimumSize: const Size(0, 38),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
               onPressed: () {
                 Navigator.pop(context);
                 context.push('/posts/new?$pieceQuery', extra: prefill);
               },
-              icon: Icon(Icons.send_rounded, size: 16),
-              label: Text('To Post'),
+              icon: Icon(Icons.send_rounded, size: 14),
+              label: Text('To Post', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
             ),
           ),
           SizedBox(width: 8),
           Expanded(
             child: OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+                minimumSize: const Size(0, 38),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
               // The camera opens on top of this sheet and its takes are linked to the piece (listed under Clips).
               onPressed: () => context.push('/camera', extra: {
                 'hook': prefill['hook'] ?? p.headline,
@@ -1051,15 +1104,23 @@ class _PieceSheetState extends ConsumerState<PieceSheet> {
                 'projectId': projectId,
                 'pieceId': p.id,
               }),
-              icon: Icon(Icons.videocam_rounded, size: 16),
-              label: Text('Shoot'),
+              icon: Icon(Icons.videocam_rounded, size: 14),
+              label: Text('Shoot', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
             ),
           ),
           SizedBox(width: 8),
-          OutlinedButton.icon(
-            onPressed: _showPreview,
-            icon: Icon(Icons.remove_red_eye_rounded, size: 16),
-            label: Text('Preview'),
+          Expanded(
+            child: OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+                minimumSize: const Size(0, 38),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              onPressed: _showPreview,
+              icon: Icon(Icons.remove_red_eye_rounded, size: 14),
+              label: Text('Preview', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+            ),
           ),
         ]),
         if (p.contentType.toLowerCase().contains('video') ||

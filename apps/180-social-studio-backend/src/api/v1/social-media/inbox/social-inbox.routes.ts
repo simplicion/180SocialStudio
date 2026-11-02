@@ -44,8 +44,9 @@ router.get('/conversations/:id', async (req: Request, res: Response) => {
 // Send message / reply
 router.post('/conversations/:id/messages', async (req: Request, res: Response) => {
     try {
+        const companyId = getCompanyId(req);
         const { content, senderType } = req.body;
-        const message = await SocialInboxService.sendMessage(String(req.params.id), content, senderType);
+        const message = await SocialInboxService.sendMessage(String(req.params.id), content, senderType, companyId);
         res.status(201).json({ success: true, message });
     } catch (error: any) {
         sendRouteError(res, error, 'inbox');

@@ -127,9 +127,12 @@ class AuthRepository {
 
   Future<Json> fetchMe() async {
     try {
+      return await _api.get('/api/auth/me');
+    } on ApiException catch (e) {
+      if (e.isNetwork) rethrow;
       return await _api.get('/api/v1/social-media/auth/me');
     } catch (_) {
-      return await _api.get('/api/auth/me');
+      return await _api.get('/api/v1/social-media/auth/me');
     }
   }
 

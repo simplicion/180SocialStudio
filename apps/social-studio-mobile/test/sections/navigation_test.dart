@@ -58,7 +58,9 @@ void main() {
     await pumpApp(tester, b);
     expect(b.calls('POST', '/api/auth/refresh'), hasLength(1));
     expect(b.last('POST', '/api/auth/refresh')!.json['refreshToken'], 'refresh-1');
-    final me = b.calls('GET', '/api/auth/me').toList();
+    final me = b.requests.where((r) => r.method == 'GET' && (r.path == '/api/auth/me' || r.path == '$sm/auth/me')).toList();
+
+
     expect(me.first.authorization, 'Bearer access-1');
     expect(me.last.authorization, 'Bearer ${b.validAccessToken}');
     expect(find.byType(StudioDashboardScreen), findsOneWidget);

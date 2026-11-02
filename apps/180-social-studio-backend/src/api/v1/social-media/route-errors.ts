@@ -15,7 +15,8 @@ export function sendRouteError(res: Response, error: any, scope: string) {
         return res.status(status).json({ success: false, code: error.code, error: error.message, ...(error.details ? { details: error.details } : {}) });
     }
     console.error(`[social-media:${scope}] unexpected error`, error);
-    return res.status(500).json({ success: false, code: 'INTERNAL', error: 'Unexpected error' });
+    const message = error?.message || 'Unexpected error';
+    return res.status(500).json({ success: false, code: error?.code || 'INTERNAL', error: message, message });
 }
 
 /** The caller's company from the verified JWT only (never a header, body or query value). */

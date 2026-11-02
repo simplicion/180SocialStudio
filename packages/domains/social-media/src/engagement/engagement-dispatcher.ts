@@ -1,6 +1,6 @@
 import { getDb, timing } from '../publishing/http';
 import { planEngagementActions } from './capabilities';
-import { likeComment, replyToComment, sendDirectMessage, sendPrivateReply } from './platform-actions';
+import { likeComment, replyToComment, sendDirectMessage, sendPrivateReply, checkUserFollows } from './platform-actions';
 import { EngagementRateLimiter } from './rate-limiter';
 import { SocialTokenVault } from '../publishing/token-vault';
 import { InboundEngagementEvent, EngagementExecutionResult } from './types';
@@ -14,7 +14,12 @@ export class EngagementDispatcher {
      * {handle} -> recipient's username / handle
      * {deliverable_link} -> rule's deliverable URL
      */
-    static interpolateTemplate(template: string, event: InboundEngagementEvent, deliverableUrl?: string): string {
+    static interpolateTemplate(
+        template: string,
+        event: InboundEngagementEvent,
+        deliverableUrl?: string,
+        creatorAccount?: { username?: string | null; accountName?: string | null; platform?: string }
+    ): string {
         if (!template || typeof template !== 'string') return '';
         let result = template;
         const senderHandle = event.senderHandle || 'friend';
@@ -24,6 +29,17 @@ export class EngagementDispatcher {
         const firstName = (event.senderName || rawHandle).split(' ')[0].replace(/^@/, '');
         const link = deliverableUrl || '';
 
+        const creatorRaw = (creatorAccount?.username || creatorAccount?.accountName || '').replace(/^@/, '');
+        const creatorHandle = creatorRaw ? `@${creatorRaw}` : '';
+        let profileLink = '';
+        if (creatorRaw) {
+            if (event.platform === 'instagram') profileLink = `https://instagram.com/${creatorRaw}`;
+            else if (event.platform === 'facebook') profileLink = `https://facebook.com/${creatorRaw}`;
+            else if (event.platform === 'linkedin') profileLink = `https://linkedin.com/in/${creatorRaw}`;
+            else if (event.platform === 'youtube') profileLink = `https://youtube.com/@${creatorRaw}`;
+            else profileLink = `https://instagram.com/${creatorRaw}`;
+        }
+
         result = result.replace(/\{name\}/gi, name);
         result = result.replace(/\{handle\}/gi, handle);
         result = result.replace(/\{username\}/gi, handle);
@@ -31,6 +47,10 @@ export class EngagementDispatcher {
         result = result.replace(/\{deliverable_link\}/gi, link);
         result = result.replace(/\{link\}/gi, link);
         result = result.replace(/\{url\}/gi, link);
+        result = result.replace(/\{profile_link\}/gi, profileLink);
+        result = result.replace(/\{profile_url\}/gi, profileLink);
+        result = result.replace(/\{follow_link\}/gi, profileLink);
+        result = result.replace(/\{creator_handle\}/gi, creatorHandle || handle);
         return result.trim();
     }
 
@@ -100,8 +120,11 @@ export class EngagementDispatcher {
 
         const writeLog = async (status: string, extra: Record<string, any> = {}) => {
             const notes = (outcome.actions || []).filter((a) => a.status !== 'sent').map((a) => `${a.action}: ${a.reason}`).join('; ');
+            const finalStatus = outcome.followStatus === 'pending' ? 'pending_follow' : status;
             const data = {
-                status,
+                status: finalStatus,
+                followStatus: outcome.followStatus || (rule.requireFollow ? 'pending' : null),
+                beforeDmSent: outcome.beforeDmSent || null,
                 commentLiked: outcome.commentLiked,
                 publicReplySent: outcome.publicReplySent || null,
                 dmSent: outcome.dmSent || null,
@@ -231,13 +254,61 @@ export class EngagementDispatcher {
                     });
                     if (await run('reply', () => replyToComment(event.platform, account, event.commentId!, text, token, event.mediaId))) outcome.publicReplySent = text;
                 } else {
-                    const text = this.interpolateTemplate(rule.actionDmTemplate, event, rule.actionDmDeliverableUrl);
-                    const ok = await run('dm', () =>
-                        event.eventType === 'dm'
-                            ? sendDirectMessage(event.platform, account, event.senderId, text, token)
-                            : sendPrivateReply(event.platform, account, event.commentId!, event.senderId, text, token),
-                    );
-                    if (ok) outcome.dmSent = text;
+                    const isFollowGated = Boolean(rule.requireFollow);
+                    let isFollowing: boolean | null = null;
+                    if (isFollowGated) {
+                        try {
+                            isFollowing = await checkUserFollows(event.platform, account, event.senderId, token);
+                        } catch {
+                            isFollowing = null;
+                        }
+                    }
+
+                    if (isFollowGated && isFollowing !== true) {
+                        const existingPending = await db.socialInteractionLog.findFirst({
+                            where: {
+                                companyId: event.companyId,
+                                ruleId: rule.id,
+                                recipientId: event.senderId,
+                                status: 'pending_follow',
+                                ...(dedupTarget ? { OR: [{ platformMediaId: dedupTarget }, { platformCommentId: dedupTarget }] } : {}),
+                            },
+                            select: { id: true },
+                        });
+
+                        if (existingPending) {
+                            outcome.actions!.push({ action: 'dm', status: 'skipped', reason: 'already_sent_follow_gate_prompt' });
+                        } else {
+                            const defaultBefore = "Hey {name}! 👋 To unlock your reward link, please follow {creator_handle} first: {profile_link}\nOnce followed, reply 'DONE' or click below to receive your link instantly! 🎁";
+                            const template = rule.actionDmBeforeFollowTemplate || defaultBefore;
+                            const text = this.interpolateTemplate(template, event, undefined, account);
+                            const quickReplies = [{ title: "I've Followed! ✅", payload: 'CONFIRM_FOLLOW' }];
+                            const ok = await run('dm', () =>
+                                event.eventType === 'dm'
+                                    ? sendDirectMessage(event.platform, account, event.senderId, text, token, quickReplies)
+                                    : sendPrivateReply(event.platform, account, event.commentId!, event.senderId, text, token, quickReplies)
+                            );
+                            if (ok) {
+                                outcome.dmSent = text;
+                                outcome.beforeDmSent = text;
+                                outcome.followStatus = 'pending';
+                            }
+                        }
+                    } else {
+                        const template = (isFollowGated && rule.actionDmAfterFollowTemplate)
+                            ? rule.actionDmAfterFollowTemplate
+                            : rule.actionDmTemplate;
+                        const text = this.interpolateTemplate(template, event, rule.actionDmDeliverableUrl, account);
+                        const ok = await run('dm', () =>
+                            event.eventType === 'dm'
+                                ? sendDirectMessage(event.platform, account, event.senderId, text, token)
+                                : sendPrivateReply(event.platform, account, event.commentId!, event.senderId, text, token)
+                        );
+                        if (ok) {
+                            outcome.dmSent = text;
+                            if (isFollowGated) outcome.followStatus = 'verified';
+                        }
+                    }
                 }
             }
 
@@ -300,7 +371,7 @@ export class EngagementDispatcher {
                     },
                 })
                 .catch(() => null);
-            if (status !== 'failed') EngagementMatcher.recordDeduplication(event.companyId, rule.id, event.senderId, dedupTarget);
+            if (status !== 'failed' && outcome.followStatus !== 'pending') EngagementMatcher.recordDeduplication(event.companyId, rule.id, event.senderId, dedupTarget);
             return outcome;
         } finally {
             await EngagementRateLimiter.release(claimKey);
@@ -311,6 +382,99 @@ export class EngagementDispatcher {
      * Re-runs rate-limited events whose retry time has come (called from the publishing scheduler tick).
      * Rows are claimed with a conditional update, so several workers never replay the same event.
      */
+    /**
+     * Resolves a pending follow-gate interaction when an inbound message arrives:
+     * Verifies follower status via User Profile API; if verified or user confirms, delivers reward DM.
+     */
+    static async resolveFollowGate(
+        pendingLog: any,
+        event: InboundEngagementEvent,
+        account: any
+    ): Promise<boolean> {
+        const db = getDb();
+        const rule = pendingLog.rule || (pendingLog.ruleId ? await db.socialEngagementRule.findFirst({ where: { id: pendingLog.ruleId } }) : null);
+        if (!rule) return false;
+        let token: string;
+        try {
+            token = await SocialTokenVault.getAccessToken(account);
+        } catch {
+            return false;
+        }
+
+        let isFollowing = await checkUserFollows(account.platform, account, event.senderId, token);
+        const textLower = (event.text || '').toLowerCase().trim();
+        const isConfirmationText = /^(done|followed|following|i followed|i'm following|confirm|yes|ok|👍|✅)/i.test(textLower) ||
+            textLower.includes('followed') ||
+            textLower.includes('done');
+
+        if (isFollowing === true || (isFollowing === null && isConfirmationText) || isFollowing === null) {
+            const rewardTemplate = rule.actionDmAfterFollowTemplate || rule.actionDmTemplate;
+            const rewardText = this.interpolateTemplate(rewardTemplate, event, rule.actionDmDeliverableUrl, account);
+
+            try {
+                await sendDirectMessage(account.platform, account, event.senderId, rewardText, token);
+            } catch (err: any) {
+                console.warn(`[EngagementDispatcher] Failed delivering follow reward: ${err.message}`);
+                return false;
+            }
+
+            try {
+                await db.socialInteractionLog.update({
+                    where: { id: pendingLog.id },
+                    data: {
+                        status: 'success',
+                        followStatus: 'verified',
+                        dmSent: rewardText,
+                    },
+                });
+                await db.socialEngagementRule.updateMany({
+                    where: { id: rule.id, companyId: event.companyId },
+                    data: {
+                        statsDmsSentCount: { increment: 1 },
+                        statsLeadsConverted: { increment: 1 },
+                    },
+                });
+            } catch {}
+
+            const dedupTarget = pendingLog.platformMediaId || pendingLog.platformCommentId;
+            EngagementMatcher.recordDeduplication(event.companyId, rule.id, event.senderId, dedupTarget);
+
+            try {
+                const thread = await db.socialConversation.upsert({
+                    where: { companyId_platform_platformThreadId: { companyId: event.companyId, platform: event.platform, platformThreadId: event.senderId } },
+                    update: { lastMessageSnippet: rewardText.substring(0, 120), lastMessageAt: new Date(), aiAgentActive: Boolean(rule.actionEnableAiAgent) },
+                    create: {
+                        companyId: event.companyId,
+                        projectId: rule.projectId || account.projectId || null,
+                        socialAccountId: account.id,
+                        platform: event.platform,
+                        platformThreadId: event.senderId,
+                        participantName: event.senderName || event.senderHandle,
+                        participantHandle: event.senderHandle,
+                        lastMessageSnippet: rewardText.substring(0, 120),
+                        lastMessageAt: new Date(),
+                        isRead: true,
+                        aiAgentActive: Boolean(rule.actionEnableAiAgent),
+                    },
+                });
+                await db.socialMessage.create({ data: { conversationId: thread.id, senderType: 'ai_bot', content: rewardText } });
+            } catch {}
+
+            return true;
+        } else {
+            // User explicitly not following yet
+            const creatorRaw = (account.username || account.accountName || '').replace(/^@/, '');
+            const profileLink = event.platform === 'instagram' ? `https://instagram.com/${creatorRaw}` : '';
+            const remindText = `Almost there! We noticed you haven't followed @${creatorRaw} yet. Please tap here to follow: ${profileLink} and reply 'DONE' once followed to unlock your access! 🎁`;
+            try {
+                await sendDirectMessage(account.platform, account, event.senderId, remindText, token, [
+                    { title: "I've Followed! ✅", payload: 'CONFIRM_FOLLOW' },
+                ]);
+            } catch {}
+            return true;
+        }
+    }
+
     static async retryDeferred(opts: { limit?: number } = {}): Promise<{ retried: number }> {
         const db = getDb();
         const now = new Date(timing.now());

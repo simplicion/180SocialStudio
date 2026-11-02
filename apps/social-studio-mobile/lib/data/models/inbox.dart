@@ -69,6 +69,62 @@ class Conversation {
   /// Whether the AI answers this thread: on via its own switch or the account mode, unless a person took it over.
   bool get aiAnswers => !isHumanTakeover && (aiAgentActive || accountAiMode != 'off');
 
+  /// Construct the profile URL for this user on the platform (Instagram, Facebook, LinkedIn).
+  String? get profileWebUrl {
+    final handle = (participantHandle ?? '').replaceAll('@', '').trim();
+    final target = handle.isNotEmpty && handle != 'anonymous' && handle != 'unknown'
+        ? handle
+        : participantName.replaceAll('@', '').trim();
+    if (target.isEmpty || target == 'anonymous' || target == 'unknown' || target.startsWith('User ')) return null;
+    return switch (platform) {
+      SocialPlatform.instagram => 'https://www.instagram.com/$target/',
+      SocialPlatform.facebook => 'https://www.facebook.com/$target',
+      SocialPlatform.linkedin => target.startsWith('urn:li:')
+          ? 'https://www.linkedin.com/feed/'
+          : 'https://www.linkedin.com/in/$target',
+      _ => null,
+    };
+  }
+
+  /// Native app deep-link URI
+  String? get profileAppUri {
+    final handle = (participantHandle ?? '').replaceAll('@', '').trim();
+    final target = handle.isNotEmpty && handle != 'anonymous' && handle != 'unknown'
+        ? handle
+        : participantName.replaceAll('@', '').trim();
+    if (target.isEmpty || target == 'anonymous' || target == 'unknown' || target.startsWith('User ')) return null;
+    return switch (platform) {
+      SocialPlatform.instagram => 'instagram://user?username=$target',
+      SocialPlatform.facebook => 'fb://facewebmodal/f?href=https://www.facebook.com/$target',
+      SocialPlatform.linkedin => 'linkedin://in/$target',
+      _ => null,
+    };
+  }
+
+  /// Reliable avatar URL: uses stored participantAvatar if present, or unavatar / dicebear initials
+  String get displayAvatarUrl {
+    if (participantAvatar != null && participantAvatar!.trim().isNotEmpty) {
+      return participantAvatar!;
+    }
+    final handle = (participantHandle ?? '').replaceAll('@', '').trim();
+    final target = handle.isNotEmpty && handle != 'anonymous' && handle != 'unknown'
+        ? handle
+        : participantName.replaceAll('@', '').trim();
+    final cleanSeed = Uri.encodeComponent(target.isNotEmpty ? target : 'user');
+    return switch (platform) {
+      SocialPlatform.instagram => target.isNotEmpty && !target.startsWith('User ')
+          ? 'https://unavatar.io/instagram/$target?fallback=https://api.dicebear.com/7.x/initials/png?seed=$cleanSeed'
+          : 'https://api.dicebear.com/7.x/initials/png?seed=$cleanSeed',
+      SocialPlatform.facebook => target.isNotEmpty && !target.startsWith('User ')
+          ? 'https://unavatar.io/facebook/$target?fallback=https://api.dicebear.com/7.x/initials/png?seed=$cleanSeed'
+          : 'https://api.dicebear.com/7.x/initials/png?seed=$cleanSeed',
+      SocialPlatform.linkedin => target.isNotEmpty && !target.startsWith('User ') && !target.startsWith('urn:li:')
+          ? 'https://unavatar.io/linkedin/$target?fallback=https://api.dicebear.com/7.x/initials/png?seed=$cleanSeed'
+          : 'https://api.dicebear.com/7.x/initials/png?seed=$cleanSeed',
+      _ => 'https://api.dicebear.com/7.x/initials/png?seed=$cleanSeed',
+    };
+  }
+
   factory Conversation.fromJson(Json j) {
     final account = jMapOrNull(j['socialAccount']);
     final project = jMapOrNull(j['project']);

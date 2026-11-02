@@ -243,18 +243,21 @@ export class LinkedInAdapter {
         if (isSandboxToken(accessToken)) {
             return { commentUrn: `urn:li:comment:sim_${Date.now()}` };
         }
-        const author = actorUrn.startsWith('urn:li:') ? actorUrn : `urn:li:organization:${actorUrn}`;
-        const res = await providerFetch('linkedin', `${REST}/socialActions/${encodeURIComponent(targetUrn)}/comments`, {
+        const author = actorUrn.startsWith('urn:li:')
+            ? actorUrn
+            : (/^[0-9]+$/.test(actorUrn) ? `urn:li:organization:${actorUrn}` : `urn:li:person:${actorUrn}`);
+        const cleanTarget = targetUrn.startsWith('urn:li:') ? targetUrn : `urn:li:comment:${targetUrn}`;
+        const res = await providerFetch('linkedin', `${REST}/socialActions/${encodeURIComponent(cleanTarget)}/comments`, {
             method: 'POST',
             headers: headers(accessToken),
             body: JSON.stringify({
                 actor: author,
-                object: targetUrn,
+                object: cleanTarget,
                 message: { text },
             }),
         });
         const data = await expectOk('linkedin', res, 'LinkedIn comment reply');
-        const urn = res.headers.get('x-restli-id') || data?.id || targetUrn;
+        const urn = res.headers.get('x-restli-id') || data?.id || cleanTarget;
         return { commentUrn: urn };
     }
 

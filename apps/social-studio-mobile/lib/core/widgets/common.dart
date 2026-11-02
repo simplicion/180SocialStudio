@@ -154,8 +154,14 @@ class ErrorView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final e = error;
-    final notAvailable = e is ApiException && e.kind == ApiErrorKind.notFound;
     final offline = e is ApiException && e.isNetwork;
+    final msg = errorText(error).toLowerCase();
+    final isRouteNotFound = e is ApiException &&
+        e.kind == ApiErrorKind.notFound &&
+        (msg.contains('route') || msg.contains('cannot get') || msg.contains('cannot post'));
+    final isWorkspaceNotFound = msg.contains('workspace not found');
+    final isNotFound = e is ApiException && e.kind == ApiErrorKind.notFound;
+    final notAvailable = isRouteNotFound || (isNotFound && !isWorkspaceNotFound);
     final icon = offline
         ? Icons.cloud_off_rounded
         : notAvailable
@@ -167,9 +173,13 @@ class ErrorView extends StatelessWidget {
       Text(
         offline
             ? 'You are offline'
-            : notAvailable
-                ? 'Not available on the server yet'
-                : 'Something went wrong',
+            : isWorkspaceNotFound
+                ? 'Workspace not found'
+                : isRouteNotFound
+                    ? 'Not available on the server yet'
+                    : isNotFound
+                        ? 'Not available on the server yet'
+                        : 'Something went wrong',
         style: Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 16),
         textAlign: TextAlign.center,
       ),

@@ -9,6 +9,7 @@ import '../../core/widgets/common.dart';
 import '../../core/widgets/universal_skeleton.dart';
 import '../../data/models/autopilot.dart';
 import '../../data/models/content_calendar.dart';
+import 'planner_providers.dart';
 
 /// Full script for one calendar video piece.
 ///
@@ -27,9 +28,22 @@ class DetailedScriptScreen extends ConsumerStatefulWidget {
 
 class _DetailedScriptScreenState extends ConsumerState<DetailedScriptScreen> with SingleTickerProviderStateMixin {
   late final _tabs = TabController(length: 2, vsync: this);
-  late final PieceBrief? _brief = PieceBrief.parse(widget.piece.videoScriptOrHooks);
-  late ProductionScript? _shooting = _brief?.productionScript;
+  late CalendarPiece _piece;
+  late PieceBrief? _brief;
+  late ProductionScript? _shooting;
+
   bool _generating = false;
+  bool _regeneratingScript = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _piece = widget.piece;
+    _brief = PieceBrief.parse(_piece.videoScriptOrHooks);
+    _shooting = _brief?.productionScript;
+  }
+
+
   Object? _error;
 
   String? get _projectId => widget.calendar?.projectId;
@@ -48,7 +62,7 @@ class _DetailedScriptScreenState extends ConsumerState<DetailedScriptScreen> wit
       _error = null;
     });
     try {
-      final script = await ref.read(socialApiProvider).generateShootingScript(projectId, widget.piece.id, force: force);
+      final script = await ref.read(socialApiProvider).generateShootingScript(projectId, _piece.id, force: force);
       if (!mounted) return;
       setState(() => _shooting = script);
     } catch (e) {
@@ -58,16 +72,70 @@ class _DetailedScriptScreenState extends ConsumerState<DetailedScriptScreen> wit
     }
   }
 
+  Future<void> _improveScript() async {
+    final projectId = _projectId;
+    if (projectId == null) {
+      showError(context, 'Calendar project context is required to regenerate.');
+      return;
+    }
+    if (_regeneratingScript || _generating) return;
+
+    final brief = _brief;
+    final adviceList = [
+      if (brief != null) ...brief.craftBlocking,
+      if (brief != null) ...brief.craftAdvice,
+    ];
+    final defaultGuidance = adviceList.isNotEmpty
+        ? 'Resolve craft points: ${adviceList.take(4).join('; ')}'
+        : 'Match target runtime (~60s), land hook in under 3s, remove AI clichés for human voice.';
+
+    final customInstruction = await promptText(
+      context,
+      title: 'Improve & Regenerate Script',
+      label: 'Guidance (optional — craft advice and target duration are auto-applied)',
+      initial: defaultGuidance,
+      action: 'Improve Script',
+    );
+    if (customInstruction == null || !mounted) return;
+
+    setState(() {
+      _regeneratingScript = true;
+      _error = null;
+    });
+
+    try {
+      final updated = await ref.read(socialApiProvider).regeneratePiece(
+            projectId,
+            _piece.id,
+            instruction: customInstruction.trim().isEmpty ? null : customInstruction.trim(),
+          );
+      if (!mounted) return;
+      setState(() {
+        _piece = updated;
+        _brief = PieceBrief.parse(updated.videoScriptOrHooks);
+        _shooting = _brief?.productionScript;
+      });
+      if (widget.calendar?.id case final calId?) {
+        ref.invalidate(calendarDetailProvider(calId));
+      }
+      showSuccess(context, 'Script improved and regenerated!');
+    } catch (e) {
+      if (mounted) showError(context, 'Failed to improve script: $e');
+    } finally {
+      if (mounted) setState(() => _regeneratingScript = false);
+    }
+  }
+
   void _copy(String text, String what) {
     Clipboard.setData(ClipboardData(text: text));
     showSuccess(context, '$what copied');
   }
 
   void _record(PieceBrief brief) => context.push('/camera', extra: {
-        'hook': brief.openingHook ?? widget.piece.headline,
+        'hook': brief.openingHook ?? _piece.headline,
         'script': brief.teleprompterText,
         'projectId': _projectId,
-        'pieceId': widget.piece.id,
+        'pieceId': _piece.id,
       });
 
   @override
@@ -90,6 +158,13 @@ class _DetailedScriptScreenState extends ConsumerState<DetailedScriptScreen> wit
         title: Text('Detailed script'),
         actions: [
           IconButton(
+            tooltip: 'Improve & regenerate script',
+            icon: _regeneratingScript
+                ? SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.accent))
+                : Icon(Icons.auto_fix_high_rounded, color: AppTheme.accent),
+            onPressed: _regeneratingScript ? null : _improveScript,
+          ),
+          IconButton(
             tooltip: 'Copy the spoken script',
             icon: Icon(Icons.copy_rounded),
             onPressed: () => _copy(brief.teleprompterText, 'Script'),
@@ -100,14 +175,16 @@ class _DetailedScriptScreenState extends ConsumerState<DetailedScriptScreen> wit
       body: TabBarView(controller: _tabs, children: [_scriptTab(brief), _shootingTab(brief)]),
       bottomNavigationBar: SafeArea(
         minimum: EdgeInsets.fromLTRB(16, 8, 16, 12),
-        child: FilledButton.icon(
+        child: Row(children: [Expanded(flex: 2, child: OutlinedButton.icon(style: OutlinedButton.styleFrom(minimumSize: Size.fromHeight(48)), onPressed: _regeneratingScript ? null : _improveScript, icon: _regeneratingScript ? SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : Icon(Icons.auto_fix_high_rounded, size: 18), label: Text('Improve script', maxLines: 1, overflow: TextOverflow.ellipsis))), SizedBox(width: 10), Expanded(flex: 3, child: FilledButton.icon(
           style: FilledButton.styleFrom(minimumSize: Size.fromHeight(48)),
           onPressed: () => _record(brief),
           icon: Icon(Icons.videocam_rounded),
-          label: Text('Record with teleprompter'),
-        ),
-      ),
-    );
+          label: Text('Record with teleprompter', maxLines: 1, overflow: TextOverflow.ellipsis),
+        )),
+      ],
+    ),
+  ),
+);
   }
 
   // ── Script tab ─────────────────────────────────────────────────────────────
@@ -117,7 +194,7 @@ class _DetailedScriptScreenState extends ConsumerState<DetailedScriptScreen> wit
     return ListView(
       padding: EdgeInsets.fromLTRB(16, 16, 16, 24),
       children: [
-        Text(widget.piece.headline, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppTheme.textPrimary)),
+        Text(_piece.headline, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppTheme.textPrimary)),
         SizedBox(height: 10),
         Wrap(spacing: 8, runSpacing: 8, children: [
           _Stat(label: 'Spoken length', value: '${brief.spokenSeconds.toStringAsFixed(0)}s'),
@@ -149,6 +226,46 @@ class _DetailedScriptScreenState extends ConsumerState<DetailedScriptScreen> wit
           ),
         ],
         if (brief.craftAdvice.isNotEmpty) _Notice(title: 'Ways to make it stronger', lines: brief.craftAdvice, color: AppTheme.accent),
+        SizedBox(height: 16),
+        SectionCard(
+          borderColor: AppTheme.accent.withValues(alpha: 0.5),
+
+          padding: EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.auto_fix_high_rounded, color: AppTheme.accent, size: 20),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Strengthen Script & Humanize Voice',
+                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: AppTheme.textPrimary),
+                    ),
+                  ),
+                ],
+              ),
+              SizedBox(height: 6),
+              Text(
+                'Automatically applies all craft recommendations: matches target duration (~60s), lands hook under 3s, eliminates robotic AI tone, and ensures seamless looping.',
+                style: TextStyle(fontSize: 12, color: AppTheme.textSecondary, height: 1.4),
+              ),
+              SizedBox(height: 12),
+              FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  minimumSize: Size.fromHeight(42),
+                  backgroundColor: AppTheme.accent,
+                ),
+                onPressed: _regeneratingScript ? null : _improveScript,
+                icon: _regeneratingScript
+                    ? SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : Icon(Icons.refresh_rounded, size: 18),
+                label: Text(_regeneratingScript ? 'Improving script with AI...' : 'Improve & Regenerate Script'),
+              ),
+            ],
+          ),
+        ),
       ],
     );
   }

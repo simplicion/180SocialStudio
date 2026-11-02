@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/providers.dart';
@@ -110,23 +111,104 @@ class _ConversationScreenState extends ConsumerState<ConversationScreen> {
     }
   }
 
+  Future<void> _openProfile(Conversation c) async {
+    final appUri = c.profileAppUri;
+    final webUrl = c.profileWebUrl;
+    if (appUri != null) {
+      try {
+        final uri = Uri.parse(appUri);
+        if (await canLaunchUrl(uri)) {
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+          return;
+        }
+      } catch (_) {}
+    }
+    if (webUrl != null) {
+      try {
+        final uri = Uri.parse(webUrl);
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+        return;
+      } catch (e) {
+        if (mounted) showError(context, 'Could not open profile: $e');
+      }
+    } else {
+      showInfo(context, 'No external profile found for @${c.participantHandle ?? c.participantName}');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final conv = ref.watch(conversationProvider(widget.conversationId));
     final c = conv.valueOrNull;
     return Scaffold(
       appBar: AppBar(
-        title: Row(children: [
-          if (c != null) ...[Icon(c.platform.icon, color: c.platform.color, size: 18), SizedBox(width: 8)],
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(c?.participantName ?? 'Conversation', overflow: TextOverflow.ellipsis),
-              if (c?.participantHandle != null) Text('@${c!.participantHandle}', style: Theme.of(context).textTheme.labelSmall),
-            ]),
-          ),
-        ]),
+        titleSpacing: 0,
+        title: c == null
+            ? const Text('Conversation')
+            : InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: () => _openProfile(c),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  child: Row(children: [
+                    Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        CircleAvatar(
+                          radius: 19,
+                          backgroundColor: c.platform.color.withValues(alpha: 0.15),
+                          backgroundImage: NetworkImage(c.displayAvatarUrl),
+                          onBackgroundImageError: (_, __) {},
+                          child: Text(
+                            c.participantName.isNotEmpty ? c.participantName[0].toUpperCase() : '?',
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: c.platform.color),
+                          ),
+                        ),
+                        Positioned(
+                          right: -2,
+                          bottom: -2,
+                          child: Container(
+                            padding: const EdgeInsets.all(1.5),
+                            decoration: BoxDecoration(color: AppTheme.surface, shape: BoxShape.circle),
+                            child: Container(
+                              padding: const EdgeInsets.all(2.5),
+                              decoration: BoxDecoration(color: c.platform.color, shape: BoxShape.circle),
+                              child: Icon(c.platform.icon, color: Colors.white, size: 8),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                c.participantName,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Icon(Icons.open_in_new_rounded, size: 12, color: AppTheme.textMuted),
+                          ],
+                        ),
+                        if (c.participantHandle != null)
+                          Text('@${c.participantHandle}', style: Theme.of(context).textTheme.labelSmall),
+                      ]),
+                    ),
+                  ]),
+                ),
+              ),
         actions: [
           if (c != null) ...[
+            IconButton(
+              tooltip: 'Open profile on ${c.platform.label}',
+              icon: Icon(c.platform.icon, color: c.platform.color),
+              onPressed: () => _openProfile(c),
+            ),
             if (c.aiAnswers)
               IconButton(
                 tooltip: 'AI Agent is Active. Tap to take over.',

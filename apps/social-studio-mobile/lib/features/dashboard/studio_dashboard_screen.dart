@@ -398,28 +398,6 @@ void showProfileAndAccountsSheet(BuildContext context, WidgetRef ref) {
                   Divider(color: AppTheme.border, height: 1),
                   const SizedBox(height: 10),
 
-                  // Core Navigation Options
-                  _ProfileSheetTile(
-                    icon: Icons.forum_rounded,
-                    iconColor: AppTheme.primary,
-                    title: 'Social Inbox',
-                    subtitle: 'Direct messages & comments for ${project?.name ?? 'connected accounts'}',
-                    badgeCount: sheetRef.watch(unreadInboxCountProvider),
-                    onTap: () {
-                      Navigator.of(sheetContext).pop();
-                      context.push('/inbox');
-                    },
-                  ),
-                  _ProfileSheetTile(
-                    icon: Icons.radar_rounded,
-                    iconColor: AppTheme.accent,
-                    title: 'Command Center',
-                    subtitle: 'Monitor, create and check for Instagram, LinkedIn, YouTube and Facebook',
-                    onTap: () {
-                      Navigator.of(sheetContext).pop();
-                      context.push('/command-center');
-                    },
-                  ),
                   if (project != null) ...[
                     _ProfileSheetTile(
                       icon: Icons.hub_rounded,
@@ -508,7 +486,6 @@ class _ProfileSheetTile extends StatelessWidget {
     required this.subtitle,
     required this.onTap,
     this.titleColor,
-    this.badgeCount = 0,
   });
 
   final IconData icon;
@@ -517,7 +494,6 @@ class _ProfileSheetTile extends StatelessWidget {
   final String subtitle;
   final VoidCallback onTap;
   final Color? titleColor;
-  final int badgeCount;
 
   @override
   Widget build(BuildContext context) {
@@ -525,30 +501,15 @@ class _ProfileSheetTile extends StatelessWidget {
       color: Colors.transparent,
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-        leading: badgeCount > 0
-            ? Badge.count(
-                count: badgeCount,
-                backgroundColor: AppTheme.error,
-                textColor: Colors.white,
-                child: Container(
-                  width: 38,
-                  height: 38,
-                  decoration: BoxDecoration(
-                    color: iconColor.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Icon(icon, color: iconColor, size: 20),
-                ),
-              )
-            : Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: iconColor.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(icon, color: iconColor, size: 20),
-              ),
+        leading: Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: iconColor.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, color: iconColor, size: 20),
+        ),
         title: Text(
           title,
           style: TextStyle(
@@ -561,25 +522,7 @@ class _ProfileSheetTile extends StatelessWidget {
           subtitle,
           style: TextStyle(fontSize: 11.5, color: AppTheme.textSecondary),
         ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (badgeCount > 0)
-              Container(
-                margin: const EdgeInsets.only(right: 6),
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                decoration: BoxDecoration(
-                  color: AppTheme.error,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
-                  badgeCount > 99 ? '99+' : '$badgeCount',
-                  style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
-                ),
-              ),
-            Icon(Icons.chevron_right_rounded, size: 20, color: AppTheme.textMuted),
-          ],
-        ),
+        trailing: Icon(Icons.chevron_right_rounded, size: 20, color: AppTheme.textMuted),
         onTap: onTap,
       ),
     );

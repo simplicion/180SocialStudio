@@ -16,7 +16,9 @@
     "test:video-edge": "cd packages/video-engine-runtime && npx tsx src/tests/run-all-edge-tests.ts",
     "lint": "turbo run lint",
     "clean": "turbo run clean && rm -rf node_modules",
-    "format": "prettier --write \"**/*.{ts,tsx,dart,md}\""
+    "format": "prettier --write \"**/*.{ts,tsx,dart,md}\"",
+    "eval:autopilot": "tsx packages/domains/ai/evals/run-autopilot-eval.ts",
+    "eval:judge": "tsx packages/domains/ai/evals/judge-pairwise.ts"
   },
   "devDependencies": {
     "cross-env": "^7.0.3",

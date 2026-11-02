@@ -38,6 +38,8 @@
         ".": "./src/index.ts",
         "./agent-runs": "./src/agent-runs/index.ts",
         "./content/autopilot": "./src/content/autopilot/index.ts",
-        "./content/craft": "./src/content/craft/index.ts"
+        "./content/craft": "./src/content/craft/index.ts",
+        "./research": "./src/research/index.ts",
+        "./content/learning/outcome-model": "./src/content/learning/outcome-model.ts"
     }
 }

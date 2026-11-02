@@ -382,6 +382,12 @@ class _RuleCard extends ConsumerWidget {
                 Text('Auto-DM Deliverable', style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
                 SizedBox(width: 12),
               ],
+              if (rule.requireFollow) ...[
+                Icon(Icons.person_add_alt_1_rounded, size: 14, color: AppTheme.primary),
+                SizedBox(width: 4),
+                Text('Require Follow', style: TextStyle(fontSize: 12, color: AppTheme.primary, fontWeight: FontWeight.w600)),
+                SizedBox(width: 12),
+              ],
               if (rule.actionEnableAiAgent) ...[
                 Icon(Icons.auto_awesome, size: 14, color: AppTheme.warning),
                 SizedBox(width: 4),
@@ -403,6 +409,29 @@ class _RuleCard extends ConsumerWidget {
                   ),
                 ),
               ],
+            ),
+          ],
+          if (rule.requireFollow) ...[
+            Container(
+              margin: EdgeInsets.only(top: 8),
+              padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: AppTheme.primary.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppTheme.primary.withValues(alpha: 0.2)),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.lock_open_rounded, size: 14, color: AppTheme.primary),
+                  SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Follow-Gate Active: Prompt sent first -> Reward sent on follow',
+                      style: TextStyle(fontSize: 11, color: AppTheme.primary, fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
           Divider(height: 20, color: AppTheme.borderSubtle),
@@ -449,6 +478,10 @@ class _EngagementRuleFormSheetState extends ConsumerState<_EngagementRuleFormShe
   final _deliverableUrlCtl = TextEditingController();
   final _publicReplyCtl = TextEditingController(text: 'Sent to your DMs! Check your messages');
   final _aiPromptOverrideCtl = TextEditingController();
+  bool _requireFollow = false;
+  final _beforeFollowCtl = TextEditingController(
+    text: "Hey {name}! 👋 To unlock the link, please follow @{handle} first: {profile_link}\nOnce followed, reply 'DONE' and I'll send your reward right away! 🚀",
+  );
   String _triggerType = 'comment_keyword'; // 'comment_keyword', 'comment_any', 'dm_inbound'
   String _aiAgentGoal = 'qualify_lead'; // 'qualify_lead', 'book_demo', 'answer_support', 'deliver_resource'
   String? _selectedAccountId; // null = all connected accounts (e.g. all 5 accounts)
@@ -469,6 +502,7 @@ class _EngagementRuleFormSheetState extends ConsumerState<_EngagementRuleFormShe
     _deliverableUrlCtl.dispose();
     _publicReplyCtl.dispose();
     _aiPromptOverrideCtl.dispose();
+    _beforeFollowCtl.dispose();
     super.dispose();
   }
   void _applyPreset(String preset) {
@@ -541,16 +575,17 @@ class _EngagementRuleFormSheetState extends ConsumerState<_EngagementRuleFormShe
       });
     }
   }
-  void _insertToken(String token) {
-    final text = _dmTemplateCtl.text;
-    final selection = _dmTemplateCtl.selection;
+  void _insertToken(String token, [TextEditingController? targetCtl]) {
+    final ctl = targetCtl ?? _dmTemplateCtl;
+    final text = ctl.text;
+    final selection = ctl.selection;
     if (selection.isValid && selection.start >= 0 && selection.end >= 0) {
       final newText = text.replaceRange(selection.start, selection.end, token);
-      _dmTemplateCtl.text = newText;
-      _dmTemplateCtl.selection = TextSelection.collapsed(offset: selection.start + token.length);
+      ctl.text = newText;
+      ctl.selection = TextSelection.collapsed(offset: selection.start + token.length);
     } else {
-      _dmTemplateCtl.text = '$text $token'.trim();
-      _dmTemplateCtl.selection = TextSelection.collapsed(offset: _dmTemplateCtl.text.length);
+      ctl.text = '$text $token'.trim();
+      ctl.selection = TextSelection.collapsed(offset: ctl.text.length);
     }
     setState(() {});
   }
@@ -628,6 +663,9 @@ class _EngagementRuleFormSheetState extends ConsumerState<_EngagementRuleFormShe
       // LinkedIn sends no DM; the brand's words are never invented for it.
       'actionDmTemplate': dmTemplate,
       'actionDmDeliverableUrl': _deliverableUrlCtl.text.trim().isEmpty ? null : _deliverableUrlCtl.text.trim(),
+      'requireFollow': _requireFollow,
+      'actionDmBeforeFollowTemplate': _requireFollow && _beforeFollowCtl.text.trim().isNotEmpty ? _beforeFollowCtl.text.trim() : null,
+      'actionDmAfterFollowTemplate': _requireFollow ? dmTemplate : null,
       'actionEnableAiAgent': _enableAiAgent,
       'aiAgentGoal': _aiAgentGoal,
       'aiAgentPromptOverride': _aiPromptOverrideCtl.text.trim().isEmpty ? null : _aiPromptOverrideCtl.text.trim(),
@@ -1163,43 +1201,233 @@ class _EngagementRuleFormSheetState extends ConsumerState<_EngagementRuleFormShe
                         ),
                       ),
                       const SizedBox(height: 14),
-                      if (accountsAsync.valueOrNull?.where((a) => a.id == _selectedAccountId).firstOrNull?.platform != SocialPlatform.linkedin) ...[
-                        TextField(
-                          controller: _dmTemplateCtl,
-                          maxLines: 3,
-                          decoration: fieldDecoration(
-                            'Direct Message Template *',
-                            hint: 'Hey {name}! Here is your link: {link} Let me know if you have any questions!',
-                            prefix: Icon(Icons.mark_chat_unread_outlined, size: 18, color: AppTheme.textSecondary),
+                      // Require Follow (Reward Gate) Toggle
+                      if (accountsAsync.valueOrNull?.where((a) => a.id == _selectedAccountId).firstOrNull?.platform != SocialPlatform.linkedin &&
+                          _triggerType != 'dm_inbound') ...[
+                        Container(
+                          decoration: BoxDecoration(
+                            color: _requireFollow ? AppTheme.primary.withValues(alpha: 0.08) : AppTheme.surface,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: _requireFollow ? AppTheme.primary.withValues(alpha: 0.4) : AppTheme.border,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 8),
-                        // Interactive Token Pills
-                        Wrap(
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          spacing: 6,
-                          runSpacing: 6,
-                          children: [
-                            Text('Insert token:', style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
-                            for (final token in ['{name}', '{handle}', '{link}'])
-                              InkWell(
-                                onTap: () => _insertToken(token),
-                                borderRadius: BorderRadius.circular(6),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                          child: SwitchListTile.adaptive(
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                            value: _requireFollow,
+                            activeTrackColor: AppTheme.primary,
+                            secondary: Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: _requireFollow ? AppTheme.primary.withValues(alpha: 0.15) : AppTheme.surfaceElevated,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Icon(
+                                Icons.person_add_alt_1_rounded,
+                                size: 20,
+                                color: _requireFollow ? AppTheme.primary : AppTheme.textSecondary,
+                              ),
+                            ),
+                            title: Row(
+                              children: [
+                                Text(
+                                  'Required Follow',
+                                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.textPrimary),
+                                ),
+                                const SizedBox(width: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                   decoration: BoxDecoration(
-                                    color: AppTheme.surface,
-                                    borderRadius: BorderRadius.circular(6),
-                                    border: Border.all(color: AppTheme.border),
+                                    color: AppTheme.primary.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(4),
                                   ),
                                   child: Text(
-                                    '+ $token',
-                                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.primary),
+                                    '2-STEP DM',
+                                    style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: AppTheme.primary),
                                   ),
                                 ),
-                              ),
-                          ],
+                              ],
+                            ),
+                            subtitle: Text(
+                              'Viewer must follow your account to unlock the reward link. Sends a prompt message first, then sends the reward link instantly after they follow.',
+                              style: TextStyle(fontSize: 11, color: AppTheme.textSecondary, height: 1.3),
+                            ),
+                            onChanged: (v) => setState(() => _requireFollow = v),
+                          ),
                         ),
+                        const SizedBox(height: 14),
+                      ],
+                      if (accountsAsync.valueOrNull?.where((a) => a.id == _selectedAccountId).firstOrNull?.platform != SocialPlatform.linkedin) ...[
+                        if (_requireFollow) ...[
+                          // Box 1: Before Follow Message
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: AppTheme.surface,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: AppTheme.border),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: AppTheme.primary.withValues(alpha: 0.15),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Text('STEP 1', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.primary)),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text('Before-Follow Message (Prompt) *', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.textPrimary)),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                TextField(
+                                  controller: _beforeFollowCtl,
+                                  maxLines: 3,
+                                  decoration: fieldDecoration(
+                                    'Before Follow Message',
+                                    hint: 'Hey {name}! Please follow @{handle} first to unlock: {profile_link}',
+                                    helper: 'Sent immediately when user comments. Instructs them to follow before unlocking the reward.',
+                                    prefix: Icon(Icons.person_add_rounded, size: 18, color: AppTheme.textSecondary),
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Wrap(
+                                  crossAxisAlignment: WrapCrossAlignment.center,
+                                  spacing: 6,
+                                  runSpacing: 6,
+                                  children: [
+                                    Text('Insert token:', style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
+                                    for (final token in ['{name}', '{handle}', '{profile_link}'])
+                                      InkWell(
+                                        onTap: () => _insertToken(token, _beforeFollowCtl),
+                                        borderRadius: BorderRadius.circular(6),
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                                          decoration: BoxDecoration(
+                                            color: AppTheme.surfaceElevated,
+                                            borderRadius: BorderRadius.circular(6),
+                                            border: Border.all(color: AppTheme.border),
+                                          ),
+                                          child: Text(
+                                            '+ $token',
+                                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.primary),
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          // Box 2: After Follow Message
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: AppTheme.surface,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: AppTheme.border),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: AppTheme.accent.withValues(alpha: 0.15),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Text('STEP 2', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.accent)),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text('After-Follow Message (Reward Deliverable) *', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.textPrimary)),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                TextField(
+                                  controller: _dmTemplateCtl,
+                                  maxLines: 3,
+                                  decoration: fieldDecoration(
+                                    'After Follow Message',
+                                    hint: 'Awesome, thanks for following! Here is your link: {link}',
+                                    helper: 'Delivered automatically once following is confirmed, with the reward link.',
+                                    prefix: Icon(Icons.card_giftcard_rounded, size: 18, color: AppTheme.textSecondary),
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Wrap(
+                                  crossAxisAlignment: WrapCrossAlignment.center,
+                                  spacing: 6,
+                                  runSpacing: 6,
+                                  children: [
+                                    Text('Insert token:', style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
+                                    for (final token in ['{name}', '{handle}', '{link}'])
+                                      InkWell(
+                                        onTap: () => _insertToken(token, _dmTemplateCtl),
+                                        borderRadius: BorderRadius.circular(6),
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                                          decoration: BoxDecoration(
+                                            color: AppTheme.surfaceElevated,
+                                            borderRadius: BorderRadius.circular(6),
+                                            border: Border.all(color: AppTheme.border),
+                                          ),
+                                          child: Text(
+                                            '+ $token',
+                                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.primary),
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ] else ...[
+                          TextField(
+                            controller: _dmTemplateCtl,
+                            maxLines: 3,
+                            decoration: fieldDecoration(
+                              'Direct Message Template *',
+                              hint: 'Hey {name}! Here is your link: {link} Let me know if you have any questions!',
+                              prefix: Icon(Icons.mark_chat_unread_outlined, size: 18, color: AppTheme.textSecondary),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          // Interactive Token Pills
+                          Wrap(
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: 6,
+                            runSpacing: 6,
+                            children: [
+                              Text('Insert token:', style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
+                              for (final token in ['{name}', '{handle}', '{link}'])
+                                InkWell(
+                                  onTap: () => _insertToken(token),
+                                  borderRadius: BorderRadius.circular(6),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                                    decoration: BoxDecoration(
+                                      color: AppTheme.surface,
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(color: AppTheme.border),
+                                    ),
+                                    child: Text(
+                                      '+ $token',
+                                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.primary),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ],
                       ] else ...[
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),

@@ -263,7 +263,22 @@ class ApiClient {
       final profile = await _tokens.cachedProfile;
       final cid = profile?['company']?['id'] ?? profile?['company']?['_id'];
       if (cid != null && cid.toString().isNotEmpty) {
-        options.headers['x-company-id'] = cid.toString();
+        final cidStr = cid.toString().trim();
+        const placeholderIds = {
+          'offline_workspace',
+          'default_company_id',
+          'default_creator_company',
+          'default_workspace',
+          'workspace',
+          'undefined',
+          'null',
+        };
+        final isPlaceholder = placeholderIds.contains(cidStr.toLowerCase()) ||
+            cidStr.toLowerCase().startsWith('default_') ||
+            cidStr.toLowerCase().startsWith('offline_');
+        if (!isPlaceholder) {
+          options.headers['x-company-id'] = cidStr;
+        }
       }
     }
     if (options.extra['device'] == true) {
@@ -290,6 +305,28 @@ class ApiClient {
     final opts = err.requestOptions;
     final path = opts.path;
     final isBilling = path.contains('/billing') || path.contains('/billing/status') || path.contains('/billing/checkout');
+
+    final respData = err.response?.data;
+    final isWorkspaceNotFound = status == 404 &&
+        respData is Map &&
+        (respData['error']?.toString().toLowerCase().contains('workspace not found') ?? false);
+    final hasSentCompanyHeader = opts.headers.containsKey('x-company-id');
+
+    if (isWorkspaceNotFound && hasSentCompanyHeader && opts.extra['retried_workspace'] != true) {
+      opts.headers.remove('x-company-id');
+      opts.extra['retried_workspace'] = true;
+      try {
+        final profile = await _tokens.cachedProfile;
+        if (profile != null && profile.containsKey('company')) {
+          final updatedProfile = Map<String, dynamic>.from(profile)..remove('company');
+          await _tokens.saveProfile(updatedProfile);
+        }
+        final retried = await dio.fetch<Object?>(opts);
+        return handler.resolve(retried);
+      } on DioException catch (retryErr) {
+        return handler.next(retryErr);
+      } catch (_) {}
+    }
     final canRefresh = status == 401 && opts.extra['auth'] != false && opts.extra['retried'] != true;
     if (!canRefresh) {
       if (status == 401 && !isBilling) onSessionExpired?.call();

@@ -55,14 +55,14 @@ class _ManagerCopilotSheetState extends ConsumerState<ManagerCopilotSheet> {
     _messages.add(
       ManagerChatMessage(
         senderType: 'manager',
-        content: '👋 **Hello! I am your 180 Manager.**\n\n'
+        content: '**Hello! I am your 180 Manager.**\n\n'
             'I answer from the real data of **$projectName**: $accountsDesc, the content calendar, inbox conversations and your editing preferences.\n\n'
             'Ask me anything or pick a quick command below:',
         suggestedActions: [
-          ManagerActionModel(id: 'q1', label: '📊 Project Reach & Stats', type: 'quick_reply', payload: {'text': 'What is our total reach, engagement, and videos uploaded this month for $projectName?'}),
-          ManagerActionModel(id: 'q2', label: '💼 Scan DMs for Deals', type: 'quick_reply', payload: {'text': 'Check my DMs and comments for business opportunities or leads in $projectName'}),
-          ManagerActionModel(id: 'q3', label: '📅 Pivot Calendar', type: 'quick_reply', payload: {'text': 'Update our content calendar for the upcoming days using our winning format for $projectName'}),
-          ManagerActionModel(id: 'q4', label: '🎬 Update Director Pacing', type: 'quick_reply', payload: {'text': 'Tell the AI Video Director to use fast pacing and high contrast captions for $projectName'}),
+          ManagerActionModel(id: 'q1', label: 'Project Reach & Stats', type: 'quick_reply', payload: {'text': 'What is our total reach, engagement, and videos uploaded this month for $projectName?'}),
+          ManagerActionModel(id: 'q2', label: 'Scan DMs for Deals', type: 'quick_reply', payload: {'text': 'Check my DMs and comments for business opportunities or leads in $projectName'}),
+          ManagerActionModel(id: 'q3', label: 'Pivot Calendar', type: 'quick_reply', payload: {'text': 'Update our content calendar for the upcoming days using our winning format for $projectName'}),
+          ManagerActionModel(id: 'q4', label: 'Update Director Pacing', type: 'quick_reply', payload: {'text': 'Tell the AI Video Director to use fast pacing and high contrast captions for $projectName'}),
         ],
       ),
     );
@@ -134,15 +134,15 @@ class _ManagerCopilotSheetState extends ConsumerState<ManagerCopilotSheet> {
             ManagerChatMessage(
               senderType: 'manager',
               content: isAiUnconfigured
-                  ? '⚠️ **No AI Provider Configured**\n\n'
+                  ? '$rawErr\n\n'
                       '180 Manager AI requires an active intelligence provider (such as **Google Gemini** or **OpenAI**) to analyze your workspace channels, metrics, and calendar.\n\n'
                       'Tap below to connect your API key in seconds:'
-                  : '⚠️ $rawErr',
+                  : rawErr,
               suggestedActions: isAiUnconfigured
                   ? [
                       ManagerActionModel(
                         id: 'open_ai_setup',
-                        label: '⚙️ Configure AI Provider',
+                        label: 'Configure AI Provider',
                         type: 'open_ai_settings',
                         payload: {},
                       ),
@@ -227,12 +227,12 @@ class _ManagerCopilotSheetState extends ConsumerState<ManagerCopilotSheet> {
           ManagerChatMessage(
             senderType: 'manager',
             content: updated != null
-                ? '✅ Updated ${updated.length} calendar piece(s)${updated.isEmpty ? '' : ':\n• ${updated.join('\n• ')}'}'
-                    '${failed > 0 ? '\n⚠️ $failed could not be rewritten (only autopilot pieces can be).' : ''}'
+                ? 'Updated ${updated.length} calendar piece(s)${updated.isEmpty ? '' : ':\n• ${updated.join('\n• ')}'}'
+                    '${failed > 0 ? '\n$failed could not be rewritten (only autopilot pieces can be).' : ''}'
                     '${remaining > 0 ? '\n$remaining more remain: run the action again to continue.' : ''}'
                 : applied.isEmpty
-                    ? '✅ ${act.label}: done.'
-                    : '✅ Saved for the AI Director:\n• ${applied.join('\n• ')}',
+                    ? '${act.label}: done.'
+                    : 'Saved for the AI Director:\n• ${applied.join('\n• ')}',
           ),
         );
       });
@@ -420,20 +420,9 @@ class _ManagerCopilotSheetState extends ConsumerState<ManagerCopilotSheet> {
                 color: AppTheme.primary,
                 borderRadius: BorderRadius.circular(14).copyWith(bottomRight: Radius.zero),
               ),
-              child: MarkdownBody(
-                data: msg.content,
-                selectable: true,
-                styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
-                  p: const TextStyle(fontSize: 13, color: Colors.white, height: 1.3),
-                  strong: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white),
-                  em: const TextStyle(fontSize: 13, fontStyle: FontStyle.italic, color: Colors.white),
-                  code: TextStyle(
-                    fontSize: 12,
-                    fontFamily: 'monospace',
-                    backgroundColor: Colors.white.withValues(alpha: 0.15),
-                    color: Colors.white,
-                  ),
-                ),
+              child: Text(
+                msg.content,
+                style: const TextStyle(fontSize: 13, color: Colors.white, height: 1.3),
               ),
             ),
           ],
@@ -472,68 +461,10 @@ class _ManagerCopilotSheetState extends ConsumerState<ManagerCopilotSheet> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      MarkdownBody(
-                        data: msg.content,
-                        selectable: true,
-                        styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
-                          p: TextStyle(fontSize: 13, color: AppTheme.textPrimary, height: 1.4),
-                          strong: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
-                          em: TextStyle(fontSize: 13, fontStyle: FontStyle.italic, color: AppTheme.textPrimary),
-                          h1: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
-                          h2: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
-                          h3: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
-                          listBullet: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
-                          code: TextStyle(
-                            fontSize: 12,
-                            fontFamily: 'monospace',
-                            backgroundColor: AppTheme.surface,
-                            color: AppTheme.accent,
-                          ),
-                          codeblockDecoration: BoxDecoration(
-                            color: AppTheme.surface,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: AppTheme.border),
-                          ),
-                          blockquoteDecoration: BoxDecoration(
-                            color: AppTheme.surface,
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border(left: BorderSide(color: AppTheme.primary, width: 3)),
-                          ),
-                          a: TextStyle(fontSize: 13, color: AppTheme.primary, decoration: TextDecoration.underline),
-                        ),
-                        onTapLink: (text, href, title) {
-                          if (href != null && href.isNotEmpty) {
-                            final uri = Uri.tryParse(href);
-                            if (uri != null) {
-                              launchUrl(uri, mode: LaunchMode.externalApplication);
-                            }
-                          }
-                        },
+                      Text(
+                        msg.content,
+                        style: TextStyle(fontSize: 13, color: AppTheme.textPrimary, height: 1.4),
                       ),
-
-                      // Delegated Agent Badges
-                      if (msg.delegatedAgents.isNotEmpty) ...[
-                        const SizedBox(height: 10),
-                        Wrap(
-                          spacing: 6,
-                          children: [
-                            for (final a in msg.delegatedAgents)
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: AppTheme.surface,
-                                  borderRadius: BorderRadius.circular(4),
-                                  border: Border.all(color: AppTheme.border),
-                                ),
-                                child: Text(
-                                  '⚡ ${a.toUpperCase()} AGENT',
-                                  style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: AppTheme.textSecondary),
-                                ),
-                              ),
-                          ],
-                        ),
-                      ],
-                      
                     ],
                   ),
                 ),

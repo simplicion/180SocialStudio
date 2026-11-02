@@ -7,6 +7,7 @@
  *   statements into high-tension emotional triggers, and maps them to the Psychological Job Library.
  */
 import { z } from 'zod';
+import { UNTRUSTED_DATA_POLICY, fenceUntrusted } from '@workspace/video-contracts';
 import { runJsonAgent } from '../json-agent';
 import { AutopilotLLM, UsageMeter } from '../llm';
 import { PSYCHOLOGICAL_JOBS, PsychologicalJob } from '../schemas';
@@ -99,9 +100,11 @@ export async function runNeuromarketingResearchAgent(params: RunNeuromarketingPa
         brand.promptContext,
         '',
         goals.length ? `Campaign Goals:\n${goals.map((g) => `- ${g}`).join('\n')}\n` : '',
-        hasDirectives ? `User Structure Directives:\n${structureDirectives}\n` : '',
+        // User-pasted text can carry instructions (copied web pages, documents): fence it as data.
+        hasDirectives || hasRef ? UNTRUSTED_DATA_POLICY : '',
+        hasDirectives ? `User Structure Directives:\n${fenceUntrusted('document', structureDirectives, { label: 'structure directives', maxChars: 2000 }).block}\n` : '',
         hasRef
-            ? `User Reference / Inspiration Box:\n${referenceInspirations}\n\nINSTRUCTION: The user provided the reference notes above. Some may be dry, technical, or unstructured. You MUST neutralize boring corporate speak into compelling audience tension and assign a deliberate Psychological Job from the library below.`
+            ? `User Reference / Inspiration Box:\n${fenceUntrusted('document', referenceInspirations, { label: 'reference', maxChars: 4000 }).block}\n\nINSTRUCTION: The user provided the reference notes above. Some may be dry, technical, or unstructured. You MUST neutralize boring corporate speak into compelling audience tension and assign a deliberate Psychological Job from the library below.`
             : 'INSTRUCTION: No reference notes provided. Ground your psychological angles strictly in the brand consciousness profile, target audience pain points, and natural category tensions.',
         '',
         'Psychological Job Library:',

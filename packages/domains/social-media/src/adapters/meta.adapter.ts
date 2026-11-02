@@ -258,38 +258,136 @@ export class InstagramPublisher implements PlatformPublisher {
     }
 
     /**
+     * Checks if a user follows the Instagram business account via User Profile API.
+     * Returns true if following, false if not following, or null if cannot determine (e.g. user hasn't messaged yet).
+     */
+    static async checkUserFollowsBusiness(userId: string, token: string): Promise<boolean | null> {
+        requireToken(token, "instagram");
+        try {
+            const res = await providerFetch('instagram', graph(`${userId}?fields=name,username,is_user_follow_business`, token, 'instagram'), {
+                method: 'GET',
+                headers: { Authorization: `Bearer ${token}` },
+                timeoutMs: 10_000,
+            });
+            if (!res.ok) return null;
+            const body = await readBody(res);
+            if (typeof body?.is_user_follow_business === 'boolean') {
+                return body.is_user_follow_business;
+            }
+            return null;
+        } catch {
+            return null;
+        }
+    }
+
+    /**
      * Sends a private reply (Comment-to-DM) via Messenger API for Instagram.
      * Note: Must be executed within 7 days of the comment.
      */
-    static async sendPrivateReply(pageOrAccountId: string, commentId: string, messageText: string, token: string): Promise<{ recipient_id: string; message_id: string }> {
+    static async sendPrivateReply(
+        pageOrAccountId: string,
+        commentId: string,
+        messageText: string,
+        token: string,
+        quickReplies?: Array<{ title: string; payload?: string }>
+    ): Promise<{ recipient_id: string; message_id: string }> {
         requireToken(token, "instagram");
-        return graphPost(
-            'instagram',
-            `${pageOrAccountId}/messages`,
-            token,
-            {
-                recipient: { comment_id: commentId },
-                message: { text: messageText },
-            },
-            'Instagram private reply to comment'
-        );
+        const messagePayload: any = { text: messageText };
+        if (quickReplies && quickReplies.length > 0) {
+            messagePayload.quick_replies = quickReplies.map(qr => ({
+                content_type: 'text',
+                title: qr.title.slice(0, 20),
+                payload: qr.payload || 'CONFIRM_FOLLOW',
+            }));
+        }
+        try {
+            return await graphPost(
+                'instagram',
+                `${pageOrAccountId}/messages`,
+                token,
+                {
+                    recipient: { comment_id: commentId },
+                    message: messagePayload,
+                },
+                'Instagram private reply to comment'
+            );
+        } catch (err: any) {
+            if (quickReplies && quickReplies.length > 0) {
+                return graphPost(
+                    'instagram',
+                    `${pageOrAccountId}/messages`,
+                    token,
+                    {
+                        recipient: { comment_id: commentId },
+                        message: { text: messageText },
+                    },
+                    'Instagram private reply to comment'
+                );
+            }
+            throw err;
+        }
     }
 
     /**
      * Sends a direct message to an Instagram user (within active 24-hr messaging window).
      */
-    static async sendDirectMessage(pageOrAccountId: string, recipientId: string, messageText: string, token: string): Promise<{ recipient_id: string; message_id: string }> {
+    static async sendDirectMessage(
+        pageOrAccountId: string,
+        recipientId: string,
+        messageText: string,
+        token: string,
+        quickReplies?: Array<{ title: string; payload?: string }>
+    ): Promise<{ recipient_id: string; message_id: string }> {
         requireToken(token, "instagram");
-        return graphPost(
-            'instagram',
-            `${pageOrAccountId}/messages`,
-            token,
-            {
-                recipient: { id: recipientId },
-                message: { text: messageText },
-            },
-            'Instagram direct message'
-        );
+        const messagePayload: any = { text: messageText };
+        if (quickReplies && quickReplies.length > 0) {
+            messagePayload.quick_replies = quickReplies.map(qr => ({
+                content_type: 'text',
+                title: qr.title.slice(0, 20),
+                payload: qr.payload || 'CONFIRM_FOLLOW',
+            }));
+        }
+        try {
+            return await graphPost(
+                'instagram',
+                `${pageOrAccountId}/messages`,
+                token,
+                {
+                    recipient: { id: recipientId },
+                    message: messagePayload,
+                },
+                'Instagram direct message'
+            );
+        } catch (err: any) {
+            try {
+                return await graphPost(
+                    'instagram',
+                    `${pageOrAccountId}/messages`,
+                    token,
+                    {
+                        recipient: { id: recipientId },
+                        message: { text: messageText },
+                        messaging_type: 'MESSAGE_TAG',
+                        tag: 'HUMAN_AGENT',
+                    },
+                    'Instagram direct message (Human Agent)'
+                );
+            } catch (_) {
+                if (quickReplies && quickReplies.length > 0) {
+                    return graphPost(
+                        'instagram',
+                        `${pageOrAccountId}/messages`,
+                        token,
+                        {
+                            recipient: { id: recipientId },
+                            message: { text: messageText },
+                        },
+                        'Instagram direct message'
+                    );
+                }
+                throw err;
+            }
+        }
     }
 }
 

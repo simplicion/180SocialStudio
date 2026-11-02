@@ -42,7 +42,7 @@ export class AutopilotError extends Error {
 }
 
 /** Which agent is calling; used to pick a model and to attribute token usage. */
-export type AgentRole = 'research' | 'strategist' | 'hook_script' | 'hook_lab' | 'copy' | 'craft' | 'critic' | 'regenerate' | 'production_script' | 'platform_draft' | 'repurpose';
+export type AgentRole = 'research' | 'strategist' | 'hook_script' | 'hook_lab' | 'copy' | 'craft' | 'critic' | 'regenerate' | 'production_script' | 'platform_draft' | 'repurpose' | 'query_planner' | 'trend_analyst';
 
 export interface LlmUsage {
     inputTokens: number;
@@ -124,19 +124,35 @@ export function wrapAiClient(client: AIClient, models: AutopilotModelConfig): Au
 }
 
 /**
- * Resolves the company's AI provider. Throws AI_NOT_CONFIGURED when there is no usable key.
+ * The built-in engine returns template content, not model output. In production it is used only when the operator
+ * opts in with AUTOPILOT_ALLOW_BUILTIN=1; otherwise a missing AI key is an explicit AI_NOT_CONFIGURED error, so a
+ * creator is never handed canned calendars presented as AI research (audit A8).
+ */
+export function builtinEngineAllowed(env: NodeJS.ProcessEnv = process.env): boolean {
+    return env.NODE_ENV !== 'production' || env.AUTOPILOT_ALLOW_BUILTIN === '1';
+}
+
+function builtinOrRefuse(reason: string, env: NodeJS.ProcessEnv = process.env): AutopilotLLM {
+    if (builtinEngineAllowed(env)) return createBuiltinViralAutopilotLLM();
+    throw new AutopilotError('AI_NOT_CONFIGURED', `${reason} Add an AI provider key in Settings → AI provider.`);
+}
+
+/**
+ * Resolves the company's AI provider. Throws AI_NOT_CONFIGURED when there is no usable key (unless the built-in
+ * engine is allowed, see builtinEngineAllowed).
  */
 export async function createCompanyAutopilotLLM(
     companyId: string,
-    options?: { fallbackToBuiltin?: boolean; requestedProvider?: string }
+    options?: { fallbackToBuiltin?: boolean; requestedProvider?: string; env?: NodeJS.ProcessEnv }
 ): Promise<AutopilotLLM> {
     if (!companyId) throw new AutopilotError('INVALID_INPUT', 'companyId is required');
+    const env = options?.env ?? process.env;
     if (options?.requestedProvider === 'builtin' || options?.fallbackToBuiltin) {
-        return createBuiltinViralAutopilotLLM();
+        return builtinOrRefuse('The built-in template engine is disabled on this server.', env);
     }
     const { settings } = await AICompanyConfigService.getCompanyAISettings(companyId);
     if (settings?.aiProvider === 'builtin') {
-        return createBuiltinViralAutopilotLLM();
+        return builtinOrRefuse('The built-in template engine is disabled on this server.', env);
     }
     let client = await aiProviderService.getClient(settings);
 
@@ -155,8 +171,7 @@ export async function createCompanyAutopilotLLM(
     }
 
     if (!client) {
-        // Seamlessly default to 180 Studio Built-in Viral AI engine with zero setup requirement
-        return createBuiltinViralAutopilotLLM();
+        return builtinOrRefuse('No AI provider key is configured for this company.', env);
     }
     return wrapAiClient(client, resolveAutopilotModels(client.provider));
 }

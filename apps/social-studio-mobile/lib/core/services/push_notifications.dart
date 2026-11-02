@@ -120,7 +120,13 @@ class PushNotificationService extends StateNotifier<PushStatus> {
       _refreshSub ??= messaging.onTokenRefresh.listen((t) => unawaited(_device.setPushToken(provider: 'fcm', token: t).catchError((_) {})));
       state = PushStatus(PushState.enabled);
     } catch (e) {
-      state = PushStatus(PushState.error, message: '$e');
+      final msg = e.toString();
+      final cleanMsg = msg.contains('workspace not found')
+          ? 'Workspace not found. Re-authenticate to sync notification settings.'
+          : msg.contains('404')
+              ? 'Notification service unavailable on this server.'
+              : msg;
+      state = PushStatus(PushState.error, message: cleanMsg);
     }
   }
 

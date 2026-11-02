@@ -12,6 +12,8 @@ import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
 import rateLimit from 'express-rate-limit';
+import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 
 import { protect, AuthenticatedRequest } from './middleware/auth';
 import authRoutes from './routes/auth.routes';
@@ -27,7 +29,7 @@ const { socialBillingWebhookHandler } = require('./api/v1/social-media/billing/s
 const app = express();
 const server = http.createServer(app);
 
-app.set('trust proxy', true);
+app.set('trust proxy', 1);
 
 // Security & Performance
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
@@ -88,6 +90,7 @@ const globalLimiter = rateLimit({
     max: 5000,
     standardHeaders: true,
     legacyHeaders: false,
+    validate: { trustProxy: false },
     skip: (req) => {
         const ip = req.ip || req.socket?.remoteAddress || '';
         return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
@@ -175,9 +178,54 @@ app.get('/api/tasks', (req: Request, res: Response) => res.json({ tasks: [] }));
 app.post('/api/tasks', (req: Request, res: Response) => res.json({ task: req.body }));
 app.get('/api/users', (req: Request, res: Response) => res.json({ users: [] }));
 app.get('/api/clients', (req: Request, res: Response) => res.json({ clients: [] }));
-app.post('/api/desktop/devices/register', (req: Request, res: Response) => res.json({ success: true, deviceId: 'mobile_' + Date.now() }));
-app.get('/api/desktop/devices', (req: Request, res: Response) => res.json({ devices: [] }));
-app.put('/api/desktop/devices/:id/push-token', (req: Request, res: Response) => res.json({ success: true }));
+app.post(['/api/desktop/devices/register', '/desktop/devices/register'], (req: Request, res: Response) => {
+    let companyId = 'default_creator_company';
+    let userId = 'creator_user';
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+        const token = authHeader.substring(7);
+        try {
+            const decoded = jwt.decode(token) as any;
+            if (decoded) {
+                userId = decoded.id || decoded.userId || decoded.sub || userId;
+                companyId = decoded.companyId || decoded.tenantId || decoded.cid || companyId;
+            }
+        } catch (_) {}
+    }
+
+    const body = req.body || {};
+    const deviceId = body.deviceId || ('device_' + crypto.randomUUID().replace(/-/g, ''));
+    const secret = process.env.DESKTOP_DEVICE_JWT_SECRET || process.env.JWT_SECRET || '180_social_studio_desktop_device_secret_32chars_long';
+    const typ = 'native-device';
+    const deviceToken = jwt.sign(
+        { typ, cid: companyId, did: deviceId, platform: body.platform || 'android' },
+        secret,
+        {
+            algorithm: 'HS256',
+            subject: userId,
+            expiresIn: 30 * 24 * 60 * 60,
+        }
+    );
+    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    return res.status(200).json({
+        success: true,
+        deviceId,
+        token: deviceToken,
+        expiresAt,
+        renewed: true,
+        kind: 'native-device',
+    });
+});
+app.get(['/api/desktop/devices', '/desktop/devices'], (req: Request, res: Response) => res.json({ success: true, devices: [] }));
+app.delete(['/api/desktop/devices/:id', '/desktop/devices/:id'], (req: Request, res: Response) => res.json({ success: true, message: 'Device revoked' }));
+app.get(['/api/desktop/push/status', '/desktop/push/status'], (req: Request, res: Response) => {
+    return res.json({
+        success: true,
+        configured: Boolean(process.env.FIREBASE_PROJECT_ID || process.env.GOOGLE_APPLICATION_CREDENTIALS || process.env.FCM_SERVER_KEY),
+        provider: 'fcm',
+    });
+});
+app.put(['/api/desktop/devices/:id/push-token', '/desktop/devices/:id/push-token'], (req: Request, res: Response) => res.json({ success: true }));
 
 // ─── Error Handling ───────────────────────────────────────────────────────────
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {

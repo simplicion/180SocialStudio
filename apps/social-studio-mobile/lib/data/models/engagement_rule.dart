@@ -20,6 +20,9 @@ class EngagementRule {
     this.actionSendDm = true,
     required this.actionDmTemplate,
     this.actionDmDeliverableUrl,
+    this.requireFollow = false,
+    this.actionDmBeforeFollowTemplate,
+    this.actionDmAfterFollowTemplate,
     this.actionEnableAiAgent = false,
     this.aiAgentGoal = 'qualify_lead',
     this.aiAgentPromptOverride,
@@ -49,6 +52,9 @@ class EngagementRule {
   final bool actionSendDm;
   final String actionDmTemplate;
   final String? actionDmDeliverableUrl;
+  final bool requireFollow;
+  final String? actionDmBeforeFollowTemplate;
+  final String? actionDmAfterFollowTemplate;
   final bool actionEnableAiAgent;
   final String aiAgentGoal;
   final String? aiAgentPromptOverride;
@@ -79,6 +85,9 @@ class EngagementRule {
         actionSendDm: jBool(j['actionSendDm'], true),
         actionDmTemplate: jStrOr(j['actionDmTemplate'], ''),
         actionDmDeliverableUrl: jStr(j['actionDmDeliverableUrl']),
+        requireFollow: jBool(j['requireFollow']),
+        actionDmBeforeFollowTemplate: jStr(j['actionDmBeforeFollowTemplate']),
+        actionDmAfterFollowTemplate: jStr(j['actionDmAfterFollowTemplate']),
         actionEnableAiAgent: jBool(j['actionEnableAiAgent']),
         aiAgentGoal: jStrOr(j['aiAgentGoal'], 'qualify_lead'),
         aiAgentPromptOverride: jStr(j['aiAgentPromptOverride']),
@@ -106,6 +115,9 @@ class EngagementRule {
         'actionSendDm': actionSendDm,
         'actionDmTemplate': actionDmTemplate,
         if (actionDmDeliverableUrl != null) 'actionDmDeliverableUrl': actionDmDeliverableUrl,
+        'requireFollow': requireFollow,
+        if (actionDmBeforeFollowTemplate != null) 'actionDmBeforeFollowTemplate': actionDmBeforeFollowTemplate,
+        if (actionDmAfterFollowTemplate != null) 'actionDmAfterFollowTemplate': actionDmAfterFollowTemplate,
         'actionEnableAiAgent': actionEnableAiAgent,
         'aiAgentGoal': aiAgentGoal,
         if (aiAgentPromptOverride != null) 'aiAgentPromptOverride': aiAgentPromptOverride,

@@ -23,6 +23,8 @@ void main() {
       await tester.tap(find.text('Acme').first);
       await settle(tester);
       expect(find.byType(CalendarDetailScreen), findsOneWidget);
+      await tester.tap(find.byTooltip('Switch to Week List'));
+      await settle(tester);
       expect(find.text('WEEK 1'), findsOneWidget);
       expect(find.text('3 myths about shipping'), findsOneWidget);
     });
@@ -46,6 +48,8 @@ void main() {
     appTest('piece status change PUTs to the piece', (tester) async {
       final b = seededBackend()..json('PUT', '$sm/content-calendar/:id/pieces/:pieceId', {'piece': pieceJson()});
       await pumpApp(tester, b, location: '/planner/cal1');
+      await tester.tap(find.text('2').first);
+      await settle(tester);
       await tester.tap(find.text('3 myths about shipping'));
       await settle(tester);
       await tester.tap(find.text('Ready').last);
@@ -58,6 +62,8 @@ void main() {
     appTest('piece "View detailed script" button opens DetailedScriptScreen via /planner/script', (tester) async {
       final b = seededBackend();
       await pumpApp(tester, b, location: '/planner/cal1');
+      await tester.tap(find.text('2').first);
+      await settle(tester);
       await tester.tap(find.text('3 myths about shipping'));
       await settle(tester);
       expect(find.text('View detailed script'), findsOneWidget);

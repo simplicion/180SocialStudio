@@ -299,6 +299,26 @@ export class MetaWebhooksService {
                         text,
                         timestamp: toMs(m.timestamp) ?? toMs(entry.time),
                     };
+                    // Check if sender has a pending follow-gate interaction awaiting follow verification
+                    const pendingFollowLog = await db.socialInteractionLog.findFirst({
+                        where: {
+                            companyId: account.companyId,
+                            socialAccountId: account.id,
+                            recipientId: senderId,
+                            status: 'pending_follow',
+                        },
+                        include: { rule: true },
+                        orderBy: { createdAt: 'desc' },
+                    }).catch(() => null);
+
+                    if (pendingFollowLog && pendingFollowLog.rule && pendingFollowLog.rule.status === 'active') {
+                        const resolved = await EngagementDispatcher.resolveFollowGate(pendingFollowLog, event, account).catch((err: any) => {
+                            console.error('[MetaWebhook] resolveFollowGate failed:', err?.message);
+                            return false;
+                        });
+                        if (resolved) continue;
+                    }
+
                     const rule = m.message.text ? await EngagementMatcher.findMatchingRule(event).catch(() => null) : null;
                     if (rule) {
                         await EngagementDispatcher.executeEngagement(rule, event).catch((err: any) => console.error('[MetaWebhook] DM rule failed:', err?.message));

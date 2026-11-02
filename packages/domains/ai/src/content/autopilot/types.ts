@@ -1,4 +1,4 @@
-import type { AutopilotPlatform, CarouselBrief, ContentFormat, ContentMixConfig, DesignSystem, HookType, PsychologicalJob, ResearchDigest, Script, Strategy } from './schemas';
+import type { AutopilotPlatform, CarouselBrief, ContentFormat, ContentMood, ContentMixConfig, DesignSystem, HookType, PsychologicalJob, ResearchDigest, Script, Strategy } from './schemas';
 
 /** What every agent knows about the brand. Built from WS1's brand consciousness profile. */
 export interface AutopilotBrandContext {
@@ -30,6 +30,27 @@ export interface AutopilotRunInput {
     contentMix?: ContentMixConfig;
     targetReelDurationSec?: number;
     carouselSlideCount?: number;
+    /** The creator's own best posts (same project only), shown to the writer as proof of what works for them. */
+    winningExemplars?: WinningExemplar[];
+}
+
+export interface WinningExemplar {
+    hook: string;
+    format: string;
+    platform: string;
+    /** Result as a multiple of the creator's usual on that platform (computed from real metrics). */
+    multiple: number;
+}
+
+/** Research evidence a piece is grounded in; stored with the piece so regeneration keeps it. */
+export interface PieceTrend {
+    id: string;
+    title: string;
+    whyNow: string;
+    signal?: string;
+    audienceQuestions: string[];
+    quotes: { quote: string; url: string }[];
+    sourceUrls: string[];
 }
 
 export interface PieceCopy {
@@ -67,8 +88,11 @@ export interface AutopilotPiece {
     captions: Partial<Record<AutopilotPlatform, PieceCopy>>;
     timezone: string;
     sources: string[];
-    critic: { verdict: 'ok' | 'fixed' | 'flag'; issues: string[] };
+    /** `skipped` = the LLM review could not run; only the deterministic brand rules were applied. */
+    critic: { verdict: 'ok' | 'fixed' | 'flag'; issues: string[]; skipped?: boolean };
     status: 'ready' | 'needs_review';
+    trend?: PieceTrend;
+    mood?: ContentMood;
     hookScore?: number;
     hookFormula?: string;
     teleprompterScript?: string;

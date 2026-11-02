@@ -32,7 +32,7 @@ class ClipboardAssistService {
   static Future<bool> copyCaption(
     String text, {
     required BuildContext context,
-    String platformLabel = 'X',
+    String platformLabel = 'Instagram',
   }) async {
     return copyText(
       text,

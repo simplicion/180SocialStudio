@@ -26,7 +26,8 @@ export async function sendToConversation(companyId: string, conversationId: stri
     const thread = parseThread(conversation.platformThreadId);
     const lastUser = await db.socialMessage.findFirst({ where: { conversationId, senderType: 'participant' }, orderBy: { createdAt: 'desc' } });
     const nowMs = timing.now();
-    const cap = conversationReplyCapability(conversation.platform, thread.kind, lastUser ? new Date(lastUser.createdAt).getTime() : null, nowMs);
+    const isHuman = senderType === 'agent';
+    const cap = conversationReplyCapability(conversation.platform, thread.kind, lastUser ? new Date(lastUser.createdAt).getTime() : null, nowMs, isHuman);
     if (!cap.ok) throw new SocialDomainError(cap.reason === 'outside_messaging_window' ? 'OUTSIDE_MESSAGING_WINDOW' : 'UNSUPPORTED_ON_PLATFORM', 409, cap.detail || cap.reason);
 
     const token = await SocialTokenVault.getAccessToken(account);

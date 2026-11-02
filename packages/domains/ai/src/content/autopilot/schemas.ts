@@ -9,6 +9,9 @@ export const HOOK_TYPES = ['pattern_interrupt', 'curiosity_gap', 'contrarian', '
 export type HookType = (typeof HOOK_TYPES)[number];
 
 export const CONTENT_FORMATS = ['reel', 'carousel', 'static', 'text'] as const;
+/** Delivery mood a creator can pick in Trend Lab; the writer matches pacing, word choice and energy to it. */
+export const CONTENT_MOODS = ['energetic', 'calm_educational', 'storytelling', 'funny', 'authoritative', 'emotional'] as const;
+export type ContentMood = (typeof CONTENT_MOODS)[number];
 export type ContentFormat = (typeof CONTENT_FORMATS)[number];
 
 export const AUTOPILOT_PLATFORMS = ['instagram', 'facebook', 'youtube', 'linkedin', 'tiktok'] as const;
@@ -73,6 +76,9 @@ export const StrategySlotSchema = z.object({
     goal: z.string().max(120).optional(),
     /** Research URLs this slot is grounded in (must come from the research digest). */
     sourceUrls: z.array(z.string().url()).max(3).optional(),
+    /** Id of the research trend this slot covers; its sources and audience evidence are attached in code. */
+    trendId: z.string().max(20).optional(),
+    mood: z.enum(CONTENT_MOODS).optional(),
 });
 export type StrategySlot = z.infer<typeof StrategySlotSchema>;
 
@@ -264,6 +270,14 @@ export const ResearchDigestSchema = z.object({
         topic: nonEmpty(200),
         whyNow: nonEmpty(400),
         sourceUrls: z.array(z.string().url()).min(1).max(5),
+        // Filled from the trend research engine (all optional so the legacy web-search digest still validates).
+        id: z.string().max(20).optional(),
+        /** One-line, code-computed signal summary, e.g. "rising · opportunity 72/100 · 18 posts". */
+        signal: z.string().max(200).optional(),
+        verdict: z.string().max(40).optional(),
+        audienceQuestions: z.array(z.string().max(200)).max(6).optional(),
+        quotes: z.array(z.object({ quote: z.string().max(240), url: z.string().url() })).max(6).optional(),
+        angles: z.array(z.object({ title: z.string().max(120), tension: z.string().max(240), draftHook: z.string().max(160) })).max(5).optional(),
     })).max(10),
 });
 export type ResearchDigest = z.infer<typeof ResearchDigestSchema>;

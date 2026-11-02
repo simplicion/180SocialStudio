@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -280,10 +281,56 @@ class _ConversationListState extends ConsumerState<ConversationList> {
                 return ListTile(
                   minVerticalPadding: 12,
                   onTap: () => context.push('/inbox/${c.id}'),
-                  leading: CircleAvatar(
-                    backgroundColor: c.platform.color.withValues(alpha: 0.2),
-                    foregroundImage: c.participantAvatar == null ? null : NetworkImage(c.participantAvatar!),
-                    child: Icon(c.platform.icon, color: c.platform.color, size: 18),
+                  leading: GestureDetector(
+                    onTap: () async {
+                      final appUri = c.profileAppUri;
+                      final webUrl = c.profileWebUrl;
+                      if (appUri != null) {
+                        try {
+                          final uri = Uri.parse(appUri);
+                          if (await canLaunchUrl(uri)) {
+                            await launchUrl(uri, mode: LaunchMode.externalApplication);
+                            return;
+                          }
+                        } catch (_) {}
+                      }
+                      if (webUrl != null) {
+                        try {
+                          final uri = Uri.parse(webUrl);
+                          await launchUrl(uri, mode: LaunchMode.externalApplication);
+                          return;
+                        } catch (_) {}
+                      }
+                      context.push('/inbox/${c.id}');
+                    },
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        CircleAvatar(
+                          radius: 22,
+                          backgroundColor: c.platform.color.withValues(alpha: 0.15),
+                          backgroundImage: NetworkImage(c.displayAvatarUrl),
+                          onBackgroundImageError: (_, __) {},
+                          child: Text(
+                            c.participantName.isNotEmpty ? c.participantName[0].toUpperCase() : '?',
+                            style: TextStyle(fontWeight: FontWeight.bold, color: c.platform.color),
+                          ),
+                        ),
+                        Positioned(
+                          right: -2,
+                          bottom: -2,
+                          child: Container(
+                            padding: const EdgeInsets.all(1.5),
+                            decoration: BoxDecoration(color: AppTheme.surface, shape: BoxShape.circle),
+                            child: Container(
+                              padding: const EdgeInsets.all(2.5),
+                              decoration: BoxDecoration(color: c.platform.color, shape: BoxShape.circle),
+                              child: Icon(c.platform.icon, color: Colors.white, size: 9),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                   title: Row(
                     children: [

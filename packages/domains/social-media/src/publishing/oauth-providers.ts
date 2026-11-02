@@ -73,7 +73,7 @@ const facebookProvider: OAuthProvider = {
     selectable: true,
     authorizeUrl({ state, redirectUri }) {
         const { clientId } = requireAppCredentials('facebook');
-        const scopes = envScopes('META_FACEBOOK_SCOPES', ['pages_show_list', 'pages_read_engagement', 'pages_manage_posts', 'pages_manage_engagement', 'business_management']);
+        const scopes = envScopes('META_FACEBOOK_SCOPES', ['pages_show_list', 'pages_read_engagement', 'read_insights', 'pages_manage_posts', 'pages_manage_engagement', 'business_management']);
         const q = new URLSearchParams({ client_id: clientId, redirect_uri: redirectUri, state, response_type: 'code' });
         const configId = process.env.META_LOGIN_CONFIG_ID?.trim();
         if (configId) q.set('config_id', configId);
@@ -83,7 +83,7 @@ const facebookProvider: OAuthProvider = {
     async exchangeCode({ code, redirectUri }) {
         const { clientId, clientSecret } = requireAppCredentials('facebook');
         const graph = (p: string) => `https://graph.facebook.com/${META_GRAPH_VERSION()}/${p}`;
-        const scopes = envScopes('META_FACEBOOK_SCOPES', ['pages_show_list', 'pages_read_engagement', 'pages_manage_posts', 'pages_manage_engagement', 'business_management']);
+        const scopes = envScopes('META_FACEBOOK_SCOPES', ['pages_show_list', 'pages_read_engagement', 'read_insights', 'pages_manage_posts', 'pages_manage_engagement', 'business_management']);
         const short = await oauthJson('facebook', await providerFetch('facebook', graph(`oauth/access_token?${new URLSearchParams({ client_id: clientId, client_secret: clientSecret, redirect_uri: redirectUri, code })}`)), 'Facebook code exchange');
         const long = await oauthJson('facebook', await providerFetch('facebook', graph(`oauth/access_token?${new URLSearchParams({ grant_type: 'fb_exchange_token', client_id: clientId, client_secret: clientSecret, fb_exchange_token: short.access_token })}`)), 'Facebook long-lived token');
         return { accessToken: long.access_token, expiresAt: expiresIn(long.expires_in), scopes, tokenType: 'user' };
@@ -113,6 +113,7 @@ const instagramProvider: OAuthProvider = {
         if (isInstagramBusinessLogin()) {
             const scopes = envScopes('META_INSTAGRAM_SCOPES', [
                 'instagram_business_basic',
+                'instagram_business_manage_insights',
                 'instagram_business_content_publish',
                 'instagram_business_manage_messages',
                 'instagram_business_manage_comments',
@@ -129,7 +130,16 @@ const instagramProvider: OAuthProvider = {
             return `https://www.instagram.com/oauth/authorize?${q}`;
         }
         // Legacy / Facebook Login fallback
-        const scopes = envScopes('META_INSTAGRAM_SCOPES', ['instagram_basic', 'instagram_content_publish', 'instagram_manage_comments', 'pages_show_list', 'pages_read_engagement', 'business_management']);
+        const scopes = envScopes('META_INSTAGRAM_SCOPES', [
+            'instagram_basic',
+            'instagram_content_publish',
+            'instagram_manage_comments',
+            'instagram_manage_insights',
+            'pages_show_list',
+            'pages_read_engagement',
+            'read_insights',
+            'business_management',
+        ]);
         const q = new URLSearchParams({ client_id: clientId, redirect_uri: redirectUri, state, response_type: 'code' });
         const configId = process.env.META_LOGIN_CONFIG_ID?.trim();
         if (configId) q.set('config_id', configId);
@@ -141,6 +151,7 @@ const instagramProvider: OAuthProvider = {
         if (isInstagramBusinessLogin()) {
             const scopes = envScopes('META_INSTAGRAM_SCOPES', [
                 'instagram_business_basic',
+                'instagram_business_manage_insights',
                 'instagram_business_content_publish',
                 'instagram_business_manage_messages',
                 'instagram_business_manage_comments',

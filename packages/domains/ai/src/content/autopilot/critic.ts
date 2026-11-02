@@ -162,6 +162,10 @@ export async function runCriticAgent(params: {
     const { pieces, brand } = params;
     if (!pieces.length) return;
     const ids = new Set(pieces.map((p) => p.slotId));
+    // A review that did not happen must not look like a pass (audit A7): both the fallback and the error path mark
+    // the pieces as not reviewed; enforceBrandRules still applies the hard rules either way.
+    const markNotReviewed = () => { for (const p of pieces) p.critic = { ...(p.critic || { verdict: 'ok', issues: [] }), skipped: true }; };
+    let usedFallback = false;
     try {
         const { value } = await runJsonAgent({
             llm: params.llm,
@@ -171,7 +175,7 @@ export async function runCriticAgent(params: {
             schema: CriticReviewSchema,
             normalize: (raw, meta) => normaliseCriticBatch(raw, pieces, meta?.attempt === 2),
             tolerateCheckOnRepair: true,
-            fallback: () => ({
+            fallback: () => (usedFallback = true, {
                 items: pieces.map((p) => ({
                     slotId: p.slotId,
                     verdict: 'ok' as const,
@@ -207,6 +211,10 @@ export async function runCriticAgent(params: {
             },
         });
 
+        if (usedFallback) {
+            markNotReviewed();
+            return;
+        }
         const byId = new Map(pieces.map((p) => [p.slotId, p]));
         for (const item of value.items) {
             const p = byId.get(item.slotId);
@@ -226,10 +234,6 @@ export async function runCriticAgent(params: {
         // Resilient fallback: LLM tone review blip should never crash calendar generation.
         // Hard rules (forbidden words, hashtag caps, caption limits, duplicates) are guaranteed by enforceBrandRules.
         console.warn(`[runCriticAgent] LLM review skipped on error (${err?.message || err}). Falling back to deterministic brand rules.`);
-        for (const p of pieces) {
-            if (!p.critic) {
-                p.critic = { verdict: 'ok', issues: [] };
-            }
-        }
+        markNotReviewed();
     }
 }

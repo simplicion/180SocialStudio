@@ -37,7 +37,7 @@ enum PieceStatus {
   ready('ready', 'Ready'),
   inProgress('in_progress', 'In progress'),
   shot('shot', 'Shot, ready to edit'),
-  pendingReview('pending_review', 'Pending review'),
+  pendingReview('pending_review', 'Needs review'),
   published('published', 'Published'),
   unknown('unknown', 'Unknown');
 
@@ -58,8 +58,16 @@ enum PieceStatus {
 
   static const settable = [ready, inProgress, shot, pendingReview, published];
 
-  static PieceStatus parse(Object? raw) =>
-      PieceStatus.values.firstWhere((s) => s.id == raw, orElse: () => PieceStatus.unknown);
+  static PieceStatus parse(Object? raw) {
+    final s = raw?.toString().toLowerCase().trim();
+    if (s == 'needs_review' || s == 'pending_review' || s == 'needsreview') {
+      return PieceStatus.pendingReview;
+    }
+    if (s == 'in_progress' || s == 'in-progress' || s == 'inprogress') {
+      return PieceStatus.inProgress;
+    }
+    return PieceStatus.values.firstWhere((p) => p.id == s, orElse: () => PieceStatus.unknown);
+  }
 }
 
 class ContentCalendar {

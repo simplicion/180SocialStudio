@@ -184,9 +184,9 @@ class ApiException implements Exception {
       ApiErrorKind.notFound => 'Not found (HTTP 404). This feature may not be available on the server yet.',
       ApiErrorKind.tooLarge => 'File size exceeds server upload limit (HTTP 413). Please choose a smaller file.',
       ApiErrorKind.rateLimited => 'Too many requests (HTTP 429). Please wait a moment and try again.',
-      ApiErrorKind.server => 'The server failed to handle the request (HTTP $status).',
+      ApiErrorKind.server => code != null ? 'Server error: $code' : 'The server failed to handle the request (HTTP $status).',
       ApiErrorKind.unavailable => 'The service is temporarily unavailable (HTTP 503).',
-      _ => 'Request failed (HTTP $status).',
+      _ => code != null ? code : 'Request failed (HTTP $status).',
     };
     return ApiException(kind: kind, message: message, statusCode: status, code: code, data: body);
   }

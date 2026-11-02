@@ -396,9 +396,25 @@ export async function fetchLivePlatformMetrics(params: { projectId: string; comp
                 const token = await SocialTokenVault.getAccessToken(acc);
                 const id = encodeURIComponent(acc.platformAccountId);
                 if (platform === 'instagram') {
-                    const profile = await getJson('instagram', graph(`${id}?fields=followers_count`, token, 'instagram'), token, 'Instagram profile');
-                    const ins = await getJson('instagram', graph(`${id}/insights?metric=reach,views,accounts_engaged,total_interactions&period=day&metric_type=total_value&since=${since}&until=${until}`, token, 'instagram'), token, 'Instagram insights');
-                    return { ...base, source: 'live', fetchedAt: now.toISOString(), followersCount: profile.followers_count ?? null, reach: sumInsight(ins.data, 'reach'), views: sumInsight(ins.data, 'views'), engagements: sumInsight(ins.data, 'total_interactions'), periodDays: METRICS_PERIOD_DAYS };
+                    let followers = storedFollowers;
+                    try {
+                        const profile = await getJson('instagram', graph(`${id}?fields=followers_count`, token, 'instagram'), token, 'Instagram profile');
+                        if (typeof profile?.followers_count === 'number') followers = profile.followers_count;
+                    } catch {
+                        // Keep stored followers if profile endpoint fails
+                    }
+                    try {
+                        const ins = await getJson('instagram', graph(`${id}/insights?metric=reach,total_interactions,accounts_engaged&period=day&metric_type=total_value&since=${since}&until=${until}`, token, 'instagram'), token, 'Instagram insights');
+                        return { ...base, source: 'live', fetchedAt: now.toISOString(), followersCount: followers, reach: sumInsight(ins.data, 'reach'), views: sumInsight(ins.data, 'views'), engagements: sumInsight(ins.data, 'total_interactions') ?? sumInsight(ins.data, 'accounts_engaged'), periodDays: METRICS_PERIOD_DAYS };
+                    } catch (insErr: any) {
+                        return {
+                            ...base,
+                            source: followers !== null ? 'live' : 'stored',
+                            fetchedAt: now.toISOString(),
+                            followersCount: followers,
+                            unavailable: unavailableFrom(insErr),
+                        };
+                    }
                 }
                 if (platform === 'facebook') {
                     const page = await getJson('facebook', graph(`${id}?fields=followers_count,fan_count`, token, 'facebook'), token, 'Facebook page');

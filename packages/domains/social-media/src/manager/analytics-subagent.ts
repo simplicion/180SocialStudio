@@ -49,7 +49,7 @@ export class AnalyticsSubagent {
         const ids = accounts.map((a: any) => a.id);
 
         // One grouped query per metric instead of two queries per account.
-        const [published, interactions] = ids.length
+        const [published, interactions, variants] = ids.length
             ? await Promise.all([
                   db.socialPostVariant.groupBy({
                       by: ['socialAccountId'],
@@ -61,9 +61,26 @@ export class AnalyticsSubagent {
                       where: { companyId, socialAccountId: { in: ids }, createdAt: { gte: startOfMonth } },
                       _count: { _all: true },
                   }),
+                  db.socialPostVariant.findMany({
+                      where: { socialAccountId: { in: ids }, publishStatus: 'published' },
+                      select: { socialAccountId: true, platformMeta: true },
+                  }).catch(() => []),
               ])
-            : [[], []];
+            : [[], [], []];
         const countOf = (rows: any[], id: string) => rows.find((r) => r.socialAccountId === id)?._count?._all ?? 0;
+
+        const storedByAccount = new Map<string, { views: number; reach: number; engagements: number }>();
+        for (const v of variants) {
+            const accId = v.socialAccountId;
+            if (!accId) continue;
+            const meta = v.platformMeta && typeof v.platformMeta === 'object' ? v.platformMeta : {};
+            const met = meta.metrics && typeof meta.metrics === 'object' ? meta.metrics : {};
+            const prev = storedByAccount.get(accId) || { views: 0, reach: 0, engagements: 0 };
+            prev.views += Number(met.views) || 0;
+            prev.reach += Number(met.reach) || 0;
+            prev.engagements += (Number(met.likes) || 0) + (Number(met.comments) || 0) + (Number(met.shares) || 0) + (Number(met.saves) || 0);
+            storedByAccount.set(accId, prev);
+        }
 
         let live: Awaited<ReturnType<typeof fetchLivePlatformMetrics>> = [];
         if (projectId) {
@@ -75,21 +92,31 @@ export class AnalyticsSubagent {
             periodStart: startOfMonth.toISOString(),
             accounts: accounts.map((acc: any) => {
                 const m: any = live.find((l) => l.socialAccountId === acc.id) || null;
+                const stored = storedByAccount.get(acc.id);
+                const hasStored = stored && (stored.views > 0 || stored.reach > 0 || stored.engagements > 0);
+                const finalSource = (m?.source === 'live' && m?.reach != null) ? 'live' : (hasStored || m?.followersCount != null ? 'stored' : (m?.source || 'stored'));
+                const reach = m?.reach ?? (stored && stored.reach > 0 ? stored.reach : null);
+                const views = m?.views ?? (stored && stored.views > 0 ? stored.views : null);
+                const engagements = m?.engagements ?? (stored && stored.engagements > 0 ? stored.engagements : null);
+                const unavailable = (reach != null || views != null || engagements != null || m?.followersCount != null)
+                    ? null
+                    : (m?.unavailable?.message ?? null);
+
                 return {
                     id: acc.id,
                     platform: acc.platform,
                     username: acc.username || acc.accountName || acc.platform,
                     publishedThisMonth: countOf(published, acc.id),
                     automationEventsThisMonth: countOf(interactions, acc.id),
-                    metrics: m
+                    metrics: (m || hasStored)
                         ? {
-                              source: m.source || 'stored',
-                              followers: m.followersCount ?? null,
-                              reach: m.reach ?? null,
-                              views: m.views ?? null,
-                              engagements: m.engagements ?? null,
-                              periodDays: m.periodDays ?? null,
-                              unavailable: m.unavailable?.message ?? null,
+                              source: finalSource,
+                              followers: m?.followersCount ?? null,
+                              reach,
+                              views,
+                              engagements,
+                              periodDays: m?.periodDays ?? null,
+                              unavailable,
                           }
                         : null,
                 };

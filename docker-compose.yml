@@ -27,8 +27,24 @@ services:
       PORT: 4005
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-social_studio_db}?schema=public
       JWT_SECRET: ${JWT_SECRET:-social_studio_secret_production_key}
+      TREND_WORKER_URL: http://trend-worker:4010
+      TREND_WORKER_SECRET: ${TREND_WORKER_SECRET:?set TREND_WORKER_SECRET}
     ports:
       - '4005:4005'
+
+  # Trend research sidecar. Internal network only: no published port.
+  trend-worker:
+    build:
+      context: services/trend-worker
+    container_name: social-studio-trend-worker
+    restart: unless-stopped
+    environment:
+      TREND_WORKER_SECRET: ${TREND_WORKER_SECRET:?set TREND_WORKER_SECRET}
+      # Optional official credentials; each unlocks one lane.
+      TREND_WORKER_GITHUB_TOKEN: ${TREND_WORKER_GITHUB_TOKEN:-}
+      TREND_WORKER_X_BEARER_TOKEN: ${TREND_WORKER_X_BEARER_TOKEN:-}
+      REDDIT_CLIENT_ID: ${REDDIT_CLIENT_ID:-}
+      REDDIT_CLIENT_SECRET: ${REDDIT_CLIENT_SECRET:-}
 
 volumes:
   postgres_data:

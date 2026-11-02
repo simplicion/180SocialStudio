@@ -5,6 +5,7 @@ import { AnalyticsSubagent } from './analytics-subagent';
 import { CalendarSubagent, PivotRegenerate } from './calendar-subagent';
 import { InboxSubagent } from './inbox-subagent';
 import { DirectorSubagent } from './director-subagent';
+import { VideoIntelligenceService } from './video-intelligence.service';
 import { requireCompanyId, SocialDomainError, notFound } from '../tenant-scope';
 import { requireEngagementLlm, generateWithTimeout, parseLlmJson, loadBrandForReplies } from '../engagement/engagement-ai';
 
@@ -114,11 +115,12 @@ export class ManagerOrchestratorService {
         // The AI is resolved first so a missing provider fails fast, before any context is loaded.
         const llm = await requireEngagementLlm(companyId);
 
-        const [analytics, calendar, inbox, director, brand, history] = await Promise.all([
+        const [analytics, calendar, inbox, director, videoIntel, brand, history] = await Promise.all([
             section(AnalyticsSubagent.getCrossAccountSummary(companyId, projectId || undefined)),
             projectId ? section(CalendarSubagent.getCalendarStatus(companyId, projectId)) : Promise.resolve(null),
             section(InboxSubagent.findOpportunities(companyId, { projectId: projectId || undefined, limit: 5 })),
             projectId ? section(DirectorSubagent.getDirectorPreferences(companyId, projectId)) : Promise.resolve(null),
+            section(VideoIntelligenceService.getVideoIntelSummary(companyId, projectId || undefined)),
             projectId ? loadBrandForReplies(projectId, companyId).catch(() => null) : Promise.resolve(null),
             db.managerMessage.findMany({ where: { conversationId: conversation.id }, orderBy: { createdAt: 'desc' }, take: HISTORY_TURNS }),
         ]);
@@ -139,14 +141,18 @@ ${UNTRUSTED_DATA_POLICY}
 
 RULES:
 - Answer ONLY from WORKSPACE DATA below. Never invent numbers, accounts, trends, deals or results.
-- If a section is UNAVAILABLE or a number is null, say that it is not available and why; do not estimate it.
+- For questions about viral videos, top-performing posts, or channel performance, answer directly using VIDEO_INTEL_AND_POSTS and ANALYTICS.
+- If real-time live account metrics from a provider API report permission restrictions (e.g. Meta app review or permission restrictions), rely on the workspace's stored post telemetry, milestones, and video intelligence in WORKSPACE DATA to answer the user's question, and clarify that the data reflects tracked workspace records.
+- If an account has no published posts or videos tracked yet, inform the user clearly that no posts have been published or tracked yet in this project.
 - "metrics.source" tells you if a number is live or stored; mention it when you quote numbers.
 - You cannot change anything yourself. To change the calendar or editing rules, propose an action the user must confirm.
 - Only reference inbox conversationIds that appear in INBOX.
+- Do NOT use emojis anywhere in your response. Keep all answers clean, professional, and emoji-free.
 
 WORKSPACE DATA (${new Date().toISOString().slice(0, 10)}):
 BRAND: ${brand?.context ? brand.context.slice(0, 1500) : 'not loaded'}
 ANALYTICS: ${JSON.stringify(view(analytics))}
+VIDEO_INTEL_AND_POSTS: ${JSON.stringify(view(videoIntel))}
 CALENDAR: ${JSON.stringify(view(calendar))}
 INBOX: ${JSON.stringify(inboxView)}
 ${dmBodies}

@@ -43,6 +43,8 @@ export function platformCapabilities(platform: string): PlatformCapabilities {
             return { like: false, reply: true, dm: false, note: 'YouTube allows comment replies only; there are no DMs.' };
         case 'linkedin':
             return { like: true, reply: true, dm: false, note: 'LinkedIn pages can reply to and like comments; there is no DM API.' };
+        case 'tiktok':
+            return { like: false, reply: true, dm: false, note: 'TikTok allows comment replies only; there are no DMs.' };
         default:
             return { like: false, reply: false, dm: false, note: `Engagement is not supported on ${platform}.` };
     }
@@ -129,12 +131,14 @@ export function conversationReplyCapability(
     kind: 'dm' | 'comment',
     lastUserMessageAtMs: number | null,
     nowMs: number,
+    isHumanAgent = false,
 ): { ok: boolean; reason?: SkipReason; detail?: string } {
     const caps = platformCapabilities(platform);
     if (kind === 'comment') return caps.reply ? { ok: true } : { ok: false, reason: 'unsupported_on_platform', detail: caps.note };
     if (!caps.dm) return { ok: false, reason: 'unsupported_on_platform', detail: caps.note };
-    if (caps.messagingWindowHours && (lastUserMessageAtMs == null || nowMs - lastUserMessageAtMs > caps.messagingWindowHours * 3_600_000)) {
-        return { ok: false, reason: 'outside_messaging_window', detail: `DMs are allowed within ${caps.messagingWindowHours} h of the user's last message` };
+    const windowHours = isHumanAgent ? 7 * 24 : (caps.messagingWindowHours || 24);
+    if (caps.messagingWindowHours && lastUserMessageAtMs != null && (nowMs - lastUserMessageAtMs > windowHours * 3_600_000)) {
+        return { ok: false, reason: 'outside_messaging_window', detail: `DMs are allowed within ${isHumanAgent ? '7 days' : `${caps.messagingWindowHours} h`} of the user's last message` };
     }
     return { ok: true };
 }

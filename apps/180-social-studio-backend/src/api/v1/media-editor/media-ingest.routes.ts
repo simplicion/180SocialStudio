@@ -124,7 +124,7 @@ export async function ingestDownloadHandler(req: Request, res: Response) {
     if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
     if (extractAudio) {
-      const result = await YtDlpService.extractAudio(val.normalizedUrl!, {
+      const result = await YtDlpService.extractAudio(targetSource, {
         outputDir: uploadsDir,
         timeRange,
       });
@@ -139,7 +139,7 @@ export async function ingestDownloadHandler(req: Request, res: Response) {
       });
     }
 
-    const result = await YtDlpService.downloadVideo(val.normalizedUrl!, {
+    const result = await YtDlpService.downloadVideo(targetSource, {
       outputDir: uploadsDir,
       timeRange,
     });
@@ -166,6 +166,7 @@ export async function ingestAutoClipHandler(req: Request, res: Response) {
   try {
     const {
       url,
+      localPath,
       maxShorts = 3,
       targetShortDurationSec = 35,
       aspectRatio = "9:16",
@@ -176,13 +177,17 @@ export async function ingestAutoClipHandler(req: Request, res: Response) {
       sync = false,
     } = req.body || {};
 
-    if (!url || typeof url !== "string") {
-      return res.status(400).json({ success: false, error: "URL_REQUIRED", message: "Video URL is required." });
-    }
-
-    const val = YtDlpService.validateUrl(url);
-    if (!val.valid) {
-      return res.status(400).json({ success: false, error: "INVALID_URL", message: val.error });
+    let targetSource = "";
+    if (localPath && typeof localPath === "string" && fs.existsSync(localPath)) {
+      targetSource = localPath;
+    } else if (url && typeof url === "string" && url.trim().length > 0) {
+      const val = YtDlpService.validateUrl(url);
+      if (!val.valid) {
+        return res.status(400).json({ success: false, error: "INVALID_URL", message: val.error });
+      }
+      targetSource = val.normalizedUrl!;
+    } else {
+      return res.status(400).json({ success: false, error: "SOURCE_REQUIRED", message: "Either a valid video URL or uploaded video path is required." });
     }
 
     const baseUrl = `${req.protocol}://${req.get("host") || "localhost:4007"}`;
@@ -221,7 +226,7 @@ export async function ingestAutoClipHandler(req: Request, res: Response) {
         updateProgress(100);
         return res;
       },
-      { data: { url: val.normalizedUrl, maxShorts, aspectRatio, subtitleStyle, backgroundMusic } }
+      { data: { url: targetSource, maxShorts, aspectRatio, subtitleStyle, backgroundMusic } }
     );
 
     return res.status(202).json({

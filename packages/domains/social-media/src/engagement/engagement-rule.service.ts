@@ -25,6 +25,8 @@ function validateRuleShape(dto: Partial<CreateEngagementRuleDTO> & { status?: st
         throw invalid('actionPublicReplies must be at most 20 strings of at most 1000 characters');
     }
     if (dto.actionDmTemplate !== undefined && String(dto.actionDmTemplate).length > 1000) throw invalid('actionDmTemplate is limited to 1000 characters');
+    if (dto.actionDmBeforeFollowTemplate && String(dto.actionDmBeforeFollowTemplate).length > 1000) throw invalid('actionDmBeforeFollowTemplate is limited to 1000 characters');
+    if (dto.actionDmAfterFollowTemplate && String(dto.actionDmAfterFollowTemplate).length > 1000) throw invalid('actionDmAfterFollowTemplate is limited to 1000 characters');
     if (dto.actionDmDeliverableUrl && !/^https:\/\/\S+$/i.test(String(dto.actionDmDeliverableUrl))) throw invalid('actionDmDeliverableUrl must be an https:// link');
     if (dto.platformMediaId != null && dto.platformMediaId !== '' && !/^[A-Za-z0-9_:.-]{1,128}$/.test(String(dto.platformMediaId))) {
         throw invalid('platformMediaId must be a platform media id');
@@ -95,6 +97,9 @@ export class EngagementRuleService {
                 actionDmTemplate: dto.actionDmTemplate.trim(),
                 actionDmDeliverableUrl: dto.actionDmDeliverableUrl ?? null,
                 actionDmButtons: dto.actionDmButtons ?? [],
+                requireFollow: dto.requireFollow ?? false,
+                actionDmBeforeFollowTemplate: dto.actionDmBeforeFollowTemplate ? dto.actionDmBeforeFollowTemplate.trim() : null,
+                actionDmAfterFollowTemplate: dto.actionDmAfterFollowTemplate ? dto.actionDmAfterFollowTemplate.trim() : null,
                 actionEnableAiAgent: dto.actionEnableAiAgent ?? true,
                 aiAgentGoal: dto.aiAgentGoal ?? 'qualify_lead',
                 aiAgentPromptOverride: dto.aiAgentPromptOverride ?? null,
@@ -190,6 +195,9 @@ export class EngagementRuleService {
                 ...(dto.actionDmTemplate ? { actionDmTemplate: dto.actionDmTemplate.trim() } : {}),
                 ...(dto.actionDmDeliverableUrl !== undefined ? { actionDmDeliverableUrl: dto.actionDmDeliverableUrl } : {}),
                 ...(dto.actionDmButtons !== undefined ? { actionDmButtons: dto.actionDmButtons } : {}),
+                ...(dto.requireFollow !== undefined ? { requireFollow: dto.requireFollow } : {}),
+                ...(dto.actionDmBeforeFollowTemplate !== undefined ? { actionDmBeforeFollowTemplate: dto.actionDmBeforeFollowTemplate ? dto.actionDmBeforeFollowTemplate.trim() : null } : {}),
+                ...(dto.actionDmAfterFollowTemplate !== undefined ? { actionDmAfterFollowTemplate: dto.actionDmAfterFollowTemplate ? dto.actionDmAfterFollowTemplate.trim() : null } : {}),
                 ...(dto.actionEnableAiAgent !== undefined ? { actionEnableAiAgent: dto.actionEnableAiAgent } : {}),
                 ...(dto.aiAgentGoal ? { aiAgentGoal: dto.aiAgentGoal } : {}),
                 ...(dto.aiAgentPromptOverride !== undefined ? { aiAgentPromptOverride: dto.aiAgentPromptOverride } : {}),

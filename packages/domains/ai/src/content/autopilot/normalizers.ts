@@ -6,7 +6,7 @@ import type { AutopilotPiece } from './types';
  * audience insights): anything missing stays missing, so the schema/check rejects it and the agent repairs it.
  */
 import { PLATFORM_RULES } from './platform-rules';
-import { CONTENT_FORMATS, DESIGN_SYSTEMS, HOOK_TYPES, PSYCHOLOGICAL_JOBS, type AutopilotPlatform } from './schemas';
+import { CONTENT_FORMATS, CONTENT_MOODS, DESIGN_SYSTEMS, HOOK_TYPES, PSYCHOLOGICAL_JOBS, type AutopilotPlatform } from './schemas';
 
 const strList = (v: unknown, max: number): string[] =>
     Array.isArray(v) ? v.filter((x) => typeof x === 'string' && x.trim()).map((x: string) => x.trim()).slice(0, max) : [];
@@ -17,6 +17,8 @@ export interface StrategyNormaliseCtx {
     days: number;
     platforms: AutopilotPlatform[];
     allowedUrls: Set<string>;
+    /** Ids of researched trends a slot may reference. */
+    trendIds?: Set<string>;
     brandPositioning?: string | null;
 }
 
@@ -101,6 +103,9 @@ export function normaliseStrategy(raw: any, ctx: StrategyNormaliseCtx): any {
                     slideCount: Number.isFinite(Number(s.slideCount)) ? Math.min(12, Math.max(3, Math.round(Number(s.slideCount)))) : undefined,
                     goal: text(s.goal, 120),
                     sourceUrls: strList(s.sourceUrls, 3).filter((u) => ctx.allowedUrls.has(u)),
+                    // Only ids of trends that were actually researched survive; sources are attached from the trend in code.
+                    trendId: typeof s.trendId === 'string' && ctx.trendIds?.has(s.trendId) ? s.trendId : undefined,
+                    mood: CONTENT_MOODS.includes(s.mood) ? s.mood : undefined,
                 };
             });
     }
@@ -229,7 +234,16 @@ export function normaliseHookScript(raw: any, chunk: HookSlotRef[], opts?: { att
             } else if (isAttempt2 && slot?.format === 'reel') {
                 item.script = {
                     hook: item.spokenHook || 'Here is what you need to know today.',
-                    body: [
+                    body: (slot.targetDurationSec && slot.targetDurationSec >= 50) ? [
+                        { beat: text(slot.angle, 500) ?? 'The initial hurdle and common misconception' },
+                        { beat: 'Why standard advice fails under real-world conditions' },
+                        { beat: text(slot.whatContentDelivers, 500) ?? text(slot.topic, 500) ?? 'The practical implementation step by step' },
+                        { beat: 'The exact framework and rule to follow first' },
+                        { beat: 'A concrete example showing the 3x improvement' },
+                        { beat: 'The common pitfall that costs creators 80% of results' },
+                        { beat: 'How to calibrate your numbers in under 5 minutes' },
+                        { beat: 'The final outcome and key takeaway to apply today' },
+                    ] : [
                         { beat: text(slot.angle, 500) ?? 'The initial hurdle and common misconception' },
                         { beat: text(slot.whatContentDelivers, 500) ?? text(slot.topic, 500) ?? 'The practical implementation step by step' },
                         { beat: 'The final outcome and key takeaway' },
@@ -304,7 +318,16 @@ export function normaliseHookScript(raw: any, chunk: HookSlotRef[], opts?: { att
                 if (slot.format === 'reel') {
                     synthItem.script = {
                         hook: spoken,
-                        body: [
+                        body: (slot.targetDurationSec && slot.targetDurationSec >= 50) ? [
+                        { beat: text(slot.angle, 500) ?? 'The initial hurdle and common misconception' },
+                        { beat: 'Why standard advice fails under real-world conditions' },
+                        { beat: text(slot.whatContentDelivers, 500) ?? text(slot.topic, 500) ?? 'The practical implementation step by step' },
+                        { beat: 'The exact framework and rule to follow first' },
+                        { beat: 'A concrete example showing the 3x improvement' },
+                        { beat: 'The common pitfall that costs creators 80% of results' },
+                        { beat: 'How to calibrate your numbers in under 5 minutes' },
+                        { beat: 'The final outcome and key takeaway to apply today' },
+                    ] : [
                             { beat: text(slot.angle, 500) ?? 'The initial hurdle and common misconception' },
                             { beat: text(slot.whatContentDelivers, 500) ?? text(slot.topic, 500) ?? 'The practical implementation step by step' },
                             { beat: 'The final outcome and key takeaway' },
@@ -359,7 +382,7 @@ export function hookScriptProblems(items: any[], chunk: HookSlotRef[]): string[]
             const sc = it.script;
             if (!sc) problems.push(`${slot.slotId}: reel needs a script`);
             else {
-                if (!Array.isArray(sc.body) || sc.body.length < 3) problems.push(`${slot.slotId}: script.body needs 3-6 beats`);
+                if (!Array.isArray(sc.body) || sc.body.length < (slot.targetDurationSec && slot.targetDurationSec >= 50 ? 7 : 3)) problems.push(`${slot.slotId}: script.body needs ${slot.targetDurationSec && slot.targetDurationSec >= 50 ? `at least 7 beats to reach ~${slot.targetDurationSec}s runtime` : '3-6 beats'}`);
                 if (!sc.cta) problems.push(`${slot.slotId}: script.cta is missing`);
                 if (!sc.retentionLoop) problems.push(`${slot.slotId}: script.retentionLoop is missing`);
             }

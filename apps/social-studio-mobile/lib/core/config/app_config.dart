@@ -25,6 +25,9 @@ class AppConfig {
         return 'http://$host:4007';
       }
     }
+    if (kDebugMode) {
+      return 'http://$_localHost:4007';
+    }
     return 'https://api.180workspace.com';
   }
 

@@ -42,7 +42,9 @@ import {
 // (which boots Redis-backed memory services on load).
 import * as SocialProjectModule from './social-project.service';
 import { AgentEventStore, createAgentRunEmitter, getDefaultAgentEventStore } from '@workspace/ai/agent-runs';
+import { createTrendResearchRunner, describeLanes, trendResearchConfigFromEnv, TrendResearchRunner } from '@workspace/ai/research';
 import { AgentMemoryService } from './agent-os/agent-memory';
+import { loadOwnPostOutcomes, OwnPostOutcome, winningExemplars } from './platform-team/own-performance';
 
 export type AutopilotJobStatus = 'queued' | 'running' | 'completed' | 'failed';
 
@@ -74,6 +76,16 @@ export interface AutopilotServiceDeps {
     events?: AgentEventStore | null;
     /** Compact project memory lines for the strategist (preferences, feedback, performance). */
     loadMemory?: (projectId: string, companyId: string) => Promise<string[]>;
+    /** Trend research engine; null when no research lane is configured (then the legacy `search` path applies). */
+    trendResearch?: TrendResearchRunner | null;
+    /** The project's own published posts vs its usual (winning-hook exemplars + research outlook). */
+    loadOwnOutcomes?: (projectId: string, companyId: string) => Promise<OwnPostOutcome[]>;
+}
+
+/** The engine is only worth an LLM planning call when at least one research lane is live. */
+export function defaultTrendResearch(db: unknown, env: NodeJS.ProcessEnv = process.env): TrendResearchRunner | null {
+    const cfg = trendResearchConfigFromEnv(db, env);
+    return describeLanes(cfg).some((l) => l.on) ? createTrendResearchRunner(cfg) : null;
 }
 
 /** Brand objectives (Social OS P1) used as plan goals when the request gives none. */
@@ -114,6 +126,8 @@ export function defaultAutopilotDeps(): AutopilotServiceDeps {
         log: (event, data) => console.info(`[autopilot] ${event}`, JSON.stringify(data)),
         events: getDefaultAgentEventStore(),
         loadMemory: (projectId, companyId) => new AgentMemoryService().buildMemoryContext(projectId, companyId, 'strategist'),
+        trendResearch: defaultTrendResearch(prisma),
+        loadOwnOutcomes: (projectId, companyId) => loadOwnPostOutcomes(prisma, { companyId, projectId }),
     };
 }
 
@@ -297,7 +311,16 @@ export class AutopilotCalendarService {
             } catch (e: any) {
                 this.deps.log('autopilot_memory_unavailable', { companyId, projectId: ctx.projectId, message: e?.message });
             }
+            // The creator's own results: winning hooks for the writer and the outlook for research (tenant-scoped).
+            let ownOutcomes: OwnPostOutcome[] = [];
+            try {
+                ownOutcomes = this.deps.loadOwnOutcomes ? await this.deps.loadOwnOutcomes(ctx.projectId, companyId) : [];
+            } catch (e: any) {
+                this.deps.log('autopilot_own_outcomes_unavailable', { companyId, projectId: ctx.projectId, message: e?.message });
+            }
+            const runResearch = this.deps.trendResearch;
             const input: AutopilotRunInput = {
+                winningExemplars: winningExemplars(ownOutcomes),
                 days: ctx.request.days as 7 | 14 | 30,
                 startDate: ctx.request.startDate,
                 timezone: ctx.request.timezone,
@@ -318,6 +341,9 @@ export class AutopilotCalendarService {
             };
             const result = await runAutopilotPipeline(input, {
                 llm: ctx.llm,
+                trendResearch: runResearch
+                    ? (a) => runResearch({ ...a, ownHistory: async () => ownOutcomes.map((o) => ({ format: o.format, multiple: o.multiple })) })
+                    : null,
                 search: this.deps.search,
                 log: this.deps.log,
                 emit: events.emit,
@@ -481,11 +507,10 @@ export class AutopilotCalendarService {
         return { budget, platforms, outputCeilingUsd: ceiling ? ceiling.outputUsd : null, pricesConfigured: !!ceiling };
     }
 
-    async regeneratePiece(params: { companyId: string; projectId: string; pieceId: string; instruction: unknown }) {
+    async regeneratePiece(params: { companyId: string; projectId: string; pieceId: string; instruction?: unknown }) {
         const { db } = this.deps;
         const { companyId, projectId, pieceId } = params;
         const instruction = typeof params.instruction === 'string' ? params.instruction.trim() : '';
-        if (!instruction) throw new AutopilotError('INVALID_INPUT', 'instruction is required');
         if (instruction.length > 1000) throw new AutopilotError('INVALID_INPUT', 'instruction must be at most 1000 characters');
 
         const project = await loadProject(db, projectId, companyId);

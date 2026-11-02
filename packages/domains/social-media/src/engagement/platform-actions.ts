@@ -4,6 +4,7 @@
  */
 import { InstagramPublisher } from '../adapters/meta.adapter';
 import { LinkedInAdapter } from '../adapters/linkedin.adapter';
+import { YouTubeAdapter } from '../adapters/youtube.adapter';
 import { META_GRAPH_VERSION, metaGraphUrl } from '../publishing/config';
 import { PublishError } from '../publishing/errors';
 import { expectOk, providerFetch } from '../publishing/http';
@@ -56,6 +57,11 @@ export async function replyToComment(platform: string, account: ActionAccount, c
         case 'facebook':
             await post('facebook', graph(`${commentId}/comments`), token, { message: text }, 'Facebook reply to comment');
             return;
+        case 'youtube':
+            await YouTubeAdapter.replyToComment(commentId, text, token);
+            return;
+        case 'tiktok':
+            return;
         case 'linkedin':
             await LinkedInAdapter.replyToComment(commentId, account.platformAccountId, text, token);
             return;
@@ -65,10 +71,18 @@ export async function replyToComment(platform: string, account: ActionAccount, c
 }
 
 /** Comment-to-DM ("private reply") for Meta; a DM to the comment author on X. */
-export async function sendPrivateReply(platform: string, account: ActionAccount, commentId: string, recipientId: string, text: string, token: string): Promise<void> {
+export async function sendPrivateReply(
+    platform: string,
+    account: ActionAccount,
+    commentId: string,
+    recipientId: string,
+    text: string,
+    token: string,
+    quickReplies?: Array<{ title: string; payload?: string }>
+): Promise<void> {
     switch (canonicalEngagementPlatform(platform)) {
         case 'instagram':
-            await InstagramPublisher.sendPrivateReply(account.platformAccountId, commentId, text, token);
+            await InstagramPublisher.sendPrivateReply(account.platformAccountId, commentId, text, token, quickReplies);
             return;
         case 'facebook':
             await post('facebook', graph(`${account.platformAccountId}/messages`), token, { recipient: { comment_id: commentId }, message: { text } }, 'Facebook private reply');
@@ -78,16 +92,45 @@ export async function sendPrivateReply(platform: string, account: ActionAccount,
     }
 }
 
-export async function sendDirectMessage(platform: string, account: ActionAccount, recipientId: string, text: string, token: string): Promise<void> {
+export async function sendDirectMessage(
+    platform: string,
+    account: ActionAccount,
+    recipientId: string,
+    text: string,
+    token: string,
+    quickReplies?: Array<{ title: string; payload?: string }>
+): Promise<void> {
     switch (canonicalEngagementPlatform(platform)) {
         case 'instagram':
-            await InstagramPublisher.sendDirectMessage(account.platformAccountId, recipientId, text, token);
+            await InstagramPublisher.sendDirectMessage(account.platformAccountId, recipientId, text, token, quickReplies);
             return;
         case 'facebook':
-            await post('facebook', graph(`${account.platformAccountId}/messages`), token, { recipient: { id: recipientId }, messaging_type: 'RESPONSE', message: { text } }, 'Facebook message');
+            try {
+                await post('facebook', graph(`${account.platformAccountId}/messages`), token, { recipient: { id: recipientId }, messaging_type: 'RESPONSE', message: { text } }, 'Facebook message');
+            } catch {
+                await post('facebook', graph(`${account.platformAccountId}/messages`), token, { recipient: { id: recipientId }, messaging_type: 'MESSAGE_TAG', tag: 'HUMAN_AGENT', message: { text } }, 'Facebook human agent message');
+            }
             return;
         default:
             throw unsupported(platform, 'Direct messages');
+    }
+}
+
+/**
+ * Checks whether the recipient user follows the creator account via User Profile API.
+ * Returns true if confirmed following, false if not following, or null if cannot be verified.
+ */
+export async function checkUserFollows(
+    platform: string,
+    account: ActionAccount,
+    recipientId: string,
+    token: string
+): Promise<boolean | null> {
+    switch (canonicalEngagementPlatform(platform)) {
+        case 'instagram':
+            return InstagramPublisher.checkUserFollowsBusiness(recipientId, token);
+        default:
+            return null;
     }
 }
 

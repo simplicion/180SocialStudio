@@ -69,6 +69,8 @@ export function pieceToRow(piece: AutopilotPiece, calendarId: string, companyId:
         ...(piece.humanScore ? { humanScore: piece.humanScore } : {}),
         ...(piece.craft ? { craft: piece.craft } : {}),
         ...(piece.productionScript ? { productionScript: piece.productionScript } : {}),
+        ...(piece.trend ? { trend: piece.trend } : {}),
+        ...(piece.mood ? { mood: piece.mood } : {}),
     };
     const notes = [
         piece.psychologicalJob ? `Psychological Job: ${piece.psychologicalJob}` : '',
@@ -138,6 +140,10 @@ export function expandAutopilotFields<T extends Record<string, any>>(row: T): T 
         timedBeats: a.timedBeats || [],
         teleprompterText: a.teleprompterText || null,
         productionScript: a.productionScript || null,
+        // Research the piece is grounded in (clients show a "Trend-backed" chip) and whether the LLM review ran.
+        trend: a.trend || null,
+        mood: a.mood || null,
+        criticSkipped: a.critic?.skipped === true,
         postingTime: (row as any).postingTimeTz || '',
     };
 }
@@ -170,5 +176,17 @@ export function rowToPiece(row: any): AutopilotPiece | null {
         sources: a.sources || [],
         critic: a.critic || { verdict: 'ok', issues: [] },
         status: row.status === 'needs_review' ? 'needs_review' : 'ready',
+        hookScore: a.hookScore ?? undefined,
+        hookFormula: a.hookFormula || undefined,
+        humanScore: a.humanScore ?? undefined,
+        craft: a.craft || undefined,
+        timedBeats: a.timedBeats || undefined,
+        teleprompterScript: a.teleprompterText || undefined,
+        productionScript: a.productionScript || undefined,
+        psychologicalJob: a.psychologicalJob || undefined,
+        designSystem: a.designSystem || undefined,
+        whatContentDelivers: a.whatContentDelivers || undefined,
+        trend: a.trend || undefined,
+        mood: a.mood || undefined,
     };
 }

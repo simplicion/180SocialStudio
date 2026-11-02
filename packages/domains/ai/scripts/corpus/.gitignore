@@ -1,0 +1,2 @@
+# Exported corpora contain customer text. Never commit them.
+out/

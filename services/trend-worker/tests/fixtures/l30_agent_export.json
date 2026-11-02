@@ -1,0 +1,60 @@
+{
+  "clusters": [
+    {
+      "engagement_total": 4,
+      "sources": [
+        "hackernews"
+      ],
+      "summary": "In mice.",
+      "title": "Creatine may help shield the brain from damage linked to gut inflammation"
+    },
+    {
+      "engagement_total": 3,
+      "sources": [
+        "hackernews"
+      ],
+      "summary": "The creatine market is seeing rapid growth projected to average over 25% year-over-year[0].\n0. https://www.grandviewresearch.com/industry-analysis/creatine...",
+      "title": "Creatine might protect the brain from gut inflammation"
+    }
+  ],
+  "freshness_verdicts": [],
+  "generated_at": "2026-11-02T23:16:13.965497Z",
+  "query": "creatine for women",
+  "results": [
+    {
+      "candidate_id": "https://medicalxpress.com/news/2026-10-popular-sports-supplement-shield-brain.html",
+      "cluster": 0,
+      "engagement": {
+        "comments": 1,
+        "points": 4
+      },
+      "published_at": "2026-10-16",
+      "relevance_score": 0.2631,
+      "source": "hackernews",
+      "summary": "In mice.",
+      "title": "Creatine may help shield the brain from damage linked to gut inflammation",
+      "url": "https://medicalxpress.com/news/2026-10-popular-sports-supplement-shield-brain.html"
+    },
+    {
+      "candidate_id": "https://psypost.org/a-popular-workout-supplement-might-protect-the-brain-from-gut-inflammation",
+      "cluster": 1,
+      "engagement": {
+        "comments": 1,
+        "points": 3
+      },
+      "published_at": "2026-10-13",
+      "relevance_score": 0.2498,
+      "source": "hackernews",
+      "summary": "The creatine market is seeing rapid growth projected to average over 25% year-over-year[0].\n0. https://www.grandviewresearch.com/industry-analysis/creatine...",
+      "title": "Creatine might protect the brain from gut inflammation",
+      "url": "https://www.psypost.org/a-popular-workout-supplement-might-protect-the-brain-from-gut-inflammation/"
+    }
+  ],
+  "schema_version": "1.4",
+  "source_status": {
+    "hackernews": "ok",
+    "polymarket": "timeout"
+  },
+  "usage": null,
+  "window_days": 30
+}

@@ -25,6 +25,9 @@ export interface CreateEngagementRuleDTO {
     actionDmTemplate: string;
     actionDmDeliverableUrl?: string;
     actionDmButtons?: Array<{ title: string; url?: string; payload?: string }>;
+    requireFollow?: boolean;
+    actionDmBeforeFollowTemplate?: string;
+    actionDmAfterFollowTemplate?: string;
     actionEnableAiAgent?: boolean;
     aiAgentGoal?: AiAgentGoal;
     aiAgentPromptOverride?: string;
@@ -58,6 +61,8 @@ export interface EngagementExecutionResult {
     commentLiked: boolean;
     publicReplySent?: string;
     dmSent?: string;
+    beforeDmSent?: string;
+    followStatus?: 'pending' | 'verified' | 'not_required';
     error?: string;
     skippedReason?: 'duplicate' | 'inactive' | 'no_match' | 'rate_limited';
     /** Per-action result: sent, skipped (capability / window, with reason) or failed (provider error). */

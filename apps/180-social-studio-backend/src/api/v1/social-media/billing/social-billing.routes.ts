@@ -204,7 +204,7 @@ router.get('/pay-modal', (req: Request, res: Response) => {
       <li>Autonomous Autopilot Content Swarm</li>
       <li>AI Video Director & Kinetic Auto-Captions</li>
       <li>Multi-Platform Direct Publishing</li>
-      <li>${isMonthly ? '30 Days Full Access' : `Exact ${(days || 1) * 24} Hours Active Access`}</li>
+      <li>${isMonthly ? '30 Days Full Access' : `Exact ${Number(days || 1) * 24} Hours Active Access`}</li>
     </ul>
     <button class="btn" id="confirmBtn" onclick="completePayment()">Confirm & Unlock Access</button>
     <div class="footer">🔒 Encrypted 256-bit Sovereign Payment Gateway</div>

@@ -3981,6 +3981,10 @@ model SocialEngagementRule {
   actionDmTemplate        String                  @db.Text           // DM copy with {name}, {handle}, {deliverable_link}
   actionDmDeliverableUrl  String?                 // e.g. "https://180workspace.com/blueprint"
   actionDmButtons         Json?                   @default("[]")     // Quick-reply buttons or link pills
+  // Follow-Gate / Require Follow for Reward
+  requireFollow                 Boolean                 @default(false)
+  actionDmBeforeFollowTemplate  String?                 @db.Text
+  actionDmAfterFollowTemplate   String?                 @db.Text
   
   // Conversational AI Agent Follow-Up
   actionEnableAiAgent     Boolean                 @default(true)     // Let AI take over multi-turn conversation
@@ -4020,7 +4024,9 @@ model SocialInteractionLog {
   platformMediaId         String?                 // post / reel the comment belongs to (one DM per user per post)
   recipientId             String                  // platform user ID or IGSID
   recipientHandle         String
-  status                  String                  // "success", "failed", "rate_limited", "duplicate_skipped"
+  status                  String                  // "success", "failed", "rate_limited", "duplicate_skipped", "pending_follow"
+  followStatus            String?                 // "pending", "verified", "not_required"
+  beforeDmSent            String?                 @db.Text
   commentLiked            Boolean                 @default(false)
   publicReplySent         String?                 @db.Text
   dmSent                  String?                 @db.Text
@@ -4197,3 +4203,43 @@ model StudioMediaAsset {
   @@index([companyId, pieceId])
 }
 
+
+/// Trend Lab research report: one topic researched by the 4 research agents (social pulse, platform signal,
+/// web & news, analyst). `report` holds the deterministic metrics + analyst output; every number in it is computed
+/// in code (packages/domains/ai/src/research/trend-metrics.ts), never written by a model.
+model TrendReport {
+  id              String    @id @default(uuid())
+  companyId       String
+  projectId       String
+  userId          String?
+  topic           String
+  /// Lower-cased, whitespace-collapsed topic; part of the shared cache key.
+  normalizedTopic String
+  /// queued | running | done | failed
+  status          String    @default("queued")
+  /// planning | social_pulse | platform_signal | web_news | analyst | done
+  stage           String    @default("queued")
+  progress        Int       @default(0)
+  heartbeatAt     DateTime?
+  /// Per-agent status: { social_pulse: "ok" | "skipped" | "error", ... } and per-source availability.
+  sourcesUsed     Json?     @default("{}")
+  report          Json?
+  error           String?
+  usage           Json?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([companyId, projectId, createdAt])
+  @@index([companyId, status])
+}
+
+/// Shared 24h cache of raw research signals keyed by normalized topic + language + source set. Holds only
+/// public third-party data (no tenant data), so it is shared across companies to save API quota and cost.
+model TrendSignalCache {
+  key       String   @id
+  payload   Json
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([expiresAt])
+}

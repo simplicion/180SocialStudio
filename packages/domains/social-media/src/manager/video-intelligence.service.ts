@@ -130,4 +130,109 @@ Return ONLY JSON:
         }
         return analysis;
     }
+
+    /**
+     * Cross-platform summary of published videos, viral outliers, view milestones and video intelligence traits.
+     * Grounded only in real workspace posts and video intelligence rows; nothing is invented.
+     */
+    static async getVideoIntelSummary(companyId: string, projectId?: string) {
+        requireCompanyId(companyId);
+        const db = getDb() as any;
+        const wherePost: any = { companyId };
+        if (projectId) wherePost.projectId = projectId;
+
+        const posts = await db.socialPost.findMany({
+            where: wherePost,
+            orderBy: { createdAt: 'desc' },
+            take: 40,
+            select: {
+                id: true,
+                title: true,
+                content: true,
+                status: true,
+                publishedAt: true,
+                mediaType: true,
+                variants: {
+                    select: {
+                        id: true,
+                        platform: true,
+                        externalUrl: true,
+                        publishStatus: true,
+                        platformMeta: true,
+                        publishedAt: true,
+                    },
+                },
+                videoIntelligence: {
+                    select: {
+                        hookScore: true,
+                        pacingScore: true,
+                        energyLevel: true,
+                        detectedFormat: true,
+                        visualHookAnalysis: true,
+                        viralityHypothesis: true,
+                    },
+                },
+            },
+        });
+
+        const publishedVideos: any[] = [];
+        const byPlatform: Record<string, any[]> = {};
+
+        for (const post of posts) {
+            const vi = post.videoIntelligence;
+            const variants = (post.variants || []).filter((v: any) => v.publishStatus === 'published' || post.status === 'published');
+            for (const v of (variants.length ? variants : (post.variants || []))) {
+                const plat = String(v.platform || 'unknown').toLowerCase();
+                const meta = v.platformMeta && typeof v.platformMeta === 'object' ? v.platformMeta : {};
+                const metrics = meta.metrics && typeof meta.metrics === 'object' ? meta.metrics : {};
+                const milestones = Array.isArray(meta.milestones) ? meta.milestones : [];
+                const views = Number(metrics.views) || 0;
+                const reach = Number(metrics.reach) || 0;
+                const likes = Number(metrics.likes) || 0;
+                const comments = Number(metrics.comments) || 0;
+                const shares = Number(metrics.shares) || 0;
+                const saves = Number(metrics.saves) || 0;
+                const engagements = likes + comments + shares + saves;
+
+                const item = {
+                    postId: post.id,
+                    title: post.title || (post.content ? String(post.content).slice(0, 50) : 'Video'),
+                    platform: plat,
+                    status: v.publishStatus || post.status,
+                    views: views || null,
+                    reach: reach || null,
+                    likes: likes || null,
+                    comments: comments || null,
+                    shares: shares || null,
+                    engagements: engagements || null,
+                    milestones: milestones.map((m: any) => m.label || m.id),
+                    hookScore: vi?.hookScore ?? null,
+                    pacingScore: vi?.pacingScore ?? null,
+                    detectedFormat: vi?.detectedFormat ?? null,
+                    viralityHypothesis: vi?.viralityHypothesis ?? null,
+                    publishedAt: v.publishedAt || post.publishedAt || null,
+                    url: v.externalUrl || null,
+                };
+
+                publishedVideos.push(item);
+                if (!byPlatform[plat]) byPlatform[plat] = [];
+                byPlatform[plat].push(item);
+            }
+        }
+
+        const sorted = [...publishedVideos].sort((a, b) => (b.views || 0) - (a.views || 0) || (b.engagements || 0) - (a.engagements || 0));
+        const viralVideos = sorted.filter((v) => (v.views && v.views >= 1000) || v.milestones.length > 0 || (v.hookScore && v.hookScore >= 80) || (v.engagements && v.engagements >= 50));
+        const topViral = (viralVideos.length ? viralVideos : sorted).slice(0, 5);
+
+        return {
+            totalVideosTracked: publishedVideos.length,
+            topViralVideos: topViral,
+            byPlatform: Object.fromEntries(
+                Object.entries(byPlatform).map(([plat, list]) => [
+                    plat,
+                    list.sort((a, b) => (b.views || 0) - (a.views || 0)).slice(0, 3),
+                ]),
+            ),
+        };
+    }
 }

@@ -113,7 +113,7 @@ test('dedup: one DM per user per post even from a different comment; another pos
 // ── capability matrix ────────────────────────────────────────────────────────────────────────────────────────
 test('capabilities: YouTube replies only, TikTok reply only, LinkedIn no DM — skipped with a logged reason, no fake success', async () => {
     const yt = await EngagementDispatcher.executeEngagement(rule(), comment({ socialAccountId: 'acc-yt', platform: 'youtube' }));
-    assert.ok(yt.publicReplySent);
+        assert.ok(yt.publicReplySent);
     assert.equal(yt.commentLiked, false);
     assert.equal(yt.dmSent, undefined);
     assert.ok(yt.actions!.some((a) => a.action === 'dm' && a.status === 'skipped' && /unsupported_on_platform/.test(a.reason!)));
@@ -353,4 +353,94 @@ test('platform metrics: live values come from the provider, failures are PLATFOR
     assert.equal(th.followersCount, 42);
     assert.equal(th.reach, null, 'no invented numbers for mock_ accounts');
     await assert.rejects(fetchLivePlatformMetrics({ projectId: 'proj-m', companyId: 'co-2' }), (e: any) => e.status === 404);
+});
+
+// ── follow-gate: 2-step reward funnel ────────────────────────────────────────────────────────────────────────
+test('follow-gate: when requireFollow is enabled and user does not follow, sends before-follow prompt and sets status pending_follow', async () => {
+    const gatedRule = rule({
+        id: 'rule-gated',
+        requireFollow: true,
+        actionDmBeforeFollowTemplate: 'Hey {name}! Please follow {creator_handle} ({profile_link}) to get access!',
+        actionDmAfterFollowTemplate: 'Thanks for following! Here is your reward: {deliverable_link}',
+        actionDmDeliverableUrl: 'https://example.com/secret-vault',
+    });
+    db.socialEngagementRule.rows.push(gatedRule);
+
+    const out = await EngagementDispatcher.executeEngagement(gatedRule, comment({ commentId: 'c-gate-1', senderId: 'user-unfollowed' }));
+
+    assert.equal(out.commentLiked, true);
+    assert.equal(out.followStatus, 'pending');
+    assert.match(out.dmSent!, /Please follow/);
+    assert.match(out.dmSent!, /https:\/\/instagram\.com\/acc-ig/);
+    assert.doesNotMatch(out.dmSent!, /https:\/\/example\.com\/secret-vault/, 'Reward URL must not be in before-follow DM');
+
+    const log = db.socialInteractionLog.rows.find((l: any) => l.recipientId === 'user-unfollowed');
+    assert.ok(log, 'Interaction log must exist');
+    assert.equal(log.status, 'pending_follow');
+    assert.equal(log.followStatus, 'pending');
+    assert.match(log.beforeDmSent, /Please follow/);
+});
+
+test('follow-gate: when user replies to confirm following, resolveFollowGate delivers reward DM and upgrades status to success', async () => {
+    const gatedRule = rule({
+        id: 'rule-gated-2',
+        requireFollow: true,
+        actionDmBeforeFollowTemplate: 'Hey {name}! Follow @{handle} first: {profile_link}',
+        actionDmAfterFollowTemplate: 'Thanks for following! Here is your link: {deliverable_link}',
+        actionDmDeliverableUrl: 'https://example.com/secret-vault',
+    });
+    db.socialEngagementRule.rows.push(gatedRule);
+
+    // Step 1: User comments -> gets before-follow prompt
+    await EngagementDispatcher.executeEngagement(gatedRule, comment({ commentId: 'c-gate-2', senderId: 'user-follow-flow' }));
+    const initialLog = db.socialInteractionLog.rows.find((l: any) => l.recipientId === 'user-follow-flow');
+    assert.equal(initialLog.status, 'pending_follow');
+
+    // Step 2: User follows and replies "DONE" via inbound DM
+    const dmEvent = {
+        companyId: 'co-1',
+        socialAccountId: 'acc-ig',
+        platform: 'instagram',
+        eventType: 'dm' as const,
+        senderId: 'user-follow-flow',
+        senderHandle: 'user-follow-flow',
+        text: 'DONE, I followed!',
+    };
+
+    const resolved = await EngagementDispatcher.resolveFollowGate(initialLog, dmEvent, db.socialAccount.rows.find((a: any) => a.id === 'acc-ig'));
+    assert.equal(resolved, true);
+
+    // Verify log is upgraded to success and reward is delivered
+    const updatedLog = db.socialInteractionLog.rows.find((l: any) => l.recipientId === 'user-follow-flow');
+    assert.equal(updatedLog.status, 'success');
+    assert.equal(updatedLog.followStatus, 'verified');
+    assert.match(updatedLog.dmSent, /https:\/\/example\.com\/secret-vault/);
+    assert.equal(db.socialEngagementRule.rows.find((r: any) => r.id === 'rule-gated-2').statsDmsSentCount, 2);
+    assert.equal(db.socialEngagementRule.rows.find((r: any) => r.id === 'rule-gated-2').statsLeadsConverted, 1);
+});
+
+test('follow-gate: when user already follows, delivers reward immediately on first comment', async () => {
+    fetchMock.restore();
+    fetchMock = new FetchMock((c) => {
+        if (c.url.includes('is_user_follow_business')) {
+            return json(200, { id: 'user-vip', is_user_follow_business: true });
+        }
+        return json(200, { id: 'ok' });
+    }).install();
+
+    const gatedRule = rule({
+        id: 'rule-gated-3',
+        requireFollow: true,
+        actionDmTemplate: 'Hey {name}! Here is your VIP gift: {deliverable_link}',
+        actionDmDeliverableUrl: 'https://example.com/vip-gift',
+    });
+    db.socialEngagementRule.rows.push(gatedRule);
+
+    const out = await EngagementDispatcher.executeEngagement(gatedRule, comment({ commentId: 'c-gate-3', senderId: 'user-vip' }));
+
+    assert.equal(out.followStatus, 'verified');
+    assert.match(out.dmSent!, /https:\/\/example\.com\/vip-gift/);
+    const log = db.socialInteractionLog.rows.find((l: any) => l.recipientId === 'user-vip');
+    assert.equal(log.status, 'success');
+    assert.equal(log.followStatus, 'verified');
 });
