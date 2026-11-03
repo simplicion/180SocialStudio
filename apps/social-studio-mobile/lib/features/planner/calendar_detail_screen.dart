@@ -1047,7 +1047,7 @@ class _PieceSheetState extends ConsumerState<PieceSheet> {
           SizedBox(height: 12),
         ],
         if (p.trend != null) ...[
-          _TrendEvidenceCard(trend: p.trend!),
+          TrendEvidenceCard(trend: p.trend!),
           SizedBox(height: 12),
         ],
 
@@ -1355,8 +1355,8 @@ class _PieceSheetState extends ConsumerState<PieceSheet> {
 }
 
 /// Why a piece is timely: the trend it covers, the code-computed signal, what the audience asks, and the sources.
-class _TrendEvidenceCard extends StatelessWidget {
-  const _TrendEvidenceCard({required this.trend});
+class TrendEvidenceCard extends StatelessWidget {
+  const TrendEvidenceCard({required this.trend});
   final PieceTrendInfo trend;
 
   @override
