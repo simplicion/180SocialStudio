@@ -91,7 +91,39 @@ class FetchedPage(BaseModel):
     title: str = ""
     markdown: str = ""
     truncated: bool = False
+    rendered: bool = False
 
 
 class FetchResponse(BaseModel):
     pages: list[FetchedPage]
+
+
+class SearchRequest(BaseModel):
+    queries: list[str] = Field(min_length=1, max_length=3)
+    days: int = Field(default=30, ge=1, le=365)
+    maxResults: int = Field(default=6, ge=1, le=15)
+
+    @field_validator("queries")
+    @classmethod
+    def _clean_queries(cls, v: list[str]) -> list[str]:
+        out = [" ".join(q.split())[:200] for q in v]
+        out = [q for q in dict.fromkeys(out) if len(q) >= 2]
+        if not out:
+            raise ValueError("at least one query of 2+ characters is required")
+        return out
+
+
+class SearchResult(BaseModel):
+    title: str
+    url: str
+    snippet: str = ""
+    publishedAt: Optional[str] = None
+    source: str = ""
+    engine: Literal["searxng", "ddgs"]
+    kind: Literal["news", "web"]
+
+
+class SearchResponse(BaseModel):
+    results: list[SearchResult] = Field(default_factory=list)
+    engines: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)

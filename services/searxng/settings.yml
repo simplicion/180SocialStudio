@@ -1,0 +1,21 @@
+# SearXNG for trend-worker's keyless web & news search. Only reachable on the internal network (no published port).
+# The secret comes from the SEARXNG_SECRET environment variable (overrides server.secret_key).
+use_default_settings: true
+
+general:
+  instance_name: "180 research search"
+
+server:
+  secret_key: "set-by-SEARXNG_SECRET-env"
+  limiter: false          # internal-only: the only client is trend-worker
+  image_proxy: false
+  public_instance: false
+
+search:
+  safe_search: 1
+  formats:
+    - html
+    - json                # trend-worker uses /search?format=json
+
+ui:
+  static_use_hash: true

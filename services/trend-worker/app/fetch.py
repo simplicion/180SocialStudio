@@ -1,4 +1,6 @@
-"""Readable-text fetch of public article pages with Scrapling's plain HTTP fetcher (no browser, no stealth modes).
+"""Readable-text fetch of public article pages with Scrapling's plain HTTP fetcher (no stealth modes).
+
+Pages that need JavaScript fall back to a guarded Chromium render (app/browser.py) when TREND_WORKER_BROWSER=1.
 
 Rules: the SSRF guard runs first; robots.txt is honoured; redirects are followed only in Scrapling's "safe" mode
 (private targets rejected on every hop); responses over the byte cap are cut before parsing. The result is converted
@@ -6,6 +8,7 @@ to Markdown and trimmed. It is untrusted text: the TypeScript side fences it bef
 """
 from __future__ import annotations
 
+import logging
 import re
 import urllib.robotparser
 from typing import Any, Callable, Optional
@@ -24,6 +27,7 @@ _MAIN = (re.compile(r"<article\b[^>]*>.*?</article\s*>", re.I | re.S), re.compil
 _BLANK_LINES = re.compile(r"\n{3,}")
 
 Getter = Callable[..., Any]
+log = logging.getLogger("trend-worker.fetch")
 
 
 def _default_getter(url: str, **kwargs: Any) -> Any:
@@ -64,7 +68,32 @@ def robots_allows(url: str, settings: Settings, getter: Getter, resolver=None) -
     return rp.can_fetch(settings.user_agent, url)
 
 
-def fetch_page(url: str, settings: Settings, getter: Optional[Getter] = None, resolver=None) -> FetchedPage:
+Renderer = Callable[[str, Settings], str]
+
+
+def fetch_page(url: str, settings: Settings, getter: Optional[Getter] = None, resolver=None, renderer: Optional[Renderer] = None) -> FetchedPage:
+    page = _fetch_static(url, settings, getter, resolver)
+    # JavaScript-only pages come back with no readable text: render them in Chromium (same guard, robots already
+    # passed). Blocked, robots-disallowed and HTTP-error pages are never retried in the browser.
+    if page.ok or page.error != "no readable article text":
+        return page
+    if renderer is None:
+        from .browser import browser_available, render_page_html
+        if not browser_available(settings):
+            return page
+        renderer = render_page_html
+    try:
+        html = renderer(page.url, settings)
+    except Exception as exc:
+        log.info("browser render failed: %s", str(exc)[:160])
+        return page
+    title, md, truncated = html_to_markdown(html, settings.markdown_max_chars)
+    if len(md) < 200:
+        return page
+    return FetchedPage(url=url, ok=True, status=page.status, finalUrl=page.finalUrl, title=title or page.title, markdown=md, truncated=truncated, rendered=True)
+
+
+def _fetch_static(url: str, settings: Settings, getter: Optional[Getter] = None, resolver=None) -> FetchedPage:
     getter = getter or _default_getter
     try:
         safe = validate_public_url(url, resolver) if resolver else validate_public_url(url)

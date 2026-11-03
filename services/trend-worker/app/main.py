@@ -3,6 +3,7 @@
   GET  /health          liveness + which lanes are active (no auth, no secrets in the body)
   POST /pulse           engagement-ranked research for a topic (X-Worker-Secret required)
   POST /fetch           readable Markdown of up to 6 public pages (X-Worker-Secret required)
+  POST /search          keyless web & news search: SearXNG or ddgs (X-Worker-Secret required)
 
 Bind to 127.0.0.1 (pm2) or an internal Docker network only; the backend is the only client.
 Run: uvicorn app.main:app --host 127.0.0.1 --port 4010
@@ -20,8 +21,10 @@ from starlette.concurrency import run_in_threadpool
 
 from .config import Settings, get_settings
 from .fetch import fetch_page
-from .models import FetchRequest, FetchResponse, PulseRequest, PulseResponse
+from .browser import browser_available
+from .models import FetchRequest, FetchResponse, PulseRequest, PulseResponse, SearchRequest, SearchResponse
 from .pulse import run_pulse
+from .search import run_search
 
 log = logging.getLogger("trend-worker")
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -59,6 +62,8 @@ async def health(s: Settings = Depends(current_settings)):
         "last30days": bool(s.last30days_script and os.path.isfile(s.last30days_script)),
         "sources": list(s.all_sources),
         "reddit": s.reddit_enabled,
+        "search": ("searxng+ddgs" if s.searxng_url else "ddgs") if s.search_enabled else None,
+        "browser": browser_available(s),
     }
 
 
@@ -83,3 +88,16 @@ async def fetch(req: FetchRequest, s: Settings = Depends(current_settings)) -> F
         _slots.release()
     log.info("fetch urls=%d ok=%d", len(pages), sum(p.ok for p in pages))
     return FetchResponse(pages=list(pages))
+
+
+@app.post("/search", response_model=SearchResponse, dependencies=[Depends(require_secret)])
+async def search(req: SearchRequest, s: Settings = Depends(current_settings)) -> SearchResponse:
+    if not s.search_enabled:
+        raise HTTPException(status_code=503, detail="search is disabled on this worker")
+    await _acquire()
+    try:
+        res = await run_in_threadpool(run_search, req, s)
+    finally:
+        _slots.release()
+    log.info("search queries=%d results=%d engines=%s", len(req.queries), len(res.results), res.engines)
+    return res

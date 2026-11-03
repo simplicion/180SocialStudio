@@ -106,3 +106,31 @@ test('Instagram hashtag reader: official hashtag search then top media; null wit
     assert.deepEqual(await read!('bad tag!'), []);
     assert.equal(await instagramHashtagReader({ companyId: 'co-1', projectId: 'p9' }, { db: dbWith([IG]) }), null);
 });
+
+test('YouTube research token: own channel first, then the platform research channel, never another tenant by scope', async () => {
+    const { youtubeTokenProvider } = await import('../src/platform-team/youtube-token');
+    const accounts = [
+        { id: 'own', companyId: 'c1', projectId: 'p1', platform: 'youtube', isActive: true },
+        { id: 'research', companyId: 'platform', projectId: 'p-ops', platform: 'youtube', isActive: true },
+        { id: 'other-tenant', companyId: 'c2', projectId: 'p2', platform: 'youtube', isActive: true },
+    ];
+    const queries: any[] = [];
+    const db = { socialAccount: { findFirst: async ({ where }: any) => {
+        queries.push(where);
+        return accounts.find((a) => Object.entries(where).every(([k, v]) => (a as any)[k] === v)) || null;
+    } } };
+    const getToken = async (a: any) => `token-${a.id}`;
+
+    assert.equal(await youtubeTokenProvider({ companyId: 'c1', projectId: 'p1' }, { db, getToken, env: { YOUTUBE_RESEARCH_ACCOUNT_ID: 'research' } })(), 'token-own');
+    assert.equal(queries[0].companyId, 'c1');
+
+    assert.equal(await youtubeTokenProvider({ companyId: 'c3', projectId: 'p9' }, { db, getToken, env: { YOUTUBE_RESEARCH_ACCOUNT_ID: 'research' } })(), 'token-research');
+    assert.equal(await youtubeTokenProvider({ companyId: 'c3', projectId: 'p9' }, { db, getToken, env: {} })(), null);
+    // The research id must be a YouTube account; any other id resolves to nothing.
+    accounts.push({ id: 'ig', companyId: 'platform', projectId: 'p-ops', platform: 'instagram', isActive: true });
+    assert.equal(await youtubeTokenProvider({ companyId: 'c3', projectId: 'p9' }, { db, getToken, env: { YOUTUBE_RESEARCH_ACCOUNT_ID: 'ig' } })(), null);
+
+    // A revoked own token falls back instead of failing the lane.
+    const flaky = async (a: any) => { if (a.id === 'own') throw new Error('invalid_grant'); return `token-${a.id}`; };
+    assert.equal(await youtubeTokenProvider({ companyId: 'c1', projectId: 'p1' }, { db, getToken: flaky, env: { YOUTUBE_RESEARCH_ACCOUNT_ID: 'research' } })(), 'token-research');
+});

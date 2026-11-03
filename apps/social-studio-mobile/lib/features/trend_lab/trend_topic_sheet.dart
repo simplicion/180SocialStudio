@@ -107,9 +107,52 @@ class _TrendTopicSheetState extends ConsumerState<TrendTopicSheet> {
             const SizedBox(height: 12),
             Text('Trend research is not set up on the server yet.', style: TextStyle(fontSize: 12, color: AppTheme.warning)),
           ] else if (off.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Text('Running without: ${off.map((l) => l.lane.replaceAll('_', ' ')).join(', ')}. Results use the sources that are on.',
-                style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+            if (off.any((l) => l.lane == 'youtube')) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: AppTheme.surface,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppTheme.border),
+                ),
+                child: Row(children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(Icons.play_circle_fill_rounded, color: Colors.red, size: 20),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      const Text('YouTube Research', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Connect your channel to unlock video trends, views, and audience questions for free.',
+                        style: TextStyle(fontSize: 11, color: AppTheme.textSecondary),
+                      ),
+                    ]),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton.tonal(
+                    style: FilledButton.styleFrom(visualDensity: VisualDensity.compact, padding: const EdgeInsets.symmetric(horizontal: 12)),
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                      context.push('/projects/${widget.projectId}/accounts');
+                    },
+                    child: const Text('Connect'),
+                  ),
+                ]),
+              ),
+            ],
+            if (off.where((l) => l.lane != 'youtube').isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text('Running without: ${off.where((l) => l.lane != 'youtube').map((l) => l.lane.replaceAll('_', ' ')).join(', ')}. Results use the sources that are on.',
+                  style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+            ],
           ],
           const SizedBox(height: 16),
           FilledButton.icon(

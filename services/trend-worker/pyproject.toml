@@ -1,7 +1,7 @@
 [project]
 name = "trend-worker"
 version = "0.1.0"
-description = "180 Social Studio trend research sidecar: last30days engagement research + Scrapling page fetch"
+description = "180 Social Studio trend research sidecar: last30days engagement research, keyless web search, Scrapling page fetch"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115,<1",
@@ -10,6 +10,8 @@ dependencies = [
     "pydantic>=2.7,<3",
     "scrapling[fetchers]==0.5",
     "markdownify>=0.13,<2",
+    "ddgs>=9.5,<10",
+    "playwright>=1.49,<2",
 ]
 
 [project.optional-dependencies]

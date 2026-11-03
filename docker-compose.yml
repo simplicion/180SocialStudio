@@ -45,6 +45,22 @@ services:
       TREND_WORKER_X_BEARER_TOKEN: ${TREND_WORKER_X_BEARER_TOKEN:-}
       REDDIT_CLIENT_ID: ${REDDIT_CLIENT_ID:-}
       REDDIT_CLIENT_SECRET: ${REDDIT_CLIENT_SECRET:-}
+      # Free web & news search (no API key): SearXNG below, with the ddgs library as fallback.
+      SEARXNG_URL: http://searxng:8080
+      # Chromium render fallback for JavaScript-only article pages (the image ships Chromium).
+      TREND_WORKER_BROWSER: ${TREND_WORKER_BROWSER:-1}
+    depends_on:
+      - searxng
+
+  # Open-source metasearch used by trend-worker for keyless web & news search. Internal network only.
+  searxng:
+    image: searxng/searxng:latest
+    container_name: social-studio-searxng
+    restart: unless-stopped
+    environment:
+      SEARXNG_SECRET: ${SEARXNG_SECRET:?set SEARXNG_SECRET (any long random string)}
+    volumes:
+      - ./services/searxng/settings.yml:/etc/searxng/settings.yml:ro
 
 volumes:
   postgres_data:

@@ -38,3 +38,17 @@ def test_fetch_limits_and_dedupes(monkeypatch):
     monkeypatch.setattr(main, "fetch_page", lambda u, s: seen.append(u) or FetchedPage(url=u, ok=False, error="x"))
     r = client.post("/fetch", json={"urls": ["https://e.com/a", "https://e.com/a", "https://e.com/b"]}, headers=AUTH)
     assert r.status_code == 200 and seen == ["https://e.com/a", "https://e.com/b"]
+
+
+def test_search_requires_secret_and_validates(monkeypatch):
+    assert client.post("/search", json={"queries": ["creatine"]}).status_code == 401
+    assert client.post("/search", json={"queries": []}, headers=AUTH).status_code == 422
+    from app.models import SearchResponse
+    monkeypatch.setattr(main, "run_search", lambda req, s: SearchResponse(results=[], engines=["ddgs"]))
+    r = client.post("/search", json={"queries": ["creatine"], "days": 30}, headers=AUTH)
+    assert r.status_code == 200 and r.json()["engines"] == ["ddgs"]
+
+
+def test_health_reports_search_and_browser():
+    body = client.get("/health").json()
+    assert body["search"] in ("ddgs", "searxng+ddgs") and body["browser"] in (True, False)

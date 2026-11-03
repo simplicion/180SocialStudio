@@ -35,7 +35,7 @@ module.exports = {
       },
     },
     {
-      // Trend research sidecar (last30days + Scrapling). One-time setup: services/trend-worker/setup.sh.
+      // Trend research sidecar (last30days + free web search + Scrapling/Chromium fetch). One-time setup: services/trend-worker/setup.sh.
       // TREND_WORKER_SECRET (and the optional official-API credentials) come from the backend .env above.
       name: '180socialstudio-trend-worker',
       script: '.venv/bin/uvicorn', // relative to cwd
@@ -50,7 +50,9 @@ module.exports = {
       env: {
         LAST30DAYS_SCRIPT: `${__dirname}/services/trend-worker/vendor/last30days/skills/last30days/scripts/last30days.py`,
         LAST30DAYS_PYTHON: `${__dirname}/services/trend-worker/.venv/bin/python`,
-        ...pick('TREND_WORKER_SECRET', 'TREND_WORKER_GITHUB_TOKEN', 'TREND_WORKER_X_BEARER_TOKEN', 'REDDIT_CLIENT_ID', 'REDDIT_CLIENT_SECRET'),
+        ...pick('TREND_WORKER_SECRET', 'TREND_WORKER_GITHUB_TOKEN', 'TREND_WORKER_X_BEARER_TOKEN', 'REDDIT_CLIENT_ID', 'REDDIT_CLIENT_SECRET',
+          // Free search + Chromium render fallback (see services/trend-worker/README in setup.sh).
+          'SEARXNG_URL', 'TREND_WORKER_SEARCH', 'TREND_WORKER_BROWSER', 'PLAYWRIGHT_BROWSERS_PATH'),
       },
     },
   ],

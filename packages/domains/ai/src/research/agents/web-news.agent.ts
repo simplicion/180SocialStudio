@@ -1,5 +1,6 @@
 /**
- * Research agent 3 — Web & News: recent articles from the existing web search provider (Tavily / Brave), with the
+ * Research agent 3 — Web & News: recent articles from the web search provider (Tavily / Brave when a key is set,
+ * otherwise the trend-worker's free keyless search), with the
  * full readable text of the top results fetched through the trend-worker (Scrapling, SSRF-guarded, robots.txt
  * honoured) so the analyst works from the article, not a 500-character snippet.
  */
@@ -13,7 +14,7 @@ const FULL_TEXT_TOP_N = 5;
 export async function runWebNewsAgent(params: { search: WebSearchProvider | null; worker: TrendWorkerClient | null; plan: QueryPlan; days: number }): Promise<AgentOutcome> {
     const { search, worker, plan, days } = params;
     if (!search) {
-        return { agent: 'web_news', items: [], statuses: [{ agent: 'web_news', source: 'web', status: 'skipped', detail: 'no web search key (TAVILY_API_KEY or BRAVE_SEARCH_API_KEY)', items: 0 }] };
+        return { agent: 'web_news', items: [], statuses: [{ agent: 'web_news', source: 'web', status: 'skipped', detail: 'no web search (start the trend-worker, or set TAVILY_API_KEY / BRAVE_SEARCH_API_KEY)', items: 0 }] };
     }
     const batches = await Promise.all(plan.searchQueries.slice(0, 2).map((q) => search.search(q, { maxResults: 6, recencyDays: days }).catch(() => [] as WebSearchResult[])));
     const seen = new Set<string>();

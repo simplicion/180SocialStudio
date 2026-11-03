@@ -23,5 +23,14 @@ rm -rf vendor/last30days
 git clone --depth 1 --branch "$LAST30DAYS_REF" https://github.com/mvanhorn/last30days-skill vendor/last30days
 rm -rf vendor/last30days/.git
 
+# Chromium for the render fallback (TREND_WORKER_BROWSER=1). Its system libraries need root once:
+#   sudo .venv/bin/python -m playwright install-deps chromium
+# Skip the download with: WITH_BROWSER=0 ./setup.sh
+if [ "${WITH_BROWSER:-1}" = "1" ]; then
+  .venv/bin/python -m playwright install chromium
+fi
+
 .venv/bin/python -m pytest
-echo "trend-worker ready. Set TREND_WORKER_SECRET in the environment, then: pm2 start ecosystem.config.cjs --only 180socialstudio-trend-worker"
+echo "trend-worker ready. In apps/180-social-studio-backend/.env set TREND_WORKER_SECRET and TREND_WORKER_BROWSER=1"
+echo "(if Chromium fails to start, run once: sudo .venv/bin/python -m playwright install-deps chromium), then:"
+echo "  pm2 start ecosystem.config.cjs --only 180socialstudio-trend-worker"

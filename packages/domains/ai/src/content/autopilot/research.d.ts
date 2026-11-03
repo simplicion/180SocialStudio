@@ -1,7 +1,7 @@
 /**
  * Optional web research for the autopilot calendar.
- * A WebSearchProvider is chosen from env (TAVILY_API_KEY, then BRAVE_SEARCH_API_KEY). With no key the
- * research stage is skipped and the job records researchUsed:false. Sources are only ever URLs that the
+ * A WebSearchProvider is chosen from env: TAVILY_API_KEY, then BRAVE_SEARCH_API_KEY, then the trend-worker's free
+ * keyless search. With none of them the research stage is skipped and the job records researchUsed:false. Sources are only ever URLs that the
  * search provider actually returned; the digest agent cannot invent them (checked below).
  */
 import { AutopilotLLM, UsageMeter } from './llm';
@@ -46,6 +46,14 @@ export declare class BraveSearchProvider implements WebSearchProvider {
     }): Promise<WebSearchResult[]>;
 }
 /** Returns the configured provider, or null when no search key is set (research is then skipped). */
+export declare class WorkerSearchProvider implements WebSearchProvider {
+    private readonly worker;
+    readonly name = "open-web";
+    constructor(worker: {
+        search(params: { queries: string[]; days?: number; maxResults?: number }): Promise<{ results: { title: string; url: string; snippet: string; publishedAt: string | null }[] }>;
+    });
+    search(query: string, opts?: { maxResults?: number; recencyDays?: number }): Promise<WebSearchResult[]>;
+}
 export declare function createWebSearchProviderFromEnv(env?: NodeJS.ProcessEnv): WebSearchProvider | null;
 export interface ResearchOutcome {
     researchUsed: boolean;

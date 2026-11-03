@@ -330,3 +330,34 @@ test('platform signal: without an API key the connected channel token is used as
     const none = await runPlatformSignalAgent({ plan, days: 30, deps: { youtubeAccessToken: async () => null } });
     assert.equal(none.statuses.find((s) => s.source === 'youtube')?.status, 'skipped');
 });
+
+test('free search: the worker provider maps results, and env picks paid key > worker > none', async () => {
+    const { WorkerSearchProvider, createWebSearchProviderFromEnv } = await import('../src/content/autopilot/research');
+    const calls: any[] = [];
+    const worker = { search: async (p: any) => { calls.push(p); return { engines: ['ddgs'], warnings: [], results: [
+        { title: 'Creatine for women', url: 'https://news.example/a', snippet: 's'.repeat(900), publishedAt: '2026-10-30', source: 'X', engine: 'ddgs' as const, kind: 'news' as const },
+        { title: 'bad', url: 'javascript:alert(1)', snippet: '', publishedAt: null, source: '', engine: 'ddgs' as const, kind: 'web' as const },
+        { title: 'Undated forum', url: 'https://forum.example/t', snippet: 'q', publishedAt: null, source: '', engine: 'ddgs' as const, kind: 'web' as const },
+    ] }; } };
+    const p = new WorkerSearchProvider(worker);
+    const rows = await p.search('creatine women', { maxResults: 5, recencyDays: 7 });
+    assert.deepEqual(calls[0], { queries: ['creatine women'], days: 7, maxResults: 5 });
+    assert.deepEqual(rows.map((r) => r.url), ['https://news.example/a', 'https://forum.example/t']);
+    assert.equal(rows[0].snippet.length, 500);
+    assert.equal(rows[1].publishedAt, undefined);
+
+    const w = { TREND_WORKER_URL: 'http://127.0.0.1:4010', TREND_WORKER_SECRET: 's' };
+    assert.equal(createWebSearchProviderFromEnv({ ...w, TAVILY_API_KEY: 't' } as any)?.name, 'tavily');
+    assert.equal(createWebSearchProviderFromEnv(w as any)?.name, 'open-web');
+    assert.equal(createWebSearchProviderFromEnv({ ...w, TREND_WORKER_SEARCH: '0' } as any), null);
+    assert.equal(createWebSearchProviderFromEnv({} as any), null);
+});
+
+test('worker client: search posts at most 3 queries to /search with the secret', async () => {
+    const seen: any[] = [];
+    const c = new TrendWorkerClient('http://w/', 'sek', async (url: string, init: any) => { seen.push({ url, init }); return { ok: true, status: 200, json: async () => ({ results: [], engines: [], warnings: [] }) }; });
+    await c.search({ queries: ['a1', 'b2', 'c3', 'd4'] });
+    assert.equal(seen[0].url, 'http://w/search');
+    assert.equal(seen[0].init.headers['X-Worker-Secret'], 'sek');
+    assert.deepEqual(JSON.parse(seen[0].init.body), { queries: ['a1', 'b2', 'c3'], days: 30, maxResults: 6 });
+});

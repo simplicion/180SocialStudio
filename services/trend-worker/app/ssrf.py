@@ -54,6 +54,12 @@ def is_public_ip(raw: str) -> bool:
 
 def validate_public_url(url: str, resolver: Resolver = _resolve) -> str:
     """Returns the normalised URL or raises UnsafeUrl."""
+    return resolve_public_url(url, resolver)[0]
+
+
+def resolve_public_url(url: str, resolver: Resolver = _resolve) -> tuple[str, list[str]]:
+    """Returns (normalised URL, the public addresses the host resolved to) or raises UnsafeUrl. Callers that connect
+    themselves pin the connection to these addresses, so a second DNS answer (rebinding) is never used."""
     if not isinstance(url, str) or len(url) > 2048:
         raise UnsafeUrl("url must be a string of at most 2048 characters")
     parts = urlsplit(url.strip())
@@ -79,7 +85,7 @@ def validate_public_url(url: str, resolver: Resolver = _resolve) -> str:
     if literal is not None:
         if not is_public_ip(str(literal)):
             raise UnsafeUrl("private, loopback, link-local and reserved addresses are not allowed")
-        return parts.geturl()
+        return parts.geturl(), [str(literal)]
     try:
         addrs = resolver(host)
     except OSError as exc:
@@ -89,4 +95,4 @@ def validate_public_url(url: str, resolver: Resolver = _resolve) -> str:
     bad = [a for a in addrs if not is_public_ip(a)]
     if bad:
         raise UnsafeUrl("host resolves to a private or reserved address")
-    return parts.geturl()
+    return parts.geturl(), list(addrs)

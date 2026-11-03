@@ -123,8 +123,26 @@ export class TrendLabService {
         return llm;
     }
 
-    lanes() {
-        return { configured: !!this.deps.research, lanes: this.deps.lanes || [] };
+    async lanes(params?: { companyId?: string; projectId?: string }) {
+        let lanes = this.deps.lanes || [];
+        if (params?.projectId && params?.companyId && this.deps.db) {
+            try {
+                const hasYt = await this.deps.db.socialAccount.findFirst({
+                    where: { companyId: params.companyId, projectId: params.projectId, platform: 'youtube', isActive: true },
+                    select: { id: true },
+                });
+                lanes = lanes.map((l) => {
+                    if (l.lane === 'youtube') {
+                        if (hasYt) return { lane: 'youtube', on: true, hint: 'via connected YouTube channel' };
+                        if (!l.on) return { lane: 'youtube', on: false, hint: 'Connect your YouTube channel in Channels to enable YouTube research' };
+                    }
+                    return l;
+                });
+            } catch {
+                /* db lookup failed: fall back to default lanes */
+            }
+        }
+        return { configured: !!this.deps.research, lanes };
     }
 
     // ------------------------------------------------------------------ reports

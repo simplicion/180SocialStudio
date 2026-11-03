@@ -35,6 +35,13 @@ class Settings:
     # Official Reddit API (app-only OAuth). Requires Reddit's approval for commercial use; off until both are set.
     reddit_client_id: str = field(default_factory=lambda: os.environ.get("REDDIT_CLIENT_ID", ""))
     reddit_client_secret: str = field(default_factory=lambda: os.environ.get("REDDIT_CLIENT_SECRET", ""))
+    # Keyless web & news search (replaces Tavily / Brave). SEARXNG_URL points at a self-hosted SearXNG instance with
+    # the JSON format enabled; without it the open-source ddgs metasearch library is used.
+    searxng_url: str = field(default_factory=lambda: os.environ.get("SEARXNG_URL", "").strip())
+    search_enabled: bool = field(default_factory=lambda: os.environ.get("TREND_WORKER_SEARCH", "1").strip().lower() not in {"0", "false", "no", "off"})
+    # Chromium render fallback for JavaScript-only article pages (needs `playwright install chromium`).
+    browser_enabled: bool = field(default_factory=lambda: _flag("TREND_WORKER_BROWSER"))
+    browser_timeout_s: float = field(default_factory=lambda: float(os.environ.get("TREND_WORKER_BROWSER_TIMEOUT", "20")))
 
     @property
     def l30_sources(self) -> tuple[str, ...]:

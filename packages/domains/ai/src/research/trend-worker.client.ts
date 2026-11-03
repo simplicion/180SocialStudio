@@ -7,7 +7,9 @@
 export interface WorkerEngagement { primary: number | null; upvotes: number | null; comments: number | null; views: number | null; likes: number | null; volume: number | null }
 export interface WorkerPulseItem { source: string; url: string; title: string; text: string; publishedAt: string | null; engagement: WorkerEngagement; relevance: number | null; cluster: string | null; topComments: string[] }
 export interface WorkerPulseResponse { topic: string; windowDays: number; engine: 'last30days' | 'native'; sourceStatus: Record<string, string>; items: WorkerPulseItem[]; clusters: { title: string; summary: string; sources: string[]; engagementTotal: number | null }[]; warnings: string[] }
-export interface WorkerFetchedPage { url: string; ok: boolean; error: string | null; finalUrl: string | null; status: number | null; title: string; markdown: string; truncated: boolean }
+export interface WorkerFetchedPage { url: string; ok: boolean; error: string | null; finalUrl: string | null; status: number | null; title: string; markdown: string; truncated: boolean; rendered?: boolean }
+export interface WorkerSearchResult { title: string; url: string; snippet: string; publishedAt: string | null; source: string; engine: 'searxng' | 'ddgs'; kind: 'news' | 'web' }
+export interface WorkerSearchResponse { results: WorkerSearchResult[]; engines: string[]; warnings: string[] }
 
 /** Plan shape last30days expects (see services/trend-worker/app/models.py QueryPlan). */
 export interface WorkerPlan {
@@ -59,7 +61,13 @@ export class TrendWorkerClient {
     }
 
     fetchPages(urls: string[]): Promise<{ pages: WorkerFetchedPage[] }> {
-        return this.post('/fetch', { urls: urls.slice(0, 6) }, 45_000);
+        // Up to ~35 s when a JavaScript-only page falls back to the Chromium render.
+        return this.post('/fetch', { urls: urls.slice(0, 6) }, 60_000);
+    }
+
+    /** Keyless web & news search (SearXNG or the ddgs metasearch library on the worker). */
+    search(params: { queries: string[]; days?: number; maxResults?: number }): Promise<WorkerSearchResponse> {
+        return this.post('/search', { queries: params.queries.slice(0, 3), days: params.days ?? 30, maxResults: params.maxResults ?? 6 }, 60_000);
     }
 }
 

@@ -1,13 +1,15 @@
 /**
  * Optional web research for the autopilot calendar.
- * A WebSearchProvider is chosen from env (TAVILY_API_KEY, then BRAVE_SEARCH_API_KEY). With no key the
- * research stage is skipped and the job records researchUsed:false. Sources are only ever URLs that the
+ * A WebSearchProvider is chosen from env: TAVILY_API_KEY, then BRAVE_SEARCH_API_KEY, then the trend-worker's free
+ * keyless search (TREND_WORKER_URL + TREND_WORKER_SECRET; SearXNG or the open-source ddgs metasearch). With none of
+ * them the research stage is skipped and the job records researchUsed:false. Sources are only ever URLs that the
  * search provider actually returned; the digest agent cannot invent them (checked below).
  */
 import { AutopilotLLM, UsageMeter } from './llm';
 import { runJsonAgent } from './json-agent';
 import { ResearchDigest, ResearchDigestSchema } from './schemas';
 import { UNTRUSTED_DATA_POLICY, fenceUntrusted, sanitizeInlineUntrusted } from '@workspace/video-contracts';
+import { createTrendWorkerClientFromEnv, TrendWorkerClient } from '../../research/trend-worker.client';
 
 export interface WebSearchResult {
     title: string;
@@ -65,11 +67,27 @@ export class BraveSearchProvider implements WebSearchProvider {
     }
 }
 
-/** Returns the configured provider, or null when no search key is set (research is then skipped). */
+/** Free web & news search through the trend-worker: no API key, no per-query cost. */
+export class WorkerSearchProvider implements WebSearchProvider {
+    readonly name = 'open-web';
+    constructor(private readonly worker: Pick<TrendWorkerClient, 'search'>) {}
+    async search(query: string, opts: { maxResults?: number; recencyDays?: number } = {}): Promise<WebSearchResult[]> {
+        const res = await this.worker.search({ queries: [query], days: opts.recencyDays ?? 30, maxResults: opts.maxResults ?? 6 });
+        return (res?.results || [])
+            .filter((r) => typeof r?.url === 'string' && /^https?:\/\//.test(r.url))
+            .map((r) => ({ title: String(r.title || ''), url: r.url, snippet: String(r.snippet || '').slice(0, 500), publishedAt: r.publishedAt || undefined }));
+    }
+}
+
+/**
+ * Returns the configured provider: a paid key when one is set, otherwise the worker's free search, otherwise null
+ * (research is then skipped). TREND_WORKER_SEARCH=0 turns the free search off.
+ */
 export function createWebSearchProviderFromEnv(env: NodeJS.ProcessEnv = process.env): WebSearchProvider | null {
     if (env.TAVILY_API_KEY) return new TavilySearchProvider(env.TAVILY_API_KEY);
     if (env.BRAVE_SEARCH_API_KEY) return new BraveSearchProvider(env.BRAVE_SEARCH_API_KEY);
-    return null;
+    const worker = /^(0|false|no|off)$/i.test(env.TREND_WORKER_SEARCH || '') ? null : createTrendWorkerClientFromEnv(env);
+    return worker ? new WorkerSearchProvider(worker) : null;
 }
 
 export interface ResearchOutcome {

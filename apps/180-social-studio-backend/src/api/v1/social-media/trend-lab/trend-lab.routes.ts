@@ -40,7 +40,7 @@ export function createTrendLabRouter(getService: () => TrendLabService = default
             }
         };
 
-    router.get('/lanes', handle(async ({ svc }) => svc.lanes()));
+    router.get('/lanes', handle(async ({ svc, companyId, projectId }) => svc.lanes({ companyId, projectId })));
     router.post('/reports', handle(({ svc, companyId, projectId, req }) => svc.start({ companyId, projectId, userId: (req as any).user?.id || '', body: req.body || {} }), 202));
     router.get('/reports', handle(({ svc, companyId, projectId }) => svc.list({ companyId, projectId })));
     router.get('/reports/:reportId', handle(({ svc, companyId, projectId, req }) => svc.get({ companyId, projectId, reportId: String(req.params.reportId) })));

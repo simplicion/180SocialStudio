@@ -2,7 +2,7 @@
  * Builds the trend research runner from the environment, shared by the autopilot calendar and Trend Lab.
  *
  *   TREND_WORKER_URL + TREND_WORKER_SECRET   social pulse lane + full-text article fetch
- *   TAVILY_API_KEY | BRAVE_SEARCH_API_KEY     web & news lane
+ *   TAVILY_API_KEY | BRAVE_SEARCH_API_KEY     web & news lane (optional: without them the worker's free search is used)
  *   YOUTUBE_API_KEY                           YouTube lane + saturation metric
  * Any missing piece just turns its lane off (reported in the report's statuses). Tenant-specific inputs (the
  * project's own history, its Instagram reader) are passed per call, never captured here.
@@ -52,7 +52,7 @@ export function describeLanes(cfg: TrendResearchConfig): { lane: string; on: boo
     return [
         { lane: 'social_pulse', on: !!cfg.worker, hint: cfg.worker ? undefined : 'set TREND_WORKER_URL and TREND_WORKER_SECRET' },
         { lane: 'youtube', on: !!cfg.youtubeApiKey, hint: cfg.youtubeApiKey ? undefined : 'set YOUTUBE_API_KEY' },
-        { lane: 'web_news', on: !!cfg.search, hint: cfg.search ? undefined : 'set TAVILY_API_KEY or BRAVE_SEARCH_API_KEY' },
+        { lane: 'web_news', on: !!cfg.search, hint: cfg.search ? undefined : 'start the trend-worker (free search) or set TAVILY_API_KEY' },
     ];
 }
 
