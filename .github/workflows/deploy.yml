@@ -73,8 +73,18 @@ jobs:
             pnpm install
             pnpm db:generate
 
+            # Ensure trend-worker virtual environment exists
+            if [ -d "services/trend-worker" ] && [ ! -f "services/trend-worker/.venv/bin/uvicorn" ]; then
+              echo "Setting up trend-worker Python environment..."
+              bash services/trend-worker/setup.sh || true
+            fi
+
             echo "=== [5/6] Starting / Reloading PM2 Service ==="
-            pm2 reload ecosystem.config.cjs || pm2 start ecosystem.config.cjs
+            if [ -f "services/trend-worker/.venv/bin/uvicorn" ]; then
+              pm2 reload ecosystem.config.cjs || pm2 start ecosystem.config.cjs
+            else
+              pm2 reload 180socialstudio-backend || pm2 start ecosystem.config.cjs --only 180socialstudio-backend
+            fi
             pm2 save
 
             echo "=== [6/6] Verifying Backend Health ==="
