@@ -10,6 +10,7 @@ import '../../data/models/engagement_rule.dart';
 import '../../data/models/inbox.dart';
 import '../../data/models/library.dart';
 import '../../data/models/manager_chat.dart';
+import '../../data/models/trend_report.dart';
 import '../../data/models/platform.dart';
 import '../../data/models/project.dart';
 import '../../data/models/review.dart';
@@ -370,6 +371,59 @@ class SocialApi {
 
   Future<AutopilotJob> getAutopilotJob(String projectId, String jobId) async =>
       AutopilotJob.fromJson(await _api.get('$base/projects/$projectId/autopilot/jobs/$jobId'));
+
+  // ------------------------------------------------------------------ Trend Lab
+
+  /// Which research lanes are live on the server (social pulse, YouTube, web & news).
+  Future<({bool configured, List<TrendLabLane> lanes})> trendLabLanes(String projectId) async {
+    final r = await _api.get('$base/projects/$projectId/trend-lab/lanes');
+    return (configured: r['configured'] == true, lanes: jList(r['lanes'], TrendLabLane.fromJson));
+  }
+
+  /// Starts research on a topic. 429 = daily limit, 503 = research or AI not configured.
+  Future<String> startTrendReport(String projectId, String topic) async {
+    final r = await _api.post('$base/projects/$projectId/trend-lab/reports', body: {'topic': topic.trim()}, idempotencyKey: _uuid.v4());
+    final id = jStr(r['reportId']);
+    if (id == null) throw ApiException(kind: ApiErrorKind.server, message: 'The server did not return a research job.');
+    return id;
+  }
+
+  Future<TrendReportJob> getTrendReport(String projectId, String reportId) async =>
+      TrendReportJob.fromJson(await _api.get('$base/projects/$projectId/trend-lab/reports/$reportId'));
+
+  Future<List<TrendReportSummary>> listTrendReports(String projectId) async =>
+      jList((await _api.get('$base/projects/$projectId/trend-lab/reports'))['reports'], TrendReportSummary.fromJson);
+
+  /// Creates one script from a trend + angle with the calendar agents. Returns the piece id to poll.
+  Future<String> createTrendScript(
+    String projectId,
+    String reportId, {
+    required String clusterId,
+    required String angleId,
+    required List<String> platforms,
+    required String format,
+    int? durationSec,
+    String? mood,
+    String? notes,
+  }) async {
+    final r = await _api.post('$base/projects/$projectId/trend-lab/reports/$reportId/scripts',
+        body: compact({
+          'clusterId': clusterId,
+          'angleId': angleId,
+          'platforms': platforms,
+          'format': format,
+          'durationSec': durationSec,
+          'mood': mood,
+          if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
+        }),
+        idempotencyKey: _uuid.v4());
+    final id = jStr(r['pieceId']);
+    if (id == null) throw ApiException(kind: ApiErrorKind.server, message: 'The server did not return a script job.');
+    return id;
+  }
+
+  Future<TrendScriptJob> getTrendScript(String projectId, String pieceId) async =>
+      TrendScriptJob.fromJson(await _api.get('$base/projects/$projectId/trend-lab/scripts/$pieceId'));
 
   /// Renders a carousel (or a single static post) for a calendar piece or post. The finished slides are
   /// attached to the piece/post by the server.
