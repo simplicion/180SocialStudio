@@ -42,11 +42,30 @@ export class AIProviderService {
 
     /**
      * Instantiates an active LLM client from configured company settings.
-     * All providers now support `generate`, `generateStream`, and `generateWithTools`.
+     * Auto-falls back to any available provider in settings if the primary lacks credentials.
+     * All providers support `generate`, `generateStream`, and `generateWithTools`.
      */
     async getClient(settings: AISettings): Promise<AIClient | null> {
-        if (!settings || !settings.aiProvider || settings.aiProvider === 'none') return null;
-        const provider = settings.aiProvider;
+        if (!settings) return null;
+        const requested = settings.aiProvider || 'openai';
+
+        let client = await this.instantiateProvider(requested, settings);
+        if (client) return client;
+
+        const fallbacks = ['gemini', 'openai', 'claude', 'groq', 'custom'];
+        for (const prov of fallbacks) {
+            if (prov === requested) continue;
+            client = await this.instantiateProvider(prov, settings);
+            if (client) {
+                return client;
+            }
+        }
+
+        return null;
+    }
+
+    private async instantiateProvider(provider: string, settings: AISettings): Promise<AIClient | null> {
+        if (!provider || provider === 'none' || provider === 'builtin') return null;
 
         try {
             if (provider === 'gemini') {
@@ -194,7 +213,9 @@ export class AIProviderService {
                         const toolCalls = (msg?.tool_calls || []).map((tc: any) => ({
                             id: tc.id,
                             name: tc.function?.name,
-                            args: typeof tc.function?.arguments === 'string' ? JSON.parse(tc.function.arguments || '{}') : (tc.function?.arguments || {})
+                            args: typeof tc.function?.arguments === 'string'
+                                ? (() => { try { return JSON.parse(tc.function.arguments || '{}'); } catch { return {}; } })()
+                                : (tc.function?.arguments || {})
                         }));
 
                         return {
@@ -319,7 +340,9 @@ export class AIProviderService {
                         const toolCalls = (msg?.tool_calls || []).map((tc: any) => ({
                             id: tc.id,
                             name: tc.function?.name,
-                            args: typeof tc.function?.arguments === 'string' ? JSON.parse(tc.function.arguments || '{}') : (tc.function?.arguments || {})
+                            args: typeof tc.function?.arguments === 'string'
+                                ? (() => { try { return JSON.parse(tc.function.arguments || '{}'); } catch { return {}; } })()
+                                : (tc.function?.arguments || {})
                         }));
 
                         return {
@@ -383,7 +406,9 @@ export class AIProviderService {
                         const toolCalls = (msg?.tool_calls || []).map((tc: any) => ({
                             id: tc.id,
                             name: tc.function?.name,
-                            args: typeof tc.function?.arguments === 'string' ? JSON.parse(tc.function.arguments || '{}') : (tc.function?.arguments || {})
+                            args: typeof tc.function?.arguments === 'string'
+                                ? (() => { try { return JSON.parse(tc.function.arguments || '{}'); } catch { return {}; } })()
+                                : (tc.function?.arguments || {})
                         }));
 
                         return {

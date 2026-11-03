@@ -269,7 +269,7 @@ export async function generateContentIdeas(
         ai = null;
     }
     if (!ai) {
-        throw new SocialInsightsError(503, 'AI_NOT_CONFIGURED', 'No AI provider is configured for this workspace. Add one in Settings > AI.');
+        throw new SocialInsightsError(503, 'AI_NOT_CONFIGURED', 'No AI provider is configured in server environment.');
     }
 
     const platforms = await db.socialPost

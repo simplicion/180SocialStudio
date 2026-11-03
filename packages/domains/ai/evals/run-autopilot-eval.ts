@@ -6,7 +6,8 @@
  *   pnpm eval:autopilot --suite quick --provider builtin    # harness smoke test, no API calls (scores meaningless)
  *   pnpm eval:autopilot --suite quick --save-baseline       # store as evals/baselines/<suite>.json
  *
- * Flags: --suite quick|full, --provider claude|builtin, --label <name>, --only <id,id>, --concurrency <n>,
+ * Flags: --suite quick|full, --provider claude|builtin, --research legacy|engine (default engine), --label <name>,
+ *        --only <id,id>, --concurrency <n>,
  *        --baseline <path> (default evals/baselines/<suite>.json if present), --save-baseline.
  * Env:   EVAL_MODEL / EVAL_STRATEGY_MODEL override the production model resolution.
  *
@@ -14,7 +15,9 @@
  */
 import * as fs from 'fs';
 import * as path from 'path';
-import { runAutopilotPipeline, mapLimit } from '../src/content/autopilot/pipeline';
+import { runAutopilotPipeline, mapLimit, TrendResearchFn } from '../src/content/autopilot/pipeline';
+import { computeClusterMetrics, sourcePercentiles } from '../src/research/trend-metrics';
+import type { ReportCluster, ResearchItem } from '../src/research/types';
 import type { WebSearchProvider } from '../src/content/autopilot/research';
 import type { AutopilotRunInput } from '../src/content/autopilot/types';
 import { EVAL_FIXTURES, QUICK_SUITE, EvalFixture } from './fixtures/brands';
@@ -38,6 +41,34 @@ export function fixtureSearch(fixture: EvalFixture): WebSearchProvider {
     };
 }
 
+/**
+ * Deterministic stand-in for the trend engine built from the same frozen results, so `--research engine` runs the
+ * new strategist/writer path (trend ids, evidence blocks, code-attached sources) without network or extra LLM calls.
+ * Each frozen result becomes one trend; quotes are verbatim snippet text; metrics come from trend-metrics.ts.
+ */
+export function fixtureTrendResearch(fixture: EvalFixture): TrendResearchFn {
+    return async () => {
+        const now = new Date('2026-11-03T00:00:00Z');
+        const items: ResearchItem[] = fixture.research.map((r, i) => ({
+            id: `w${i + 1}`, agent: 'web_news', source: 'web', url: r.url, title: r.title, text: r.snippet, publishedAt: r.publishedAt || null,
+            engagement: { primary: null, views: null, upvotes: null, likes: null, comments: null }, comments: [],
+        }));
+        const percentiles = sourcePercentiles(items);
+        const clusters: ReportCluster[] = items.map((it, i) => ({
+            id: `c${i + 1}`, title: it.title, summary: it.text, whyNow: it.text, audienceQuestions: [], brandFit: 'strong', brandFitReason: 'fixture',
+            metrics: computeClusterMetrics({ cluster: [it], percentiles, saturation: undefined, sentimentLabels: [], brandFit: 'strong', now, windowDays: 30 }),
+            items: [{ id: it.id, source: it.source, url: it.url, title: it.title, publishedAt: it.publishedAt, engagement: it.engagement }],
+            reactionQuotes: [{ quote: it.text.split(/[.;]/)[0].trim(), source: 'web', url: it.url }],
+            angles: [],
+        }));
+        return {
+            topic: fixture.campaignName, windowDays: 30, generatedAt: now.toISOString(),
+            plan: { intent: 'concept', searchQueries: [fixture.campaignName], rankingQuestion: fixture.campaignName, hashtags: [], anchors: [] },
+            clusters, statuses: [], outlook: { available: false, basedOnPosts: 0, byFormat: [], note: '' }, sources: [], methodology: [],
+        };
+    };
+}
+
 export function fixtureInput(fixture: EvalFixture, days: 7 | 14 | 30): AutopilotRunInput {
     return {
         days,
@@ -52,14 +83,14 @@ export function fixtureInput(fixture: EvalFixture, days: 7 | 14 | 30): Autopilot
     };
 }
 
-async function runFixture(fixture: EvalFixture, days: 7 | 14 | 30, provider: string): Promise<{ run: FixtureRun; models: string[] }> {
+async function runFixture(fixture: EvalFixture, days: 7 | 14 | 30, provider: string, research: 'legacy' | 'engine'): Promise<{ run: FixtureRun; models: string[] }> {
     const llm = createGeneratorFromEnv(provider);
     const agentEvents: Record<string, number> = {};
     const started = Date.now();
     try {
         const result = await runAutopilotPipeline(fixtureInput(fixture, days), {
             llm,
-            search: fixtureSearch(fixture),
+            ...(research === 'engine' ? { trendResearch: fixtureTrendResearch(fixture) } : { search: fixtureSearch(fixture) }),
             concurrency: 2,
             log: (event) => { agentEvents[event] = (agentEvents[event] || 0) + 1; },
         });
@@ -83,10 +114,11 @@ async function main() {
         return f;
     });
     const concurrency = Math.max(1, Number(arg('concurrency', '2')) || 2);
+    const research = arg('research', 'engine') === 'legacy' ? 'legacy' : 'engine';
 
-    console.log(`[eval] suite=${suite} provider=${provider} fixtures=${ids.join(',')} days=${days}`);
+    console.log(`[eval] suite=${suite} provider=${provider} research=${research} fixtures=${ids.join(',')} days=${days}`);
     const outs = await mapLimit(fixtures, concurrency, async (f) => {
-        const o = await runFixture(f, days, provider);
+        const o = await runFixture(f, days, provider, research);
         console.log(`[eval] ${f.id}: ${o.run.ok ? `${o.run.result!.pieces.length} pieces` : `FAILED ${o.run.error}`} (${(o.run.durationMs / 1000).toFixed(1)}s)`);
         return o;
     });

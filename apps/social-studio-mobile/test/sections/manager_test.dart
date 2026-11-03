@@ -37,7 +37,7 @@ void main() {
 
   appTest('Manager: no AI configured shows the server reason, not a canned answer', (tester) async {
     final b = seededBackend()
-      ..fail('POST', '$sm/manager/chat', 503, 'No AI provider is configured for this workspace. Add one in Settings > AI.');
+      ..fail('POST', '$sm/manager/chat', 503, 'No AI provider is configured in server environment.');
     await pumpApp(tester, b);
     await openManager(tester);
     await send(tester, 'How is engagement?');

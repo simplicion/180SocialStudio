@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_theme.dart';
@@ -208,6 +210,9 @@ class CalendarPiece {
     this.designSystem,
     this.visualDirection,
     this.whatContentDelivers,
+    this.trend,
+    this.mood,
+    this.criticSkipped = false,
   });
 
   final String id;
@@ -239,8 +244,26 @@ class CalendarPiece {
   final String? visualDirection;
   final String? whatContentDelivers;
 
+  /// Trend research this piece is grounded in (null = evergreen).
+  final PieceTrendInfo? trend;
+
+  /// Delivery mood picked for the piece (energetic, storytelling, ...).
+  final String? mood;
+
+  /// True when the AI quality review could not run; only the hard brand rules were applied.
+  final bool criticSkipped;
+
   factory CalendarPiece.fromJson(Json j) {
     final target = jMap(j['engagementTarget']);
+    // The API expands autopilot fields to the top level; older responses only carry them in the JSON column.
+    Json payload = const {};
+    final raw = j['videoScriptOrHooks'];
+    if (raw is String && raw.trimLeft().startsWith('{')) {
+      try {
+        payload = jMap(jsonDecode(raw));
+      } catch (_) {}
+    }
+    final trendJson = jMap(j['trend'] ?? payload['trend']);
     final impressions = target['estimatedImpressions'] ?? j['engagementTargetEstimatedImpressions'];
     return CalendarPiece(
       id: jStr(j['id']) ?? jStrOr(j['_id'], ''),
@@ -270,8 +293,30 @@ class CalendarPiece {
       designSystem: jStr(j['designSystem']),
       visualDirection: jStr(j['visualDirection']),
       whatContentDelivers: jStr(j['whatContentDelivers']),
+      trend: trendJson.isEmpty ? null : PieceTrendInfo.fromJson(trendJson),
+      mood: jStr(j['mood']) ?? jStr(payload['mood']),
+      criticSkipped: j['criticSkipped'] == true || jMap(payload['critic'])['skipped'] == true,
     );
   }
+}
+
+class PieceTrendInfo {
+  const PieceTrendInfo({required this.title, this.whyNow = '', this.signal, this.audienceQuestions = const [], this.sourceUrls = const []});
+  final String title;
+  final String whyNow;
+
+  /// Code-computed summary, e.g. "rising · opportunity 72/100 · 18 posts".
+  final String? signal;
+  final List<String> audienceQuestions;
+  final List<String> sourceUrls;
+
+  factory PieceTrendInfo.fromJson(Json j) => PieceTrendInfo(
+        title: jStrOr(j['title'], 'Trend'),
+        whyNow: jStrOr(j['whyNow'], ''),
+        signal: jStr(j['signal']),
+        audienceQuestions: jStrList(j['audienceQuestions']),
+        sourceUrls: jStrList(j['sourceUrls']),
+      );
 }
 
 /// Body of `POST /content-calendar/create` (`CalendarConfig`).

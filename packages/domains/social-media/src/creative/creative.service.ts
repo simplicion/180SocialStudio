@@ -288,7 +288,7 @@ export class CreativeService {
         await this.requireProject(ctx);
         const input = parseInput(DesignThumbnailsSchema, raw);
         const llm = await this.deps.getLlm(ctx.companyId);
-        if (!llm) throw new CreativeError(503, 'AI_NOT_CONFIGURED', 'No AI provider is configured for this workspace. Add one in Settings > AI.');
+        if (!llm) throw new CreativeError(503, 'AI_NOT_CONFIGURED', 'No AI provider is configured in server environment.');
         this.deps.store.assertConfigured?.();
         const brand = await this.deps.loadBrand(ctx.projectId, ctx.companyId);
         const { loadImage } = require('@napi-rs/canvas');
@@ -421,7 +421,7 @@ export class CreativeService {
         const plan = planImageSource(chain, { useImageModel: input.useImageModel, allowStockFallback: input.allowStockFallback });
         if (!input.slides) {
             const llm = await this.deps.getLlm(ctx.companyId);
-            if (!llm) throw new CreativeError(503, 'AI_NOT_CONFIGURED', 'No AI provider is configured for this workspace. Add one in Settings > AI.');
+            if (!llm) throw new CreativeError(503, 'AI_NOT_CONFIGURED', 'No AI provider is configured in server environment.');
         }
 
         const job: CreativeJob = {
@@ -744,7 +744,7 @@ export class CreativeService {
             plan = planImageSource(await this.deps.getImageProviders(ctx.companyId), { useImageModel: job.useImageModel, allowStockFallback: job.allowStockFallback });
         }
         if (input.instruction && !(await this.deps.getLlm(ctx.companyId))) {
-            throw new CreativeError(503, 'AI_NOT_CONFIGURED', 'No AI provider is configured for this workspace. Add one in Settings > AI.');
+            throw new CreativeError(503, 'AI_NOT_CONFIGURED', 'No AI provider is configured in server environment.');
         }
 
         await this.update(job, { status: 'designing', step: `Regenerating slide ${index + 1}`, operation: { type: 'regenerate_slide', index }, error: null, warnings: [], completedAt: null });

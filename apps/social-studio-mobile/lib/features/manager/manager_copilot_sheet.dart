@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -125,29 +123,13 @@ class _ManagerCopilotSheetState extends ConsumerState<ManagerCopilotSheet> {
     } catch (e) {
       if (mounted) {
         final rawErr = errorText(e);
-        final isAiUnconfigured = rawErr.contains('No AI provider is configured') ||
-            rawErr.contains('AI_NOT_CONFIGURED') ||
-            rawErr.contains('Settings > AI');
         setState(() {
           _thinking = false;
           _messages.add(
             ManagerChatMessage(
               senderType: 'manager',
-              content: isAiUnconfigured
-                  ? '$rawErr\n\n'
-                      '180 Manager AI requires an active intelligence provider (such as **Google Gemini** or **OpenAI**) to analyze your workspace channels, metrics, and calendar.\n\n'
-                      'Tap below to connect your API key in seconds:'
-                  : rawErr,
-              suggestedActions: isAiUnconfigured
-                  ? [
-                      ManagerActionModel(
-                        id: 'open_ai_setup',
-                        label: 'Configure AI Provider',
-                        type: 'open_ai_settings',
-                        payload: {},
-                      ),
-                    ]
-                  : const [],
+              content: rawErr,
+              suggestedActions: const [],
             ),
           );
         });
@@ -487,9 +469,7 @@ class _ManagerCopilotSheetState extends ConsumerState<ManagerCopilotSheet> {
                             ? Icons.open_in_new_rounded
                             : act.type == 'update_calendar'
                                 ? Icons.edit_calendar_rounded
-                                : act.type == 'open_ai_settings'
-                                    ? Icons.settings_rounded
-                                    : Icons.bolt_rounded,
+                                : Icons.bolt_rounded,
                         size: 14,
                         color: AppTheme.primary,
                       ),

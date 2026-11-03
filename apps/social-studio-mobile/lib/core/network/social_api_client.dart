@@ -764,32 +764,6 @@ class SocialApi {
   Future<MutationOutcome> pushStudioLibrary(Json body) => _mutate('PUT', '$base/library/sync', body: body, label: 'Sync library');
 
 
-  // ── Workspace AI Settings ──
-  /// Retrieves the workspace AI settings, active provider, and masked keys.
-  Future<Map<String, dynamic>> getAiSettings() async {
-    final r = await _api.get('$base/settings/ai');
-    return (r as Map).cast<String, dynamic>();
-  }
-
-  /// Updates the workspace AI provider and keys.
-  Future<Map<String, dynamic>> updateAiSettings({
-    required String aiProvider,
-    String? openaiKey,
-    String? geminiKey,
-    String? claudeKey,
-    String? groqKey,
-  }) async {
-    final body = <String, dynamic>{
-      'aiProvider': aiProvider,
-      'openaiKey': ?openaiKey,
-      'geminiKey': ?geminiKey,
-      'claudeKey': ?claudeKey,
-      'groqKey': ?groqKey,
-    };
-    final r = await _mutate('PUT', '$base/settings/ai', body: body, label: 'Update AI Settings');
-    return (r as Map).cast<String, dynamic>();
-  }
-
   // ── AI inbox per account ──
   Future<List<AiInboxAccount>> aiInboxSettings({String? projectId}) async {
     final r = await _api.get('$base/inbox/ai-settings', query: {'projectId': ?projectId});

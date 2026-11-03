@@ -10,6 +10,7 @@ import socialAssetsRoutes from './assets/social-assets.routes';
 import socialProjectRoutes from './projects/social-project.routes';
 import calendarPieceRoutes from './calendar-pieces/calendar-piece.routes';
 import autopilotRoutes from './autopilot/autopilot.routes';
+import trendLabRoutes from './trend-lab/trend-lab.routes';
 import creativeRoutes from './creative/creative.routes';
 import engagementRoutes from './engagement/engagement.routes';
 import agentOsRoutes from './projects/agent-os.routes';
@@ -17,7 +18,6 @@ import managerRoutes from './manager/manager.routes';
 import studioLibraryRoutes from './library/studio-library.routes';
 import socialBillingRoutes from './billing/social-billing.routes';
 import platformTeamRoutes from './platform-team/platform-team.routes';
-import settingsAiRoutes from './settings/ai.routes';
 import authRoutes from '../../../routes/auth.routes';
 import { requireActiveSubscriptionOrPass } from '../../../middleware/creator-access-guard';
 
@@ -28,9 +28,6 @@ router.use('/auth', authRoutes);
 
 // Creator billing & recharge routes (Unrestricted so locked creators can view status, plans, and subscribe)
 router.use('/billing', socialBillingRoutes);
-
-// Workspace & AI settings
-router.use('/settings', settingsAiRoutes);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STRICT ENFORCEMENT: All downstream creation, studio and publishing features
@@ -43,6 +40,8 @@ router.use('/platform-team/:platform', platformTeamRoutes);
 
 // Autopilot (WS2) is mounted before the generic project routes so /projects/:id/autopilot/* reaches it.
 router.use('/projects/:id/autopilot', autopilotRoutes);
+// Trend Lab: research a topic, read the report, create a script from it (behind the subscription guard).
+router.use('/projects/:id/trend-lab', trendLabRoutes);
 // Creative engine (WS3): carousels / static posts, also before the generic project routes.
 router.use('/projects/:id/creative', creativeRoutes);
 // Social OS: run inspector, media index/search, agent memory (/projects/:id/agent-runs, /media-*, /agent-memory).

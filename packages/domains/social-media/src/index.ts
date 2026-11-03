@@ -28,3 +28,4 @@ export * from './agent-os';
 export * from './manager';
 export * from './studio-library.service';
 export * from './platform-team';
+export * from './trend-lab/trend-lab.service';

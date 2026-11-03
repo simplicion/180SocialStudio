@@ -290,7 +290,7 @@ export class CreativePlanner {
     }
     const client = await AIProviderService.getInstance().getClient(settings);
     if (!client) {
-      return { client: null, reason: `no LLM key configured for this workspace (provider "${settings.aiProvider || "none"}")` };
+      return { client: null, reason: `no AI API key configured in server environment (provider "${settings.aiProvider || "none"}")` };
     }
     return { client, reason: "", model: modelFor(client.provider, params.llmModel) };
   }

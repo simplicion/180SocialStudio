@@ -32,7 +32,7 @@ export async function requireEngagementLlm(companyId: string): Promise<Engagemen
     } catch (err: any) {
         console.error('[EngagementAI] AI settings could not be resolved:', err?.message);
     }
-    if (!llm) throw new SocialDomainError('AI_NOT_CONFIGURED', 503, 'No AI provider is configured for this workspace. Add one in Settings > AI.');
+    if (!llm) throw new SocialDomainError('AI_NOT_CONFIGURED', 503, 'No AI provider is configured in server environment.');
     return llm;
 }
 

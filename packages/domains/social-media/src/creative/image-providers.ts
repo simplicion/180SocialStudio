@@ -301,9 +301,9 @@ export function resolveImageProviders(opts: ResolveOptions = {}): ImageProviderC
     const m = opts.companyMetadata || {};
     const f = opts.fetchImpl || fetch;
     const keys: Record<string, string> = {
-        bfl: first(m.bflKey, m.bflApiKey, env.BFL_API_KEY),
-        gemini: first(m.geminiImageKey, m.geminiKey, env.GOOGLE_AI_API_KEY, env.GEMINI_API_KEY, env.GOOGLE_API_KEY),
-        openai: first(m.openaiImageKey, m.openaiKey, env.OPENAI_API_KEY),
+        bfl: first(env.BFL_API_KEY, m.bflKey, m.bflApiKey),
+        gemini: first(env.GOOGLE_AI_API_KEY, env.GEMINI_API_KEY, env.GOOGLE_API_KEY, m.geminiImageKey, m.geminiKey),
+        openai: first(env.OPENAI_API_KEY, m.openaiImageKey, m.openaiKey),
     };
     const order = String(env.CREATIVE_IMAGE_PROVIDERS || 'bfl,gemini,openai')
         .split(',')

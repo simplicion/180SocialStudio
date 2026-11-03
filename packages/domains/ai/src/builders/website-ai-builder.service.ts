@@ -450,7 +450,7 @@ export class WebsiteAIBuilderService implements IUniversalBuilder {
         if (!client) {
             throw new WebsiteBuilderError(
                 'AI_NOT_CONFIGURED',
-                `No usable AI provider key for this workspace (provider "${settings?.aiProvider || 'none'}"). Add a key in Settings > AI.`
+                `No usable AI provider key for this workspace (provider "${settings?.aiProvider || 'none'}"). Please check server environment configuration.`
             );
         }
         return { client, companyName };

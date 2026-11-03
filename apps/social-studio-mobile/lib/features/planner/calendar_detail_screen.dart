@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/providers.dart';
 import '../../core/theme/app_theme.dart';
@@ -728,6 +729,15 @@ class _PieceTile extends StatelessWidget {
                 ].where((s) => s.isNotEmpty).join(' · '),
                 style: Theme.of(context).textTheme.labelSmall,
               ),
+              if (piece.trend != null || piece.criticSkipped) ...[
+                SizedBox(height: 6),
+                Wrap(spacing: 6, runSpacing: 4, children: [
+                  if (piece.trend != null)
+                    StatusChip(label: 'Trend-backed', color: AppTheme.accent, icon: Icons.local_fire_department_rounded),
+                  if (piece.criticSkipped)
+                    StatusChip(label: 'Not reviewed', color: AppTheme.warning, icon: Icons.rule_rounded),
+                ]),
+              ],
             ]),
           ),
           if (hasScript) ...[
@@ -1012,8 +1022,34 @@ class _PieceSheetState extends ConsumerState<PieceSheet> {
           StatusChip(label: fmtDate(p.dateScheduled), color: AppTheme.textSecondary, icon: Icons.event_rounded),
           if (p.postingTimeTz.isNotEmpty) StatusChip(label: p.postingTimeTz, color: AppTheme.textSecondary, icon: Icons.schedule_rounded),
           if (p.estimatedImpressions != null) StatusChip(label: '~${p.estimatedImpressions} impressions', color: AppTheme.textSecondary),
+          if (p.mood != null) StatusChip(label: p.mood!.replaceAll('_', ' '), color: AppTheme.accentBlue, icon: Icons.mood_rounded),
         ]),
         SizedBox(height: 12),
+        if (p.criticSkipped) ...[
+          Container(
+            padding: EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: AppTheme.warning.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppTheme.warning.withValues(alpha: 0.4)),
+            ),
+            child: Row(children: [
+              Icon(Icons.rule_rounded, color: AppTheme.warning, size: 18),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'The AI quality review could not run for this piece. Brand words and platform limits were still enforced; read it once before posting.',
+                  style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                ),
+              ),
+            ]),
+          ),
+          SizedBox(height: 12),
+        ],
+        if (p.trend != null) ...[
+          _TrendEvidenceCard(trend: p.trend!),
+          SizedBox(height: 12),
+        ],
 
         // Master SOP Neuromarketing & Brand System Card
         if (psychJob != null || designSys != null || deliverable != null || visDirection != null) ...[
@@ -1312,6 +1348,71 @@ class _PieceSheetState extends ConsumerState<PieceSheet> {
           _block('Hashtags', _hashtags.text),
           _block('Visual brief', _visualBrief.text),
           _block('Notes', p.notes),
+        ],
+      ]),
+    );
+  }
+}
+
+/// Why a piece is timely: the trend it covers, the code-computed signal, what the audience asks, and the sources.
+class _TrendEvidenceCard extends StatelessWidget {
+  const _TrendEvidenceCard({required this.trend});
+  final PieceTrendInfo trend;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceElevated,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppTheme.accent.withValues(alpha: 0.35)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(Icons.local_fire_department_rounded, color: AppTheme.accent, size: 18),
+          SizedBox(width: 8),
+          Text('WHY THIS IS TIMELY', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.1, color: AppTheme.accent)),
+        ]),
+        SizedBox(height: 8),
+        Text(trend.title, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+        if (trend.whyNow.isNotEmpty) ...[
+          SizedBox(height: 4),
+          Text(trend.whyNow, style: TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
+        ],
+        if (trend.signal != null) ...[
+          SizedBox(height: 8),
+          StatusChip(label: trend.signal!, color: AppTheme.accent, icon: Icons.insights_rounded),
+        ],
+        if (trend.audienceQuestions.isNotEmpty) ...[
+          SizedBox(height: 10),
+          Text('What people are asking', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.textMuted)),
+          SizedBox(height: 4),
+          for (final q in trend.audienceQuestions.take(3))
+            Padding(
+              padding: EdgeInsets.only(bottom: 2),
+              child: Text('• $q', style: TextStyle(fontSize: 13)),
+            ),
+        ],
+        if (trend.sourceUrls.isNotEmpty) ...[
+          SizedBox(height: 10),
+          Text('Sources', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.textMuted)),
+          for (final url in trend.sourceUrls.take(3))
+            InkWell(
+              onTap: () {
+                final uri = Uri.tryParse(url);
+                if (uri != null && (uri.scheme == 'https' || uri.scheme == 'http')) {
+                  launchUrl(uri, mode: LaunchMode.externalApplication).catchError((_) => false);
+                }
+              },
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 3),
+                child: Text(
+                  Uri.tryParse(url)?.host.replaceFirst('www.', '') ?? url,
+                  style: TextStyle(fontSize: 12, color: AppTheme.accentBlue, decoration: TextDecoration.underline),
+                ),
+              ),
+            ),
         ],
       ]),
     );

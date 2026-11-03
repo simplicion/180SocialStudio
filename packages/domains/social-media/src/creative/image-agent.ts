@@ -26,7 +26,7 @@ export function planImageSource(chain: ImageProviderChain, opts: { useImageModel
         throw new CreativeError(
             503,
             'IMAGE_MODEL_NOT_CONFIGURED',
-            'No image model is configured. Add BFL_API_KEY (FLUX), a Google AI key or an OpenAI key in Settings > AI or the server env, or retry with allowStockFallback=true.',
+            'No image model is configured. Add BFL_API_KEY (FLUX), a Google AI key or an OpenAI key in the server environment, or retry with allowStockFallback=true.',
         );
     }
     if (chain.stock.length) return { mode: 'stock', providers: chain.stock, warnings: [] };

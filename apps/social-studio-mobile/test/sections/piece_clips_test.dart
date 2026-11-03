@@ -40,6 +40,8 @@ void main() {
 
     await tester.tap(find.text('2').first);
     await settle(tester);
+    // ignore: avoid_print
+    print('DEBUG TEXTS: ${tester.widgetList<Text>(find.byType(Text)).map((t) => t.data ?? t.textSpan?.toPlainText()).toList()}');
     await tester.tap(find.text('3 myths about shipping'));
     await settle(tester);
     expect(find.text('Clips (2)'), findsOneWidget);

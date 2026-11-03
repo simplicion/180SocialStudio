@@ -16,7 +16,7 @@ import { hookScriptProblems, normaliseCopy, normaliseHookScript, normaliseStrate
 import { describePlan, planCadence, planMismatches } from './cadence';
 import { UNTRUSTED_DATA_POLICY, fenceUntrusted } from '@workspace/video-contracts';
 import {
-    CopyBatchSchema, HOOK_TYPES, HookScriptBatchSchema, HookScriptItem, HookType, Strategy, StrategySchema, StrategySlot,
+    CopyBatchSchema, HOOK_TYPES, HookScriptBatchSchema, HookScriptItem, HookType, Strategy, StrategySchema, StrategySlot, ContentMood,
     AutopilotPlatform, PSYCHOLOGICAL_JOBS, DESIGN_SYSTEMS, PsychologicalJob, DesignSystem,
 } from './schemas';
 import type { AutopilotBrandContext, AutopilotPiece, AutopilotRunInput, AutopilotRunResult, PieceCopy, ProgressFn } from './types';
@@ -706,4 +706,93 @@ export async function regenerateAutopilotPiece(params: {
     enforceBrandRules([next], input.brand);
     attachCraftReport([next]);
     return { piece: next, usage: meter.totals() };
+}
+
+// ------------------------------------------------------------------ single piece (Trend Lab)
+
+export interface SinglePieceRequest {
+    brand: AutopilotBrandContext;
+    platforms: AutopilotPlatform[];
+    format: 'reel' | 'carousel' | 'text';
+    /** Reels only: 15-180 seconds. */
+    durationSec?: number;
+    slideCount?: number;
+    mood?: ContentMood;
+    timezone: string;
+    /** YYYY-MM-DD the piece is planned for (defaults to today in UTC). */
+    date?: string;
+    topic: string;
+    angle: { title: string; tension: string; draftHook?: string };
+    trend?: PieceTrend;
+    notes?: string;
+    winningExemplars?: AutopilotRunInput['winningExemplars'];
+}
+
+/** Picks the hook type that fits the angle's tension; the writer and Hook Lab refine the words. */
+export function hookTypeForAngle(tension: string): HookType {
+    const t = tension.toLowerCase();
+    if (/\b(myth|wrong|actually|not what|lie|overrated|stop)\b/.test(t)) return 'contrarian';
+    if (/\b(frustrat|tired|struggl|fear|anxious|pain|hate|annoy)\w*/.test(t)) return 'relatable_pain';
+    if (/\b(story|happened|journey|when i)\b/.test(t)) return 'story';
+    return 'curiosity_gap';
+}
+
+/**
+ * One research-backed piece through the same agents as the calendar: writer -> Hook Lab -> copy -> Platform Craft ->
+ * Voice Guard -> critic -> brand rules + craft report. No strategist call: the slot comes from the chosen angle.
+ */
+export async function runSinglePiecePipeline(req: SinglePieceRequest, deps: PipelineDeps): Promise<{ piece: AutopilotPiece; strategy: Strategy; usage: ReturnType<UsageMeter['totals']> }> {
+    const platforms = req.platforms.filter((p) => PLATFORM_RULES[p]?.formats.includes(req.format));
+    if (!platforms.length) {
+        throw new AutopilotError('INVALID_INPUT', `None of the selected platforms supports ${req.format} posts (${req.platforms.join(', ')}).`);
+    }
+    if (!isValidTimeZone(req.timezone)) throw new AutopilotError('INVALID_INPUT', `unknown timezone ${req.timezone}`);
+    const notes = (req.notes || '').trim().slice(0, 600);
+    const date = req.date && /^\d{4}-\d{2}-\d{2}$/.test(req.date) ? req.date : new Date().toISOString().slice(0, 10);
+    const input: AutopilotRunInput = {
+        days: 7, startDate: date, timezone: req.timezone, platforms, goals: [], brand: req.brand, winningExemplars: req.winningExemplars,
+        ...(req.format === 'reel' && req.durationSec ? { targetReelDurationSec: req.durationSec } : {}),
+    };
+    // A one-slot strategy: what the writer needs to know about the audience comes from the research angle.
+    const strategy: Strategy = {
+        audiencePsychology: {
+            coreDesires: [req.angle.title.slice(0, 200)],
+            corePains: [req.angle.tension.slice(0, 200)],
+            objections: [],
+            triggers: (req.trend?.audienceQuestions || []).slice(0, 3),
+        },
+        positioningAngle: req.brand.positioning || req.angle.title,
+        pillars: [{ name: 'Trend Lab', percent: 100, purpose: 'timely content from audience research' }],
+        cadence: [],
+        contentMix: { reel: req.format === 'reel' ? 100 : 0, carousel: req.format === 'carousel' ? 100 : 0, static: 0, text: req.format === 'text' ? 100 : 0 },
+        slots: [],
+    } as unknown as Strategy;
+    const slot: WorkingSlot = {
+        slotId: 'd1-1', day: 1, weekNumber: 1, platforms, format: req.format, pillar: 'Trend Lab',
+        topic: req.topic.slice(0, 200),
+        angle: `${req.angle.title}: ${req.angle.tension}`.slice(0, 300),
+        hookType: hookTypeForAngle(req.angle.tension),
+        whatContentDelivers: req.angle.title.slice(0, 1000),
+        ...(req.format === 'reel' ? { targetDurationSec: Math.min(180, Math.max(15, Math.round(req.durationSec || 45))) } : {}),
+        ...(req.format === 'carousel' ? { slideCount: Math.min(10, Math.max(4, req.slideCount || 7)) } : {}),
+        ...(req.mood ? { mood: req.mood } : {}),
+        ...(req.trend ? { trend: req.trend, trendId: req.trend.id, sourceUrls: req.trend.sourceUrls.slice(0, 3) } : {}),
+    };
+    strategy.slots = [slot];
+    const instruction = [
+        req.angle.draftHook ? `A researched draft hook to beat or sharpen (never copy it if it is weak): "${req.angle.draftHook}".` : '',
+        notes ? `Creator notes: ${notes}` : '',
+    ].filter(Boolean).join(' ');
+    const meter = new UsageMeter();
+    const hs = (await runHookScriptBatch([slot], input, strategy, deps, meter, instruction || undefined)).get(slot.slotId);
+    if (!hs) throw new AutopilotError('AI_INVALID_OUTPUT', 'The writer agent returned no script for this angle.');
+    const piece = buildPiece(slot, hs, input, { researchUsed: !!req.trend });
+    await runHookLabAgent({ llm: deps.llm, brand: req.brand, pieces: [piece], meter, log: deps.log });
+    await runCopyBatch([piece], input, deps, meter);
+    await runPlatformCraftAgent({ llm: deps.llm, brand: req.brand, pieces: [piece], meter, log: deps.log });
+    runVoiceGuard([piece]);
+    await runCriticWeeks([[piece]], input, deps, meter, 1);
+    enforceBrandRules([piece], req.brand);
+    attachCraftReport([piece]);
+    return { piece, strategy, usage: meter.totals() };
 }
