@@ -42,7 +42,7 @@ void main() {
   appTest('every Home "Workspace" tile opens a real project section', (tester) async {
     final h = await pumpApp(tester, seededBackend());
     for (final s in ProjectSection.all) {
-      final tile = find.descendant(of: find.byType(GridView).last, matching: find.text(s.label));
+      final tile = find.descendant(of: find.byKey(const Key('workspace-tiles')), matching: find.text(s.label));
       await tapVisible(tester, tile);
       expect(find.byType(ProjectWorkspaceScreen), findsOneWidget, reason: s.tab);
       expect(find.descendant(of: find.byType(AppBar), matching: find.text(s.label)), findsOneWidget, reason: s.tab);
@@ -51,6 +51,18 @@ void main() {
       h.router.pop();
       await settle(tester);
     }
+  });
+
+  appTest('the Trend Lab tile opens Create from Trends / Check My Content', (tester) async {
+    await pumpApp(tester, seededBackend());
+    await tapVisible(tester, find.descendant(of: find.byKey(const Key('workspace-tiles')), matching: find.text('Trend Lab')));
+    expect(find.text('Create from Trends'), findsOneWidget);
+    expect(find.text('Check My Content'), findsOneWidget);
+    expect(find.text('Draft a post from an idea'), findsOneWidget);
+    await tester.tap(find.text('Check My Content'));
+    await settle(tester);
+    expect(find.text('Score your hook'), findsOneWidget);
+    expectNoRoutingError();
   });
 
   appTest('an expired access token is refreshed once and the request retried', (tester) async {

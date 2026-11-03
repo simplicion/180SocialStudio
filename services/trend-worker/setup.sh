@@ -5,8 +5,17 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 LAST30DAYS_REF="${LAST30DAYS_REF:-v3.31.0}"
+PYTHON="${PYTHON:-python3}"
 
-python3 -m venv .venv
+# last30days needs Python 3.12+. Fail early with a clear message instead of half-installing.
+if ! "$PYTHON" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 12) else 1)'; then
+  echo "trend-worker needs Python 3.12 or newer (found: $("$PYTHON" --version 2>&1))." >&2
+  echo "Install it (e.g. 'sudo apt install python3.12 python3.12-venv') and run: PYTHON=python3.12 ./setup.sh" >&2
+  exit 1
+fi
+command -v git >/dev/null || { echo "git is required to fetch last30days." >&2; exit 1; }
+
+"$PYTHON" -m venv .venv
 .venv/bin/pip install --upgrade pip >/dev/null
 .venv/bin/pip install ".[dev]"
 

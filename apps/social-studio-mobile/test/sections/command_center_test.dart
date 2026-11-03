@@ -96,7 +96,15 @@ void main() {
       expect(find.text('Open connected accounts'), findsOneWidget);
     });
 
-    appTest('Check tab scores a hook with the server rules for the selected platform', (tester) async {
+    appTest('platform view is monitoring only (Create and Check live in Trend Lab)', (tester) async {
+      final b = seededBackend()..json('GET', '$sm/platform-team/:platform/overview', _overview(_empty));
+      await pumpApp(tester, b, location: '/command-center?platform=instagram');
+      expect(find.text('Create'), findsNothing);
+      expect(find.text('Check'), findsNothing);
+      expect(find.byType(TabBar), findsNothing);
+    });
+
+    appTest('Trend Lab hook tool scores a hook with the server rules for the selected platform', (tester) async {
       final b = seededBackend()
         ..json('GET', '$sm/platform-team/:platform/overview', _overview(_empty))
         ..json('POST', '$sm/platform-team/:platform/hooks/score', {
@@ -108,9 +116,7 @@ void main() {
             ],
           },
         });
-      await pumpApp(tester, b, location: '/command-center?platform=instagram');
-      await tester.tap(find.text('Check'));
-      await settle(tester);
+      await pumpApp(tester, b, location: '/trend-lab/check/hook?projectId=p1');
       await tester.enterText(find.widgetWithText(TextField, 'Hook or opening line'), 'Stop flossing less when your gums bleed');
       await tester.tap(find.text('Score'));
       await settle(tester);
@@ -120,13 +126,11 @@ void main() {
       expect(call.json['hooks'], ['Stop flossing less when your gums bleed']);
     });
 
-    appTest('Create tab: AI not configured shows the reason, retry and a path to settings', (tester) async {
+    appTest('More ways to create: AI not configured shows the reason, retry and a path to settings', (tester) async {
       final b = seededBackend()
         ..json('GET', '$sm/platform-team/:platform/overview', _overview(_empty))
         ..json('POST', '$sm/platform-team/:platform/draft', {'success': false, 'code': 'AI_NOT_CONFIGURED', 'error': 'No usable AI provider key for this workspace.'}, status: 503);
-      await pumpApp(tester, b, location: '/command-center?platform=instagram');
-      await tester.tap(find.text('Create'));
-      await settle(tester);
+      await pumpApp(tester, b, location: '/trend-lab/create-more?projectId=p1');
       await tester.enterText(find.widgetWithText(TextField, 'Your idea'), 'Why gums bleed when you floss');
       await tester.tap(find.text('Write it'));
       await settle(tester);

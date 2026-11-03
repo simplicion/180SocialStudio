@@ -17,6 +17,9 @@ import {
     AutopilotLLM, DraftFormat, DRAFT_FORMATS, UsageMeter, buildBrandContext, createCompanyAutopilotLLM,
     runPlatformDraftAgent, runRepurposeAgent,
 } from '@workspace/ai/content/autopilot';
+import { CHECK_KINDS, CheckKind, simulateReaction } from '@workspace/ai/content/check';
+import { auditConnectedProfile } from './connected-profile';
+import { loadOwnPostOutcomes } from './own-performance';
 import {
     BeatSheetLinter, CompetitorPostRecord, CraftPlatform, HookScorer, PLATFORM_CRAFT, PlatformCopyLinter,
     PlatformProfileInput, SwipeClassifier, TextHumanizer, auditPlatformProfile, splitIntoThread, toCraftPlatform,
@@ -120,6 +123,40 @@ export class PlatformTeamService {
     auditProfile(platform: CraftPlatform, body: any) {
         const input = (body || {}) as PlatformProfileInput;
         return auditPlatformProfile(platform, { ...input, handle: str(input.handle, 'handle', 200) });
+    }
+
+    /** Profile audit filled from the connected account (official APIs) + content consistency of recent posts. */
+    async auditConnected(platform: CraftPlatform, params: { companyId: string; projectId: string }) {
+        const companyId = requireCompanyId(params.companyId);
+        if (!params.projectId) throw bad('"projectId" is required');
+        return auditConnectedProfile(platform, { companyId, projectId: params.projectId }, { db: this.deps.db, getToken: this.deps.getToken, fetchJson: this.deps.fetchJson });
+    }
+
+    /**
+     * Audience reaction simulator: craft signals + a simulated audience panel + an outlook calibrated on the project's
+     * own results when there is enough history. Without an AI key the panel is skipped and the rest still runs.
+     */
+    async reaction(platform: CraftPlatform, params: { companyId: string; projectId?: string; body: any }) {
+        const companyId = requireCompanyId(params.companyId);
+        const kind = (CHECK_KINDS as readonly string[]).includes(params.body?.kind) ? (params.body.kind as CheckKind) : null;
+        if (!kind) throw bad('"kind" must be hook, caption or script');
+        const text = str(params.body?.text, 'text', kind === 'hook' ? 300 : 8000);
+        const brand = await this.brandFor(params.projectId, companyId);
+        let audience = '';
+        if (params.projectId) audience = String((await this.deps.loadBrand(params.projectId, companyId)).profile?.targetAudience || '');
+        let llm: AutopilotLLM | null = null;
+        try {
+            llm = await this.deps.createLLM(companyId);
+            if (llm.provider === 'builtin') llm = null;
+        } catch {
+            llm = null;
+        }
+        const history = params.projectId
+            ? (await loadOwnPostOutcomes(this.deps.db, { companyId, projectId: params.projectId }).catch(() => [])).map((o) => ({ hook: o.hook, format: o.format, multiple: o.multiple }))
+            : [];
+        const meter = new UsageMeter();
+        const report = await simulateReaction({ llm, meter, platform, kind, text, brand: { promptContext: brand.promptContext, audience }, history, format: params.body?.format });
+        return { ...report, usage: meter.totals() };
     }
 
     /** Ranks posts the user collected (their own or competitors') by multiple of the account's normal reach. */

@@ -10,8 +10,6 @@ import '../../core/widgets/universal_skeleton.dart';
 import '../projects/project_provider.dart';
 import 'all_channels_overview.dart';
 import 'cc_widgets.dart';
-import 'create_tab.dart';
-import 'check_tab.dart';
 import 'insights_sections.dart';
 
 /// `GET /platform-team/:platform/overview` for the active project. Only stored and live numbers; nothing sampled.
@@ -20,7 +18,7 @@ final platformOverviewProvider = FutureProvider.autoDispose.family<Json, ({Strin
 
 /// Command Center: unified growth engine and multi-platform cockpit.
 /// 'all' = cross-channel intelligence overview, monthly script quotas, and 24h agent pulse.
-/// platform-specific = Monitor (live metrics & queue), Create (AI drafts), Check (scoring tools).
+/// platform-specific = Monitor (live metrics & queue). Creating and checking content live in Trend Lab (home).
 class PlatformCommandScreen extends ConsumerStatefulWidget {
   const PlatformCommandScreen({super.key, this.initialPlatform});
   final String? initialPlatform;
@@ -51,7 +49,7 @@ class _PlatformCommandScreenState extends ConsumerState<PlatformCommandScreen> {
       appBar: AppBar(
         title: Text(isAll ? 'Command Center & Analytics' : 'Command Center · ${platformLabel(_platform)}'),
         bottom: PreferredSize(
-          preferredSize: Size.fromHeight(isAll ? 56 : 104),
+          preferredSize: const Size.fromHeight(56),
           child: Column(children: [
             SizedBox(
               height: 56,
@@ -73,8 +71,6 @@ class _PlatformCommandScreenState extends ConsumerState<PlatformCommandScreen> {
                 ],
               ),
             ),
-            if (!isAll)
-              TabBar(tabs: const [Tab(text: 'Monitor'), Tab(text: 'Create'), Tab(text: 'Check')]),
           ]),
         ),
       ),
@@ -94,15 +90,12 @@ class _PlatformCommandScreenState extends ConsumerState<PlatformCommandScreen> {
                     project: p,
                     onSelectPlatform: (id) => setState(() => _platform = id),
                   )
-                : TabBarView(children: [
-                    _MonitorTab(key: ValueKey('$_platform-${p.id}'), platform: _platform, projectId: p.id, projectName: p.name),
-                    CreateTab(key: ValueKey('create-$_platform'), platform: _platform, projectId: p.id),
-                    CheckTab(key: ValueKey('check-$_platform'), platform: _platform),
-                  ]),
+                // Create and Check moved to Trend Lab (home); a platform view is monitoring only.
+                : _MonitorTab(key: ValueKey('$_platform-${p.id}'), platform: _platform, projectId: p.id, projectName: p.name),
       ),
     );
 
-    return isAll ? scaffold : DefaultTabController(length: 3, child: scaffold);
+    return scaffold;
   }
 }
 
@@ -238,7 +231,7 @@ class _MonitorTab extends ConsumerWidget {
               SizedBox(height: 10),
               OutlinedButton(
                 style: OutlinedButton.styleFrom(minimumSize: Size.fromHeight(44)),
-                onPressed: () => DefaultTabController.of(context).animateTo(1),
+                onPressed: () => context.push('/trend-lab/create-more?projectId=$projectId'),
                 child: Text('Draft a $label post'),
               ),
             ]),

@@ -113,14 +113,16 @@ test('report -> digest keeps engagement evidence, drops skip-verdict trends; num
     assert.match(d.trends[0].signal!, /rising · opportunity 78\/100 · 7 posts · sentiment \+60% \/ -20% \(n=10\)/);
     assert.equal(d.trends[0].quotes![0].url, 'https://www.reddit.com/r/x/c1');
     assert.equal(minTrendSlots(7, 1), 3);
+    assert.equal(minTrendSlots(7, 3), 5);
     assert.equal(minTrendSlots(30, 2), 6);
+    assert.equal(minTrendSlots(30, 10), 18);
     assert.equal(minTrendSlots(7, 0), 0);
 });
 
 // ------------------------------------------------------------------ pipeline
 
 test('A2/A4/A5/A10: trend engine feeds the strategist; sources are attached in code; writer gets evidence + own winners', async () => {
-    const f = fakeLlm({ strategySlots: withTrends(['c1', 'c1', 'c2', 'ghost', undefined, undefined, undefined]) });
+    const f = fakeLlm({ strategySlots: withTrends(['c1', 'c1', 'c2', 'c2', 'c1', 'ghost', undefined]) });
     let researched: any = null;
     const trendResearch: TrendResearchFn = async (a) => { researched = a; return report([cluster('c1'), cluster('c2')]); };
     const res = await runAutopilotPipeline(input({ winningExemplars: [{ hook: 'I lifted my first 50kg at 47', format: 'reel', platform: 'instagram', multiple: 3.2 }, { hook: 'meh', format: 'reel', platform: 'instagram', multiple: 1.1 }] }), { llm: f.llm, trendResearch });
@@ -128,11 +130,11 @@ test('A2/A4/A5/A10: trend engine feeds the strategist; sources are attached in c
     assert.equal(researched.topic, 'Creatine over 40');
     const strat = f.prompt('strategist')[0];
     assert.match(strat, /trendId "c1"/);
-    assert.match(strat, /At least 3 slots must carry a trendId/);
+    assert.match(strat, /At least 5 slots must carry a trendId/);
     assert.match(strat, /UNTRUSTED_DATA/);
 
     const trendPieces = res.pieces.filter((p) => p.trend);
-    assert.deepEqual(trendPieces.map((p) => p.trend!.id), ['c1', 'c1', 'c2']);
+    assert.deepEqual(trendPieces.map((p) => p.trend!.id), ['c1', 'c1', 'c2', 'c2', 'c1']);
     // URLs come from the trend, never from the model (the fake strategist tried to cite https://invented.example/fake).
     for (const p of res.pieces) assert.ok(!p.sources.includes('https://invented.example/fake'));
     assert.deepEqual(trendPieces[0].sources, ['https://www.reddit.com/r/x/c1']);
@@ -218,4 +220,50 @@ test('A8: the canned engine is refused in production unless explicitly allowed',
     assert.equal(builtinEngineAllowed({ NODE_ENV: 'production' } as any), false);
     assert.equal(builtinEngineAllowed({ NODE_ENV: 'production', AUTOPILOT_ALLOW_BUILTIN: '1' } as any), true);
     assert.equal(builtinEngineAllowed({ NODE_ENV: 'development' } as any), true);
+});
+
+test('copy normalizer fills a missing CTA from the piece itself and never invents captions', async () => {
+    const { normaliseCopy } = await import('../src/content/autopilot/normalizers');
+    const pieces = [
+        { slotId: 'd1-1', platforms: ['instagram', 'linkedin'], script: { cta: 'DM START for the plan' } },
+        { slotId: 'd2-1', platforms: ['instagram'], carouselBrief: { slides: [{ role: 'hook', headline: 'x' }, { role: 'cta', headline: 'Save this for leg day' }] } },
+        { slotId: 'd3-1', platforms: ['facebook'] },
+    ];
+    const raw = { items: [
+        { slotId: 'd1-1', copies: [{ platform: 'Instagram', caption: 'A caption.', hashtags: ['creatine'], postingTime: '9:30' }] },
+        { slotId: 'd2-1', copies: [{ platform: 'instagram', caption: 'Slides inside.', hashtags: [], postingTime: '18:00' }] },
+        { slotId: 'd3-1', copies: [{ platform: 'facebook', caption: 'First line. Comment your split below!', hashtags: [], postingTime: '18:00' }] },
+    ] };
+    const first = normaliseCopy(raw, pieces as any, { attempt: 1 });
+    assert.equal(first.items[0].copies[0].cta, 'DM START for the plan');
+    assert.equal(first.items[0].copies[0].platform, 'instagram');
+    assert.equal(first.items[0].copies[0].postingTime, '09:30');
+    assert.equal(first.items[1].copies[0].cta, 'Save this for leg day');
+    assert.equal(first.items[2].copies[0].cta, undefined, 'attempt 1 leaves it for the repair pass');
+    const second = normaliseCopy(raw, pieces as any, { attempt: 2 });
+    assert.equal(second.items[2].copies[0].cta, 'Comment your split below!');
+    // The LinkedIn copy of d1-1 is missing: it stays missing (no stock filler); brand rules flag the piece.
+    assert.equal(second.items[0].copies.length, 1);
+    assert.ok(!JSON.stringify(second).includes('Key takeaway'));
+});
+
+test('hook normalizer takes the hook from the script the model wrote', async () => {
+    const { normaliseHookScript } = await import('../src/content/autopilot/normalizers');
+    const out = normaliseHookScript({ items: [{ slotId: 'd1-1', headline: 'h', script: { hook: 'Your creatine bloat ends in week two', body: [{ beat: 'a' }], cta: 'c' } }] },
+        [{ slotId: 'd1-1', format: 'reel', topic: 'creatine', angle: 'myth' }] as any, { attempt: 1 });
+    assert.equal(out.items[0].spokenHook, 'Your creatine bloat ends in week two');
+});
+
+test('fold-label artifacts are stripped and same-trend slots are told about each other', async () => {
+    const { stripFoldArtifacts } = await import('../src/content/autopilot/normalizers');
+    assert.equal(stripFoldArtifacts('Your 40s need strength. It protects joints... more'), 'Your 40s need strength. It protects joints');
+    assert.equal(stripFoldArtifacts('Learn why it matters...more (description)'), 'Learn why it matters');
+    assert.equal(stripFoldArtifacts('Line one… see more\nLine two'), 'Line one\nLine two');
+    assert.equal(stripFoldArtifacts('Nothing more to say.'), 'Nothing more to say.');
+
+    const f = fakeLlm({ strategySlots: withTrends(['c1', 'c1', 'c1', 'c2', 'c2', undefined, undefined]) });
+    await runAutopilotPipeline(input(), { llm: f.llm, trendResearch: async () => report([cluster('c1'), cluster('c2')]) });
+    const writer = f.prompt('hook_script').join('\n');
+    assert.match(writer, /slot d1-1 — trend: Trend c1[\s\S]*also covered by d2-1 \(Topic 2: Angle 2\)/);
+    assert.match(writer, /never by the trend name/);
 });

@@ -64,6 +64,8 @@ export function createPlatformTeamRouter(getService: () => PlatformTeamService =
     router.post('/thread', handle(({ svc, req }) => svc.thread(req.body)));
     router.post('/humanize', handle(({ svc, req }) => svc.humanize(req.body)));
     router.post('/profile/audit', handle(({ svc, platform, req }) => svc.auditProfile(platform, req.body)));
+    router.post('/profile/audit-connected', handle(({ svc, platform, companyId, req }) => svc.auditConnected(platform, { companyId, projectId: String(req.body?.projectId || '') })));
+    router.post('/check/reaction', handle(({ svc, platform, companyId, req }) => svc.reaction(platform, { companyId, projectId: req.body?.projectId ? String(req.body.projectId) : undefined, body: req.body })));
     router.post('/outliers', handle(({ svc, req }) => svc.outliers(req.body)));
     router.post('/comments/triage', handle(({ svc, req }) => svc.triage(req.body)));
     router.post('/posts/audit', handle(({ svc, platform, req }) => svc.auditPost(platform, req.body)));

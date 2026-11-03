@@ -25,6 +25,11 @@ import '../workspace/project_workspace_screen.dart';
 import '../command_center/platform_command_screen.dart';
 import '../planner/detailed_script_screen.dart';
 import '../planner/planner_providers.dart';
+import '../projects/project_provider.dart';
+import '../trend_lab/trend_report_screen.dart';
+import '../trend_lab/trend_script_screen.dart';
+import '../trend_lab/content_check_screens.dart';
+import '../trend_lab/more_create_screen.dart';
 
 String? _q(GoRouterState s, String k) {
   final v = s.uri.queryParameters[k];
@@ -55,6 +60,42 @@ List<StatefulShellBranch> shellBranches() => [
 List<RouteBase> extraRoutes() => [
       GoRoute(path: '/settings', builder: (_, _) => SettingsScreen()),
       GoRoute(path: '/command-center', builder: (_, s) => PlatformCommandScreen(initialPlatform: _q(s, 'platform'))),
+      // Trend Lab: the project comes from ?projectId= (deep links) or the active project.
+      GoRoute(
+        path: '/trend-lab/create-more',
+        builder: (_, s) => Consumer(builder: (_, ref, _) {
+          final projectId = _q(s, 'projectId') ?? ref.watch(activeProjectProvider).valueOrNull?.id;
+          return projectId == null ? const Scaffold(body: LoadingView()) : MoreCreateScreen(projectId: projectId);
+        }),
+      ),
+      GoRoute(
+        path: '/trend-lab/check',
+        builder: (_, s) => Consumer(builder: (_, ref, _) {
+          final projectId = _q(s, 'projectId') ?? ref.watch(activeProjectProvider).valueOrNull?.id;
+          return projectId == null ? const Scaffold(body: LoadingView()) : ContentCheckScreen(projectId: projectId);
+        }),
+      ),
+      GoRoute(
+        path: '/trend-lab/check/:tool',
+        builder: (_, s) => Consumer(builder: (_, ref, _) {
+          final projectId = _q(s, 'projectId') ?? ref.watch(activeProjectProvider).valueOrNull?.id;
+          return projectId == null ? const Scaffold(body: LoadingView()) : CheckToolScreen(projectId: projectId, tool: s.pathParameters['tool']!);
+        }),
+      ),
+      GoRoute(
+        path: '/trend-lab/reports/:id',
+        builder: (_, s) => Consumer(builder: (_, ref, _) {
+          final projectId = _q(s, 'projectId') ?? ref.watch(activeProjectProvider).valueOrNull?.id;
+          return projectId == null ? const Scaffold(body: LoadingView()) : TrendReportScreen(projectId: projectId, reportId: s.pathParameters['id']!);
+        }),
+      ),
+      GoRoute(
+        path: '/trend-lab/scripts/:pieceId',
+        builder: (_, s) => Consumer(builder: (_, ref, _) {
+          final projectId = _q(s, 'projectId') ?? ref.watch(activeProjectProvider).valueOrNull?.id;
+          return projectId == null ? const Scaffold(body: LoadingView()) : TrendScriptScreen(projectId: projectId, pieceId: s.pathParameters['pieceId']!);
+        }),
+      ),
       GoRoute(path: '/projects', builder: (_, _) => ProjectsListScreen()),
       GoRoute(path: '/projects/new', builder: (_, _) => CreateProjectScreen()),
       GoRoute(

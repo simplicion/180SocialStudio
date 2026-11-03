@@ -6,7 +6,7 @@
  *   pnpm eval:autopilot --suite quick --provider builtin    # harness smoke test, no API calls (scores meaningless)
  *   pnpm eval:autopilot --suite quick --save-baseline       # store as evals/baselines/<suite>.json
  *
- * Flags: --suite quick|full, --provider claude|builtin, --research legacy|engine (default engine), --label <name>,
+ * Flags: --suite quick|full, --provider platform|claude|builtin (platform = production's own client), --research legacy|engine (default engine), --label <name>,
  *        --only <id,id>, --concurrency <n>,
  *        --baseline <path> (default evals/baselines/<suite>.json if present), --save-baseline.
  * Env:   EVAL_MODEL / EVAL_STRATEGY_MODEL override the production model resolution.
@@ -84,7 +84,7 @@ export function fixtureInput(fixture: EvalFixture, days: 7 | 14 | 30): Autopilot
 }
 
 async function runFixture(fixture: EvalFixture, days: 7 | 14 | 30, provider: string, research: 'legacy' | 'engine'): Promise<{ run: FixtureRun; models: string[] }> {
-    const llm = createGeneratorFromEnv(provider);
+    const llm = await createGeneratorFromEnv(provider);
     const agentEvents: Record<string, number> = {};
     const started = Date.now();
     try {
@@ -103,7 +103,7 @@ async function runFixture(fixture: EvalFixture, days: 7 | 14 | 30, provider: str
 async function main() {
     const suite = arg('suite', 'quick')!;
     if (suite !== 'quick' && suite !== 'full') throw new Error('--suite must be quick or full');
-    const provider = arg('provider', 'claude')!;
+    const provider = arg('provider', 'platform')!;
     const label = arg('label', suite)!;
     const days: 7 | 14 = suite === 'quick' ? 7 : 14;
     const only = arg('only')?.split(',').map((s) => s.trim()).filter(Boolean);

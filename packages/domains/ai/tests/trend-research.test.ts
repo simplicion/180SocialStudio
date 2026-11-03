@@ -309,3 +309,24 @@ test('worker client retries transient failures once and never retries validation
     await assert.rejects(strict.fetchPages(['x']), /HTTP 422/);
     assert.equal(m, 1);
 });
+
+test('platform signal: without an API key the connected channel token is used as a Bearer header', async () => {
+    const seen: { url: string; headers: Record<string, string> }[] = [];
+    const fetchJson = async (url: string, headers: Record<string, string> = {}) => {
+        seen.push({ url, headers });
+        if (url.includes('/search?')) return { pageInfo: { totalResults: 50 }, items: [{ id: { videoId: 'v1' } }] };
+        if (url.includes('/videos?')) return { items: [{ id: 'v1', snippet: { title: 'Creatine at 40', publishedAt: `${daysAgo(2)}T00:00:00Z` }, statistics: { viewCount: '1200' } }] };
+        return { items: [] };
+    };
+    const out = await runPlatformSignalAgent({ plan, days: 30, deps: { youtubeAccessToken: async () => 'channel-token', fetchJson } });
+    assert.equal(out.items.length, 1);
+    assert.ok(seen.every((c) => c.headers.Authorization === 'Bearer channel-token' && !c.url.includes('key=')));
+    assert.equal(out.statuses.find((s) => s.source === 'youtube')?.detail, 'via connected channel');
+
+    const keyed: string[] = [];
+    await runPlatformSignalAgent({ plan, days: 30, deps: { youtubeApiKey: 'K', youtubeAccessToken: async () => 'unused', fetchJson: async (url: string) => { keyed.push(url); return { items: [] }; } } });
+    assert.ok(keyed[0].endsWith('&key=K'), 'an API key wins over the channel token');
+
+    const none = await runPlatformSignalAgent({ plan, days: 30, deps: { youtubeAccessToken: async () => null } });
+    assert.equal(none.statuses.find((s) => s.source === 'youtube')?.status, 'skipped');
+});

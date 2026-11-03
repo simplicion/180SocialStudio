@@ -33,6 +33,7 @@ import type { InstagramMedia, ReportCluster, TrendResearchReport } from '@worksp
 import { defaultLoadBrand } from '../autopilot-calendar.service';
 import { loadOwnPostOutcomes, OwnPostOutcome, winningExemplars } from '../platform-team/own-performance';
 import { instagramHashtagReader } from '../platform-team/instagram-hashtags';
+import { youtubeTokenProvider } from '../platform-team/youtube-token';
 
 export class TrendLabError extends Error {
     constructor(readonly code: string, readonly statusCode: number, message: string) { super(message); this.name = 'TrendLabError'; }
@@ -47,6 +48,8 @@ export interface TrendLabDeps {
     lanes?: { lane: string; on: boolean; hint?: string }[];
     loadOwnOutcomes?: (projectId: string, companyId: string) => Promise<OwnPostOutcome[]>;
     instagramReader?: (projectId: string, companyId: string) => Promise<((tag: string) => Promise<InstagramMedia[]>) | null>;
+    /** Connected YouTube channel token (YouTube lane fallback when YOUTUBE_API_KEY is not set). */
+    youtubeToken?: (projectId: string, companyId: string) => () => Promise<string | null>;
     schedule: (job: () => Promise<void>) => void;
     now: () => Date;
     log: (event: string, data: Record<string, unknown>) => void;
@@ -68,6 +71,7 @@ export function defaultTrendLabDeps(env: NodeJS.ProcessEnv = process.env): Trend
         lanes,
         loadOwnOutcomes: (projectId, companyId) => loadOwnPostOutcomes(prisma, { companyId, projectId }),
         instagramReader: (projectId, companyId) => instagramHashtagReader({ companyId, projectId }),
+        youtubeToken: (projectId, companyId) => youtubeTokenProvider({ companyId, projectId }),
         schedule: (job) => { setImmediate(() => { job().catch((e) => console.error('[trend-lab] job crashed', e)); }); },
         now: () => new Date(),
         log: (event, data) => console.info(`[trend-lab] ${event}`, JSON.stringify(data)),
@@ -162,6 +166,7 @@ export class TrendLabService {
                 brand: { industry: brand.industry, audience: brand.audience, promptContext: brand.promptContext },
                 ownHistory: async () => outcomes.map((o) => ({ format: o.format, multiple: o.multiple })),
                 instagramHashtagTopMedia: ig ?? undefined,
+                youtubeAccessToken: this.deps.youtubeToken?.(ctx.project.id, ctx.companyId),
                 onStage: async (stage, progress, detail) => {
                     if (progress - last < 5 && stage !== 'done') return;
                     last = progress;

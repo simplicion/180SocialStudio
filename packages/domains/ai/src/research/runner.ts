@@ -24,6 +24,8 @@ export interface TrendResearchCall {
     days?: number;
     ownHistory?: () => Promise<OwnPostOutcome[]>;
     instagramHashtagTopMedia?: (hashtag: string) => Promise<InstagramMedia[]>;
+    /** The project's connected YouTube channel token, used when YOUTUBE_API_KEY is not set. */
+    youtubeAccessToken?: () => Promise<string | null>;
     onStage?: (stage: ResearchStage, progress: number, detail?: string) => void | Promise<void>;
 }
 
@@ -61,7 +63,7 @@ export function createTrendResearchRunner(cfg: TrendResearchConfig): TrendResear
             llm: call.llm,
             worker: cfg.worker,
             search: cfg.search,
-            platform: { youtubeApiKey: cfg.youtubeApiKey, instagramHashtagTopMedia: call.instagramHashtagTopMedia },
+            platform: { youtubeApiKey: cfg.youtubeApiKey, youtubeAccessToken: call.youtubeAccessToken, instagramHashtagTopMedia: call.instagramHashtagTopMedia },
             cache: cfg.cache,
             ownHistory: call.ownHistory,
             meter: call.meter,

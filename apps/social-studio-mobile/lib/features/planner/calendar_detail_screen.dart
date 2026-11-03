@@ -1356,7 +1356,7 @@ class _PieceSheetState extends ConsumerState<PieceSheet> {
 
 /// Why a piece is timely: the trend it covers, the code-computed signal, what the audience asks, and the sources.
 class TrendEvidenceCard extends StatelessWidget {
-  const TrendEvidenceCard({required this.trend});
+  const TrendEvidenceCard({super.key, required this.trend});
   final PieceTrendInfo trend;
 
   @override

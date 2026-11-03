@@ -296,6 +296,8 @@ interface WorkingSlot extends StrategySlot {
     weekNumber: number;
     /** Research evidence for this slot (from its trendId, or carried by a regenerated piece). */
     trend?: PieceTrend;
+    /** Other slots of the plan on the same trend (weeks are written in parallel, so the writer is told about them). */
+    siblings?: { slotId: string; topic: string; angle: string }[];
 }
 
 const MOOD_GUIDE: Record<string, string> = {
@@ -604,6 +606,10 @@ export async function runAutopilotPipeline(input: AutopilotRunInput, deps: Pipel
         // format and topic are required by StrategySlotSchema, which the strategist's output has already passed.
         return { ...s, format: s.format!, topic: s.topic!, slotId: `d${s.day}-${n}`, weekNumber: Math.ceil(s.day / 7), ...(t ? { trend: pieceTrend(t) } : {}) };
     });
+    for (const sl of slots) {
+        if (!sl.trendId) continue;
+        sl.siblings = slots.filter((o) => o !== sl && o.trendId === sl.trendId).map((o) => ({ slotId: o.slotId, topic: o.topic, angle: o.angle }));
+    }
 
     // 3. Hooks & scripts per week
     await progress('hooks_scripts', 25);

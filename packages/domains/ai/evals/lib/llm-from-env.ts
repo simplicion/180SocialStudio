@@ -8,9 +8,31 @@
  * The judge is deliberately a different model from the generator (default claude-opus-5-5) so it does not grade
  * its own writing.
  */
+import * as fs from 'fs';
+import * as path from 'path';
 import Anthropic from '@anthropic-ai/sdk';
+
+/**
+ * The eval reads the Claude key from the shell or, failing that, from the backend's .env (the same file the server
+ * uses). Only the AI key variables are taken from it; nothing else in that file is loaded into the eval process.
+ */
+function loadKeyFromBackendEnv(env: NodeJS.ProcessEnv = process.env) {
+    if (env.ANTHROPIC_API_KEY && env.OPENAI_API_KEY) return;
+    const file = path.resolve(process.cwd(), 'apps/180-social-studio-backend/.env');
+    try {
+        const parsed = require('dotenv').parse(fs.readFileSync(file));
+        const key = parsed.ANTHROPIC_API_KEY || parsed.CLAUDE_API_KEY;
+        if (key) env.ANTHROPIC_API_KEY = key;
+        for (const k of ['OPENAI_API_KEY', 'GEMINI_API_KEY', 'AI_PROVIDER']) if (!env[k] && parsed[k]) env[k] = parsed[k];
+    } catch {
+        /* no file: the SDK reports the missing key */
+    }
+}
+loadKeyFromBackendEnv();
 import { AutopilotError, AutopilotLLM, LlmRequest, LlmResponse, resolveAutopilotModels } from '../../src/content/autopilot/llm';
 import { createBuiltinViralAutopilotLLM } from '../../src/content/autopilot/builtin-viral-llm';
+import { wrapAiClient } from '../../src/content/autopilot/llm';
+import { aiProviderService } from '../../src/kernel/ai-provider.service';
 
 export interface InstrumentedLLM extends AutopilotLLM {
     stats: { calls: number; failures: number; refusals: number; latencyMs: number[]; models: Set<string> };
@@ -71,10 +93,36 @@ export function createBuiltinLLM(): InstrumentedLLM {
     };
 }
 
-export function createGeneratorFromEnv(provider: string, env: NodeJS.ProcessEnv = process.env): InstrumentedLLM {
+/**
+ * The platform's own client factory (aiProviderService + wrapAiClient, the exact production request path and model
+ * choice), with keys from the environment only: the provider production would pick from the same env.
+ */
+export async function createPlatformLLM(env: NodeJS.ProcessEnv = process.env): Promise<InstrumentedLLM> {
+    const settings: any = {
+        aiProvider: (env.AI_PROVIDER || (env.ANTHROPIC_API_KEY ? 'claude' : env.OPENAI_API_KEY ? 'openai' : 'gemini')).toLowerCase(),
+        openaiKey: env.OPENAI_API_KEY || '', claudeKey: env.ANTHROPIC_API_KEY || env.CLAUDE_API_KEY || '', geminiKey: env.GEMINI_API_KEY || '',
+    };
+    const client = await aiProviderService.getClient(settings);
+    if (!client) throw new Error('No AI key in the environment or apps/180-social-studio-backend/.env (OPENAI_API_KEY / ANTHROPIC_API_KEY / GEMINI_API_KEY).');
+    const inner = wrapAiClient(client, resolveAutopilotModels(client.provider, env));
+    const models = resolveAutopilotModels(client.provider, env);
+    const stats: InstrumentedLLM['stats'] = { calls: 0, failures: 0, refusals: 0, latencyMs: [], models: new Set([`${client.provider}:${models.bulk || 'default'}`]) };
+    return {
+        provider: client.provider,
+        stats,
+        async complete(req) {
+            stats.calls += 1;
+            const t = Date.now();
+            try { return await inner.complete(req); } catch (e) { stats.failures += 1; throw e; } finally { stats.latencyMs.push(Date.now() - t); }
+        },
+    };
+}
+
+export async function createGeneratorFromEnv(provider: string, env: NodeJS.ProcessEnv = process.env): Promise<InstrumentedLLM> {
     if (provider === 'builtin') return createBuiltinLLM();
     if (provider === 'claude' || provider === 'anthropic') return createAnthropicLLM(env);
-    throw new Error(`Unknown --provider "${provider}". Use claude or builtin.`);
+    if (provider === 'platform') return createPlatformLLM(env);
+    throw new Error(`Unknown --provider "${provider}". Use platform, claude or builtin.`);
 }
 
 /** Judge call: returns raw text. Uses a different model than the generator. */

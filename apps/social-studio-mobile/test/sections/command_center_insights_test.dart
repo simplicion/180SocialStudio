@@ -116,6 +116,8 @@ void main() {
         }));
       await pumpApp(tester, b, location: '/command-center?platform=instagram');
       await tester.scrollUntilVisible(find.text('Draft reply'), 500, scrollable: monitorList);
+      await tester.ensureVisible(find.text('Draft reply'));
+      await settle(tester);
       await tester.tap(find.text('Draft reply'));
       await settle(tester);
       expect(find.text('Reply to @ana'), findsOneWidget);

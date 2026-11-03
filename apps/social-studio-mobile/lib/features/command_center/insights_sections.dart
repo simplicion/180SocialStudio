@@ -212,7 +212,7 @@ class _RadarSectionState extends ConsumerState<RadarSection> {
                 SizedBox(height: 10),
                 OutlinedButton(
                   style: OutlinedButton.styleFrom(minimumSize: Size.fromHeight(44)),
-                  onPressed: () => DefaultTabController.of(context).animateTo(2),
+                  onPressed: () => context.push('/trend-lab/check/result?projectId=${widget.projectId}'),
                   child: Text('Check a post by hand'),
                 ),
               ]),

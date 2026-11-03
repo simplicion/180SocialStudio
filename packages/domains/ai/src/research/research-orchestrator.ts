@@ -81,7 +81,7 @@ export async function runTrendResearch(input: TrendResearchInput, deps: TrendRes
     await stage('planning', 5, 'Planning searches for your topic');
     const { plan } = await planResearch({ topic: input.topic, industry: input.brand.industry, audience: input.brand.audience, context: input.context }, deps.llm, deps.meter);
 
-    const lanes = [deps.worker ? 'worker' : '', deps.search ? `web:${deps.search.name}` : '', deps.platform.youtubeApiKey ? 'youtube' : '', deps.platform.instagramHashtagTopMedia ? 'instagram' : ''].filter(Boolean);
+    const lanes = [deps.worker ? 'worker' : '', deps.search ? `web:${deps.search.name}` : '', deps.platform.youtubeApiKey || deps.platform.youtubeAccessToken ? 'youtube' : '', deps.platform.instagramHashtagTopMedia ? 'instagram' : ''].filter(Boolean);
     const key = trendCacheKey({ searchQueries: plan.searchQueries, hashtags: plan.hashtags, days, lanes });
     let outcomes = deps.cache ? await deps.cache.get(key) : null;
     const cached = !!outcomes;

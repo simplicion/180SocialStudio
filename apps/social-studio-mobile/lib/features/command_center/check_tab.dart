@@ -7,12 +7,23 @@ import '../../core/util/json.dart';
 import '../../core/widgets/common.dart';
 import 'cc_widgets.dart';
 import 'create_tab.dart' show FeedPreview;
+import '../projects/project_provider.dart';
+import 'check_results.dart';
 
 /// Rule-based checks for one platform. No AI involved: every score is computed from the text or numbers typed in,
 /// so the same input always gives the same result.
+/// Tool ids for [CheckTab.tools]: hook, reaction, caption, script, voice, profile, result.
+const checkToolIds = ['hook', 'reaction', 'caption', 'script', 'voice', 'profile', 'result'];
+
 class CheckTab extends ConsumerStatefulWidget {
-  const CheckTab({super.key, required this.platform});
+  const CheckTab({super.key, required this.platform, this.tools, this.projectId});
   final String platform;
+
+  /// Only these tools (null = all). Trend Lab's Check My Content opens one tool at a time.
+  final Set<String>? tools;
+
+  /// Project for the reaction simulator and connected-account audit (defaults to the active project).
+  final String? projectId;
 
   @override
   ConsumerState<CheckTab> createState() => _CheckTabState();
@@ -33,11 +44,17 @@ class _CheckTabState extends ConsumerState<CheckTab> with AutomaticKeepAliveClie
   final _median = TextEditingController();
   final _shares = TextEditingController();
   final _hold = TextEditingController();
+  final _react = TextEditingController();
   bool _spoken = true;
   bool? _photo;
   bool? _banner;
+  String _reactKind = 'hook';
 
-  late final _all = [_hook, _caption, _title, _script, _voice, _handle, _name, _bio, _about, _link, _views, _median, _shares, _hold];
+  late final _all = [_hook, _caption, _title, _script, _voice, _handle, _name, _bio, _about, _link, _views, _median, _shares, _hold, _react];
+
+  bool _on(String id) => widget.tools == null || widget.tools!.contains(id);
+
+  String? get _projectId => widget.projectId ?? ref.read(activeProjectProvider).valueOrNull?.id;
 
   @override
   bool get wantKeepAlive => true;
@@ -67,7 +84,7 @@ class _CheckTabState extends ConsumerState<CheckTab> with AutomaticKeepAliveClie
     return ListView(
       padding: EdgeInsets.fromLTRB(16, 16, 16, 32),
       children: [
-        ToolCard(
+        if (_on('hook')) ToolCard(
           title: 'Hook score',
           subtitle: 'Length, specifics, stakes, front-loading and who it speaks to. One hook per line to compare.',
           children: [
@@ -102,7 +119,28 @@ class _CheckTabState extends ConsumerState<CheckTab> with AutomaticKeepAliveClie
             ),
           ],
         ),
-        ToolCard(
+        if (_on('reaction')) ToolCard(
+          title: 'Audience reaction simulator',
+          subtitle: 'Five people from your audience react to it: would they stop, finish, save or skip. Calibrated on your own results once you have 30 posts with numbers.',
+          children: [
+            SegmentedButton<String>(
+              showSelectedIcon: false,
+              segments: const [ButtonSegment(value: 'hook', label: Text('Hook')), ButtonSegment(value: 'caption', label: Text('Caption')), ButtonSegment(value: 'script', label: Text('Script'))],
+              selected: {_reactKind},
+              onSelectionChanged: (s) => setState(() => _reactKind = s.first),
+            ),
+            SizedBox(height: 12),
+            TextField(controller: _react, minLines: _reactKind == 'hook' ? 2 : 5, maxLines: _reactKind == 'hook' ? 4 : 12, decoration: fieldDecoration(_reactKind == 'hook' ? 'Hook or opening line' : _reactKind == 'caption' ? 'Caption' : 'Script')),
+            SizedBox(height: 12),
+            ToolRunner(
+              label: 'Simulate reactions',
+              ai: true,
+              run: () => _tool('check/reaction', {'kind': _reactKind, 'text': _react.text, 'projectId': ?_projectId}, needs: _react, hint: 'Paste what you want to test first.'),
+              result: (_, d) => ReactionResult(data: d),
+            ),
+          ],
+        ),
+        if (_on('caption')) ToolCard(
           title: '$label caption check',
           subtitle: 'What shows before the fold, length, hashtags, links and the ask, by $label\'s rules.',
           children: [
@@ -142,7 +180,7 @@ class _CheckTabState extends ConsumerState<CheckTab> with AutomaticKeepAliveClie
             ),
           ],
         ),
-        ToolCard(
+        if (_on('script')) ToolCard(
           title: 'Script timing',
           subtitle: 'Times each line at $label\'s speaking pace and flags a slow hook, long lines with no cut, and a missing loop.',
           children: [
@@ -175,7 +213,7 @@ class _CheckTabState extends ConsumerState<CheckTab> with AutomaticKeepAliveClie
             ),
           ],
         ),
-        ToolCard(
+        if (_on('voice')) ToolCard(
           title: 'Human voice',
           subtitle: 'Removes hidden characters, dashes and stock AI phrases, then scores how human the text reads.',
           children: [
@@ -208,10 +246,28 @@ class _CheckTabState extends ConsumerState<CheckTab> with AutomaticKeepAliveClie
             ),
           ],
         ),
-        ToolCard(
+        if (_on('profile')) ToolCard(
           title: '$label profile audit',
           subtitle: 'Scores only the fields you fill in, and lists what to fix first.',
           children: [
+            if (widget.platform != 'linkedin') ...[
+              ToolRunner(
+                label: 'Use my connected account',
+                run: () async {
+                  final pid = _projectId;
+                  if (pid == null) {
+                    showInfo(context, 'Open a project first.');
+                    return null;
+                  }
+                  return ref.read(socialApiProvider).platformTool(widget.platform, 'profile/audit-connected', {'projectId': pid});
+                },
+                result: (_, d) => ConnectedAuditResult(data: d),
+              ),
+              Padding(
+                padding: EdgeInsets.symmetric(vertical: 12),
+                child: Text('Or fill it in by hand:', style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+              ),
+            ],
             TextField(controller: _handle, decoration: fieldDecoration('Handle')),
             SizedBox(height: 12),
             TextField(controller: _name, decoration: fieldDecoration(widget.platform == 'youtube' ? 'Channel name' : widget.platform == 'facebook' ? 'Page name' : 'Display name')),
@@ -266,7 +322,7 @@ class _CheckTabState extends ConsumerState<CheckTab> with AutomaticKeepAliveClie
             ),
           ],
         ),
-        ToolCard(
+        if (_on('result')) ToolCard(
           title: 'Post result check',
           subtitle: 'Type the numbers from $label\'s insights for one post. Only the numbers you enter are judged.',
           children: [

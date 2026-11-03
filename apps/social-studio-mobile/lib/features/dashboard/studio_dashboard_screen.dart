@@ -15,6 +15,7 @@ import '../auth/auth_provider.dart';
 import '../manager/manager_copilot_sheet.dart';
 import '../projects/project_provider.dart';
 import '../projects/project_switcher.dart';
+import '../trend_lab/trend_lab_sheet.dart';
 
 /// One entry per web workspace tab (`/social-projects/:id?tab=`), plus mobile extras.
 class ProjectSection {
@@ -585,36 +586,30 @@ class _Overview extends ConsumerWidget {
         children: [
           _Header(project: project),
           SectionHeader('Workspace'),
-          GridView.count(
-            crossAxisCount: 5,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            mainAxisSpacing: 8,
-            crossAxisSpacing: 8,
-            childAspectRatio: 0.76,
-            children: [
-              for (final s in ProjectSection.all)
-                SectionCard(
-                  padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
-                  onTap: () => context.push('/projects/${project.id}/${s.tab}'),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(s.icon, color: s.tab == 'auto_clipper' ? AppTheme.accent : AppTheme.primary, size: 18),
-                      const SizedBox(height: 3),
-                      Flexible(
-                        child: Text(
-                          s.label,
-                          textAlign: TextAlign.center,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, height: 1.1),
-                        ),
-                      ),
-                    ],
-                  ),
+          // Horizontally scrollable so new tools fit without shrinking the tiles; Trend Lab opens its sheet.
+          SizedBox(
+            height: 84,
+            child: ListView(
+              key: const Key('workspace-tiles'),
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              children: [
+                _WorkspaceTile(
+                  icon: Icons.local_fire_department_rounded,
+                  label: 'Trend Lab',
+                  color: AppTheme.accent,
+                  isNew: true,
+                  onTap: () => showTrendLabSheet(context, projectId: project.id),
                 ),
-            ],
+                for (final s in ProjectSection.all)
+                  _WorkspaceTile(
+                    icon: s.icon,
+                    label: s.label,
+                    color: s.tab == 'auto_clipper' ? AppTheme.accent : AppTheme.primary,
+                    onTap: () => context.push('/projects/${project.id}/${s.tab}'),
+                  ),
+              ],
+            ),
           ),
           const SizedBox(height: 8),
           dashboard.when(
@@ -1371,6 +1366,50 @@ class PostTile extends StatelessWidget {
             ),
             ?trailing,
           ]),
+        ),
+      );
+}
+
+/// Fixed-width workspace tile for the scrollable home row.
+class _WorkspaceTile extends StatelessWidget {
+  const _WorkspaceTile({required this.icon, required this.label, required this.color, required this.onTap, this.isNew = false});
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+  final bool isNew;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(right: 8),
+        child: SizedBox(
+          width: 76,
+          child: SectionCard(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+            borderColor: isNew ? color.withValues(alpha: 0.6) : null,
+            onTap: onTap,
+            child: Stack(clipBehavior: Clip.none, children: [
+              Center(
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(icon, color: color, size: 20),
+                  const SizedBox(height: 4),
+                  Text(
+                    label,
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, height: 1.1),
+                  ),
+                ]),
+              ),
+              if (isNew)
+                Positioned(
+                  top: -2,
+                  right: -2,
+                  child: Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+                ),
+            ]),
+          ),
         ),
       );
 }

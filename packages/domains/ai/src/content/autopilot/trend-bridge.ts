@@ -64,10 +64,14 @@ export function strategistTrendBlock(digest: ResearchDigest | undefined): string
     return fenceUntrusted('research', lines.join('\n'), { label: 'trend research (last 30 days)', maxChars: 7000 }).block;
 }
 
-/** How many slots must cover a researched trend: ~40%, but never more than 3 slots per trend. */
+/**
+ * How many slots must cover a researched trend: ~60% (the rest stays evergreen), but never more than 3 slots per
+ * trend so a calendar does not repeat one story. 40% was measured too low: the model stopped at the minimum and the
+ * eval's research-grounded share fell from 71% to 48% (evals/results/candidate-engine-*).
+ */
 export function minTrendSlots(slotCount: number, trendCount: number): number {
     if (!trendCount) return 0;
-    return Math.min(Math.ceil(slotCount * 0.4), trendCount * 3);
+    return Math.min(Math.ceil(slotCount * 0.6), trendCount * 3);
 }
 
 /** Attaches each slot's sources from its trend (deterministic: the model never copies URLs). */
@@ -89,7 +93,9 @@ export function pieceTrend(t: DigestTrend): PieceTrend {
 }
 
 /** Writer block: what the audience is actually saying about each slot's trend, verbatim. */
-export function slotEvidenceBlock(slots: { slotId: string; trend?: PieceTrend }[]): string {
+export interface SiblingSlot { slotId: string; topic: string; angle: string }
+
+export function slotEvidenceBlock(slots: { slotId: string; trend?: PieceTrend; siblings?: SiblingSlot[] }[]): string {
     const withTrend = slots.filter((s) => s.trend);
     if (!withTrend.length) return '';
     const body = withTrend.map((s) => {
@@ -98,11 +104,13 @@ export function slotEvidenceBlock(slots: { slotId: string; trend?: PieceTrend }[
             `slot ${s.slotId} — trend: ${sanitizeInlineUntrusted(t.title, 160)}`,
             ...t.audienceQuestions.map((q) => `  they ask: ${sanitizeInlineUntrusted(q, 200)}`),
             ...t.quotes.map((q) => `  they said: "${sanitizeInlineUntrusted(q.quote, 240)}"`),
+            ...(s.siblings || []).map((o) => `  also covered by ${o.slotId} (${sanitizeInlineUntrusted(o.topic, 120)}: ${sanitizeInlineUntrusted(o.angle, 160)}); use a different angle, headline and hook`),
         ].join('\n');
     }).join('\n');
     return [
         'AUDIENCE EVIDENCE (real posts/comments from the last 30 days). Use their words and questions to make hooks specific;',
         'answer what they ask. Do not quote people as if they were the creator, and do not invent figures from it.',
+        'Title each slot by its OWN topic and angle, never by the trend name, so two posts on one trend never share a headline or hook.',
         fenceUntrusted('research', body, { label: 'audience evidence', maxChars: 6000 }).block,
     ].join('\n');
 }

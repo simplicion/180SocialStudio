@@ -10,13 +10,18 @@
  */
 import type { AgentOutcome, QueryPlan, ResearchItem, SaturationSignal, SourceStatus } from '../types';
 
-type FetchJson = (url: string) => Promise<any>;
+type FetchJson = (url: string, headers?: Record<string, string>) => Promise<any>;
 
 export interface InstagramMedia { permalink: string; caption: string; timestamp: string | null; likes: number | null; comments: number | null }
 
 export interface PlatformSignalDeps {
     /** Server API key for public YouTube search (YOUTUBE_API_KEY). */
     youtubeApiKey?: string | null;
+    /**
+     * Fallback when there is no API key: an OAuth access token of the project's connected YouTube channel. Google's
+     * search/videos/commentThreads endpoints accept it; the calls count against the app's own Google project quota.
+     */
+    youtubeAccessToken?: () => Promise<string | null>;
     /** Instagram hashtag top media via the project's connected account; absent = lane skipped. */
     instagramHashtagTopMedia?: (hashtag: string) => Promise<InstagramMedia[]>;
     /** HTTP JSON getter; injectable for tests. */
@@ -25,8 +30,8 @@ export interface PlatformSignalDeps {
 
 const YT = 'https://www.googleapis.com/youtube/v3';
 
-const defaultFetchJson: FetchJson = async (url) => {
-    const res = await fetch(url, { signal: AbortSignal.timeout(15_000) });
+const defaultFetchJson: FetchJson = async (url, headers = {}) => {
+    const res = await fetch(url, { headers, signal: AbortSignal.timeout(15_000) });
     if (!res.ok) {
         let reason = '';
         try { reason = (await res.json())?.error?.errors?.[0]?.reason || ''; } catch { /* ignore */ }
@@ -44,14 +49,18 @@ export function median(xs: number[]): number | null {
     return s.length % 2 ? s[m] : Math.round((s[m - 1] + s[m]) / 2);
 }
 
-async function youtubeLane(plan: QueryPlan, days: number, key: string, fetchJson: FetchJson, startId: number) {
+/** Either `?key=` (API key) or an `Authorization: Bearer` header (connected channel's OAuth token). */
+interface YtAuth { key?: string; token?: string }
+
+async function youtubeLane(plan: QueryPlan, days: number, auth: YtAuth, rawFetch: FetchJson, startId: number) {
+    const fetchJson = (url: string) => (auth.key ? rawFetch(`${url}&key=${encodeURIComponent(auth.key)}`) : rawFetch(url, { Authorization: `Bearer ${auth.token}` }));
     const after = new Date(Date.now() - days * 86_400_000).toISOString();
     const q = encodeURIComponent(plan.searchQueries[0]);
-    const search = await fetchJson(`${YT}/search?part=snippet&type=video&maxResults=15&order=viewCount&publishedAfter=${encodeURIComponent(after)}&q=${q}&key=${key}`);
+    const search = await fetchJson(`${YT}/search?part=snippet&type=video&maxResults=15&order=viewCount&publishedAfter=${encodeURIComponent(after)}&q=${q}`);
     const ids: string[] = (search.items || []).map((i: any) => i.id?.videoId).filter(Boolean);
     const signal: SaturationSignal = { youtubeUploads30d: num(search.pageInfo?.totalResults), youtubeMedianViews: null, youtubeSampled: 0 };
     if (!ids.length) return { items: [] as ResearchItem[], signal };
-    const vids = await fetchJson(`${YT}/videos?part=snippet,statistics&id=${ids.join(',')}&key=${key}`);
+    const vids = await fetchJson(`${YT}/videos?part=snippet,statistics&id=${ids.join(',')}`);
     const items: ResearchItem[] = (vids.items || []).map((v: any, i: number) => {
         const s = v.statistics || {};
         const views = num(s.viewCount);
@@ -71,7 +80,7 @@ async function youtubeLane(plan: QueryPlan, days: number, key: string, fetchJson
     await Promise.all(top.map(async (it) => {
         try {
             const vid = it.url.split('v=')[1];
-            const c = await fetchJson(`${YT}/commentThreads?part=snippet&videoId=${vid}&order=relevance&maxResults=5&textFormat=plainText&key=${key}`);
+            const c = await fetchJson(`${YT}/commentThreads?part=snippet&videoId=${vid}&order=relevance&maxResults=5&textFormat=plainText`);
             it.comments = (c.items || []).map((t: any) => String(t.snippet?.topLevelComment?.snippet?.textDisplay || '').slice(0, 400)).filter((t: string) => t.length > 15).slice(0, 3);
         } catch { /* commentsDisabled etc.: keep the video, no comments */ }
     }));
@@ -86,14 +95,26 @@ export async function runPlatformSignalAgent(params: { plan: QueryPlan; days: nu
     let signals: Partial<SaturationSignal> | undefined;
 
     const lanes: Promise<void>[] = [];
-    if (deps.youtubeApiKey) {
-        lanes.push(youtubeLane(plan, days, deps.youtubeApiKey, fetchJson, 1).then(
-            (r) => { items.push(...r.items); signals = r.signal; statuses.push({ agent: 'platform_signal', source: 'youtube', status: r.items.length ? 'ok' : 'empty', items: r.items.length }); },
-            (e) => { statuses.push({ agent: 'platform_signal', source: 'youtube', status: 'error', detail: String(e?.message || e).slice(0, 200), items: 0 }); },
-        ));
-    } else {
-        statuses.push({ agent: 'platform_signal', source: 'youtube', status: 'skipped', detail: 'YOUTUBE_API_KEY not configured', items: 0 });
-    }
+    lanes.push((async () => {
+        // API key first; otherwise the connected channel's token; otherwise the lane is off.
+        let auth: YtAuth | null = deps.youtubeApiKey ? { key: deps.youtubeApiKey } : null;
+        if (!auth && deps.youtubeAccessToken) {
+            const token = await deps.youtubeAccessToken().catch(() => null);
+            if (token) auth = { token };
+        }
+        if (!auth) {
+            statuses.push({ agent: 'platform_signal', source: 'youtube', status: 'skipped', detail: 'no YOUTUBE_API_KEY and no connected YouTube channel', items: 0 });
+            return;
+        }
+        try {
+            const r = await youtubeLane(plan, days, auth, fetchJson, 1);
+            items.push(...r.items);
+            signals = r.signal;
+            statuses.push({ agent: 'platform_signal', source: 'youtube', status: r.items.length ? 'ok' : 'empty', detail: auth.key ? undefined : 'via connected channel', items: r.items.length });
+        } catch (e: any) {
+            statuses.push({ agent: 'platform_signal', source: 'youtube', status: 'error', detail: String(e?.message || e).slice(0, 200), items: 0 });
+        }
+    })());
 
     if (deps.instagramHashtagTopMedia && plan.hashtags.length) {
         const fn = deps.instagramHashtagTopMedia;

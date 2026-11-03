@@ -151,6 +151,8 @@ export function normaliseHookScript(raw: any, chunk: HookSlotRef[], opts?: { att
                 ?? text(it.hook, 300)
                 ?? text(it.spoken_hook, 300)
                 ?? text(it.firstWords, 300)
+                // The model often writes the hook inside the script only; those are its own words, not filler.
+                ?? text(it.script?.hook, 300)
                 ?? (isAttempt2 ? (text(slot?.angle, 300) ?? text(slot?.topic, 300) ?? 'Here is what you need to know.') : undefined);
 
             // On attempt 2, if spokenHook exceeds 12 words, condense to first 12 words
@@ -401,62 +403,63 @@ export function hookScriptProblems(items: any[], chunk: HookSlotRef[]): string[]
 export interface CopyPieceRef {
     slotId: string;
     platforms: string[];
+    /** The piece's own content, used only to fill a missing CTA (never to invent copy). */
+    script?: { cta?: string };
+    carouselBrief?: { slides?: { role?: string; headline?: string }[] };
 }
 
-/** Copy items: wrappers and platform-name case only. A missing copy stays missing on attempt 1 (the check asks for it). */
+/** The piece's own call to action: the script's CTA, or the carousel's CTA slide. */
+function pieceCta(p: CopyPieceRef | undefined): string | undefined {
+    const fromScript = p?.script?.cta?.trim();
+    if (fromScript) return fromScript.slice(0, 300);
+    const slide = p?.carouselBrief?.slides?.find((s) => s?.role === 'cta' && s.headline?.trim());
+    return slide?.headline?.trim().slice(0, 300);
+}
+
+/**
+ * Models sometimes copy the feed's fold label into the caption ("... more", "…more (description)"). That is never
+ * part of a caption: strip it wherever it appears at a line end.
+ */
+export function stripFoldArtifacts(caption: unknown): unknown {
+    if (typeof caption !== 'string') return caption;
+    return caption.replace(/[ \t]*(?:\.{2,}|…)[ \t]*(?:see |show |read )?more(?:[ \t]*\((?:description|caption)\))?[ \t]*(?=\n|$)/gi, '').trim();
+}
+
+/** Last sentence of the caption the model wrote (it is usually the ask). */
+function lastSentence(caption: unknown): string | undefined {
+    const parts = String(caption || '').split(/(?<=[.!?])\s+/).map((x) => x.trim()).filter(Boolean);
+    const last = parts[parts.length - 1];
+    return last && last.length <= 300 ? last : undefined;
+}
+
+/**
+ * Copy items: wrappers and platform-name case. A missing `cta` is filled from the piece's own script/carousel CTA
+ * (attempt 2 also accepts the caption's closing sentence). A missing copy is NEVER replaced with stock text: it
+ * stays missing, the check reports it, and enforceBrandRules flags the piece for review ("missing copy").
+ */
 export function normaliseCopy(raw: any, chunk: CopyPieceRef[], opts?: { attempt?: number }): any {
     if (!raw || typeof raw !== 'object') return raw;
     const isAttempt2 = opts?.attempt === 2;
     const list = Array.isArray(raw) ? raw : Array.isArray(raw.items) ? raw.items : [raw];
-    const wanted = new Set(chunk.map((p) => p.slotId));
+    const bySlot = new Map(chunk.map((p) => [p.slotId, p]));
     const items = list
-        .filter((it: any) => it && typeof it === 'object' && wanted.has(String(it.slotId)))
-        .map((it: any) => ({
-            slotId: String(it.slotId),
-            copies: (Array.isArray(it.copies) ? it.copies : [])
-                .filter((c: any) => c && typeof c === 'object' && c.platform)
-                .map((c: any) => ({
-                    ...c,
-                    platform: String(c.platform).toLowerCase().trim(),
-                    hashtags: strList(c.hashtags, 30).map((h) => (h.startsWith('#') ? h : `#${h}`)),
-                    postingTime: typeof c.postingTime === 'string' ? c.postingTime.trim().padStart(5, '0') : c.postingTime,
-                })),
-        }));
-
-    if (isAttempt2) {
-        const found = new Set(items.map((it: any) => it.slotId));
-        for (const p of chunk) {
-            if (!found.has(p.slotId)) {
-                items.push({
-                    slotId: p.slotId,
-                    copies: p.platforms.map((plat) => ({
-                        platform: plat.toLowerCase(),
-                        caption: 'Key takeaway and strategic insight for today.',
-                        cta: 'Follow for more.',
-                        hashtags: ['#insights', '#strategy'],
-                        postingTime: '12:00',
+        .filter((it: any) => it && typeof it === 'object' && bySlot.has(String(it.slotId)))
+        .map((it: any) => {
+            const piece = bySlot.get(String(it.slotId));
+            return {
+                slotId: String(it.slotId),
+                copies: (Array.isArray(it.copies) ? it.copies : [])
+                    .filter((c: any) => c && typeof c === 'object' && c.platform)
+                    .map((c: any) => ({
+                        ...c,
+                        caption: stripFoldArtifacts(c.caption),
+                        platform: String(c.platform).toLowerCase().trim(),
+                        cta: typeof c.cta === 'string' && c.cta.trim() ? c.cta : pieceCta(piece) ?? (isAttempt2 ? lastSentence(c.caption) : undefined) ?? c.cta,
+                        hashtags: strList(c.hashtags, 30).map((h) => (h.startsWith('#') ? h : `#${h}`)),
+                        postingTime: typeof c.postingTime === 'string' ? c.postingTime.trim().padStart(5, '0') : c.postingTime,
                     })),
-                });
-            } else {
-                const existingItem = items.find((it: any) => it.slotId === p.slotId);
-                if (existingItem) {
-                    const havePlat = new Set(existingItem.copies.map((c: any) => c.platform));
-                    for (const plat of p.platforms) {
-                        if (!havePlat.has(plat.toLowerCase())) {
-                            existingItem.copies.push({
-                                platform: plat.toLowerCase(),
-                                caption: 'Key takeaway and strategic insight for today.',
-                                cta: 'Follow for more.',
-                                hashtags: ['#insights', '#strategy'],
-                                postingTime: '12:00',
-                            });
-                        }
-                    }
-                }
-            }
-        }
-    }
-
+            };
+        });
     return { items };
 }
 

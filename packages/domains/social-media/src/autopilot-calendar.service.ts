@@ -45,6 +45,8 @@ import { AgentEventStore, createAgentRunEmitter, getDefaultAgentEventStore } fro
 import { createTrendResearchRunner, describeLanes, trendResearchConfigFromEnv, TrendResearchRunner } from '@workspace/ai/research';
 import { AgentMemoryService } from './agent-os/agent-memory';
 import { loadOwnPostOutcomes, OwnPostOutcome, winningExemplars } from './platform-team/own-performance';
+import { instagramHashtagReader } from './platform-team/instagram-hashtags';
+import { youtubeTokenProvider } from './platform-team/youtube-token';
 
 export type AutopilotJobStatus = 'queued' | 'running' | 'completed' | 'failed';
 
@@ -80,6 +82,8 @@ export interface AutopilotServiceDeps {
     trendResearch?: TrendResearchRunner | null;
     /** The project's own published posts vs its usual (winning-hook exemplars + research outlook). */
     loadOwnOutcomes?: (projectId: string, companyId: string) => Promise<OwnPostOutcome[]>;
+    /** Per-project research inputs from connected accounts (official APIs). */
+    researchAccounts?: (projectId: string, companyId: string) => Promise<{ youtubeAccessToken?: () => Promise<string | null>; instagramHashtagTopMedia?: (tag: string) => Promise<any[]> }>;
 }
 
 /** The engine is only worth an LLM planning call when at least one research lane is live. */
@@ -128,6 +132,10 @@ export function defaultAutopilotDeps(): AutopilotServiceDeps {
         loadMemory: (projectId, companyId) => new AgentMemoryService().buildMemoryContext(projectId, companyId, 'strategist'),
         trendResearch: defaultTrendResearch(prisma),
         loadOwnOutcomes: (projectId, companyId) => loadOwnPostOutcomes(prisma, { companyId, projectId }),
+        researchAccounts: async (projectId, companyId) => ({
+            youtubeAccessToken: youtubeTokenProvider({ companyId, projectId }),
+            instagramHashtagTopMedia: (await instagramHashtagReader({ companyId, projectId }).catch(() => null)) ?? undefined,
+        }),
     };
 }
 
@@ -319,6 +327,7 @@ export class AutopilotCalendarService {
                 this.deps.log('autopilot_own_outcomes_unavailable', { companyId, projectId: ctx.projectId, message: e?.message });
             }
             const runResearch = this.deps.trendResearch;
+            const accounts = runResearch && this.deps.researchAccounts ? await this.deps.researchAccounts(ctx.projectId, companyId).catch(() => ({})) : {};
             const input: AutopilotRunInput = {
                 winningExemplars: winningExemplars(ownOutcomes),
                 days: ctx.request.days as 7 | 14 | 30,
@@ -342,7 +351,7 @@ export class AutopilotCalendarService {
             const result = await runAutopilotPipeline(input, {
                 llm: ctx.llm,
                 trendResearch: runResearch
-                    ? (a) => runResearch({ ...a, ownHistory: async () => ownOutcomes.map((o) => ({ format: o.format, multiple: o.multiple })) })
+                    ? (a) => runResearch({ ...a, ...accounts, ownHistory: async () => ownOutcomes.map((o) => ({ format: o.format, multiple: o.multiple })) })
                     : null,
                 search: this.deps.search,
                 log: this.deps.log,
