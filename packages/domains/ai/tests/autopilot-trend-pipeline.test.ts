@@ -267,3 +267,100 @@ test('fold-label artifacts are stripped and same-trend slots are told about each
     assert.match(writer, /slot d1-1 — trend: Trend c1[\s\S]*also covered by d2-1 \(Topic 2: Angle 2\)/);
     assert.match(writer, /never by the trend name/);
 });
+
+test('a strategist that skips days is repaired, retried once, and never ships a partial calendar', async () => {
+    const day = (d: number) => ({ day: d, platforms: ['instagram'], format: 'reel', pillar: 'Strength', topic: `Topic ${d}`, angle: `Angle ${d}` });
+    const full = Array.from({ length: 7 }, (_, i) => day(i + 1));
+    // Attempt 1: one slot (copied the example); the repair fixes it.
+    const f = fakeLlm({ strategySlots: (_p, n) => (n === 1 ? [day(1)] : full) });
+    const res = await runAutopilotPipeline(input(), { llm: f.llm });
+    assert.equal(res.pieces.length, 7);
+    assert.match(f.prompt('strategist')[1], /days 2, 3, 4, 5, 6, 7 have no slot/);
+
+    // Both attempts short: the repair is tolerated by the agent, so the stage retries once more, then succeeds.
+    const g = fakeLlm({ strategySlots: (_p, n) => (n <= 2 ? [day(1), day(2)] : full) });
+    assert.equal((await runAutopilotPipeline(input(), { llm: g.llm })).pieces.length, 7);
+
+    // Never fixed: a typed error instead of a 2-post "7-day" calendar.
+    const h = fakeLlm({ strategySlots: () => [day(1), day(2)] });
+    await assert.rejects(runAutopilotPipeline(input(), { llm: h.llm }), /left 5 of 7 days without content/);
+});
+
+test('hashtags written into the caption are moved to the list, deduped, and capped per platform', async () => {
+    const { enforceBrandRules, splitTrailingHashtags } = await import('../src/content/autopilot/critic');
+    assert.deepEqual(splitTrailingHashtags('Close in 3 days.\n\n#FinanceAutomation #Accounting\n#MonthEndClose'), { caption: 'Close in 3 days.', tags: ['#FinanceAutomation', '#Accounting', '#MonthEndClose'] });
+    assert.deepEqual(splitTrailingHashtags('Use #creatine daily. It works.'), { caption: 'Use #creatine daily. It works.', tags: [] });
+
+    const f = fakeLlm();
+    const res = await runAutopilotPipeline(input(), { llm: f.llm });
+    const piece = res.pieces[0];
+    piece.platforms = ['youtube', 'linkedin'];
+    piece.captions.youtube = { ...piece.captions.youtube!, caption: 'Close in 3 days.\n\n#FinanceAutomation #Accounting #MonthEndClose', hashtags: ['#FinanceAutomation', '#Accounting', '#MonthEndClose'] };
+    piece.captions.linkedin = { ...piece.captions.linkedin!, caption: 'Why #automation beats hiring.', hashtags: ['#finance', '#cfo', '#saas', '#ops', '#growth'] };
+    enforceBrandRules([piece], brand);
+    assert.equal(piece.captions.youtube!.caption, 'Close in 3 days.');
+    assert.deepEqual(piece.captions.youtube!.hashtags, ['#FinanceAutomation', '#Accounting', '#MonthEndClose']);
+    assert.equal(piece.captions.linkedin!.hashtags.length, 2, 'one inline tag + two listed = LinkedIn cap of 3');
+});
+
+test('hook/script normalizer accepts renamed parts and string durations, and fallback beats never invent figures', async () => {
+    const { normaliseHookScript } = await import('../src/content/autopilot/normalizers');
+    const chunk = [
+        { slotId: 'd1-1', format: 'reel', topic: 'T', angle: 'A', hookType: 'curiosity_gap' },
+        { slotId: 'd2-1', format: 'carousel', topic: 'C', angle: 'B', hookType: 'contrarian' },
+    ] as any;
+    const out = normaliseHookScript({ items: [
+        { slotId: 'd1-1', spokenHook: 'Close in 3 days', onScreenHook: 'CLOSE', script: { hook: 'Close in 3 days', beats: ['One.', 'Two.', 'Three.'], retentionLoop: 'r', cta: 'c', estimatedDurationSec: '45 seconds' }, shotNotes: ['a', 'b', 'c'] },
+        { slotId: 'd2-1', spokenHook: 'Why ledgers lie', onScreenHook: 'LEDGERS', carouselBrief: { title: 'x', cards: [{ title: 'Slide one' }, 'Slide two', { headline: 'Slide three', role: 'cta' }] } },
+    ] }, chunk);
+    assert.deepEqual(out.items[0].script.body.map((b: any) => b.beat), ['One.', 'Two.', 'Three.']);
+    assert.equal(out.items[0].script.estimatedDurationSec, 45);
+    assert.deepEqual(out.items[1].carouselBrief.slides.map((s: any) => s.headline), ['Slide one', 'Slide two', 'Slide three']);
+
+    const noDuration = normaliseHookScript({ items: [{ slotId: 'd1-1', spokenHook: 'h', onScreenHook: 'o', script: { body: 'First point here. Second point here. Third point.', retentionLoop: 'r', cta: 'c' }, shotNotes: ['a', 'b', 'c'] }] }, [chunk[0]]);
+    assert.equal(noDuration.items[0].script.body.length, 3);
+    assert.ok(Number.isFinite(noDuration.items[0].script.estimatedDurationSec));
+
+    const padded = normaliseHookScript({ items: [{ slotId: 'd1-1', spokenHook: 'h', onScreenHook: 'o' }] }, [{ ...chunk[0], targetDurationSec: 60 }], { attempt: 2 });
+    const beats = padded.items[0].script.body.map((b: any) => b.beat).join(' ');
+    assert.doesNotMatch(beats, /\d+\s*(x|%)|\d+ minutes/, 'fallback beats must not claim figures');
+});
+
+test('a piece completed with stock fallback lines goes to review, never ready', async () => {
+    const { enforceBrandRules, fallbackFillerParts } = await import('../src/content/autopilot/critic');
+    const f = fakeLlm();
+    const res = await runAutopilotPipeline(input(), { llm: f.llm });
+    const [a, b] = res.pieces;
+    assert.deepEqual(fallbackFillerParts(a), []);
+    b.script!.retentionLoop = 'Wait until you see how this changes everything in the final step.';
+    b.script!.body[1].beat = 'The most common mistake and how to avoid it';
+    enforceBrandRules([a, b], brand);
+    assert.equal(a.status, 'ready');
+    assert.equal(b.status, 'needs_review');
+    assert.ok(b.critic.issues.some((i) => /generic filler in script beats, retention loop/.test(i)));
+});
+
+test('empty blocks a format does not use are dropped; a carousel still needs its slides', async () => {
+    const { normaliseHookScript } = await import('../src/content/autopilot/normalizers');
+    const { HookScriptBatchSchema } = await import('../src/content/autopilot/schemas') as any;
+    const chunk = [{ slotId: 'd1-1', format: 'reel', topic: 'T', angle: 'A', hookType: 'curiosity_gap' }, { slotId: 'd2-1', format: 'carousel', topic: 'C', angle: 'B', hookType: 'contrarian' }] as any;
+    const out = normaliseHookScript({ items: [
+        { slotId: 'd1-1', spokenHook: 'Close in 3 days', onScreenHook: 'CLOSE', carouselBrief: {}, script: { hook: 'h', body: ['a', 'b', 'c'], retentionLoop: 'r', cta: 'c', estimatedDurationSec: 30 }, shotNotes: ['a', 'b', 'c'] },
+        { slotId: 'd2-1', spokenHook: 'Why ledgers lie', onScreenHook: 'LEDGERS', script: { hook: '' }, carouselBrief: { title: 't', slides: [{ headline: 'One' }, { headline: 'Two' }] } },
+    ] }, chunk);
+    assert.equal(out.items[0].carouselBrief, undefined);
+    assert.equal(out.items[1].script, undefined);
+    assert.equal(out.items[1].carouselBrief.slides.length, 2);
+    if (HookScriptBatchSchema) assert.ok(HookScriptBatchSchema.safeParse(out).success);
+});
+
+test('stray items are dropped and slot ids under other names are recognised', async () => {
+    const { normaliseHookScript } = await import('../src/content/autopilot/normalizers');
+    const chunk = [{ slotId: 'd1-1', format: 'static', topic: 'T', angle: 'A', hookType: 'curiosity_gap' }, { slotId: 'd2-1', format: 'static', topic: 'C', angle: 'B', hookType: 'contrarian' }] as any;
+    const out = normaliseHookScript({ items: [
+        { note: 'Here are your hooks' },
+        { id: 'd1-1', spokenHook: 'One', onScreenHook: 'ONE' },
+        { slot_id: 'd2-1', spokenHook: 'Two', onScreenHook: 'TWO' },
+    ] }, chunk);
+    assert.deepEqual(out.items.map((i: any) => i.slotId), ['d1-1', 'd2-1']);
+});

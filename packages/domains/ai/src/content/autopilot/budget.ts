@@ -25,7 +25,8 @@ export const AGENT_TOKEN_CAPS = {
     hookLabPerHook: 220,
     hookLabMax: 4000,
     copyBase: 500,
-    copyPerPlatformCopy: 260,
+    // 260 truncated real replies (eval: "unterminated JSON" on both attempts); a full caption + CTA + tags is ~300-400.
+    copyPerPlatformCopy: 450,
     copyMax: 8000,
     copyChunk: 5,
     craftBase: 500,
@@ -99,7 +100,9 @@ export function estimateAutopilotBudget(
     if (input.researchEnabled) add('research', [C.research]);
     add('strategist', [Math.min(C.strategistMax, C.strategistBase + pieces * C.strategistPerSlot)]);
     add('hook_script', weekSizes.flatMap((w) => chunkSizes(w, C.hookChunk).map((n) => Math.min(C.hookMax, C.hookBase + n * C.hookPerSlot))));
-    add('hook_lab', limits.rewritesEnabled ? [Math.min(C.hookLabMax, C.hookLabBase + pieces * C.hookLabPerHook)] : [], true);
+    // Up to two rewrite rounds; the second only runs for hooks still weak after the first.
+    const hookLab = Math.min(C.hookLabMax, C.hookLabBase + pieces * C.hookLabPerHook);
+    add('hook_lab', limits.rewritesEnabled ? [hookLab, hookLab] : [], true);
     add('copy', weekSizes.flatMap((w) => chunkSizes(w, C.copyChunk).map((n) => Math.min(C.copyMax, C.copyBase + n * nPlat * C.copyPerPlatformCopy))));
     const craftCalls = limits.rewritesEnabled ? Math.min(limits.craftMaxFixCalls, Math.ceil((pieces * nPlat) / C.craftChunk)) : 0;
     add('craft', Array.from({ length: craftCalls }, () => Math.min(C.craftMax, C.craftBase + C.craftChunk * C.craftPerFix)), true);

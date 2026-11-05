@@ -39,6 +39,26 @@ export function stripForbidden(text: string, re: RegExp | null): string {
         .trim();
 }
 
+const INLINE_TAG_RE = /(?:^|\s)(#[\p{L}\p{N}_]+)/gu;
+
+/**
+ * Splits a trailing hashtag-only block off a caption ("...worth it." then a line "#a #b #c"). Models often write the
+ * tags into the caption AND return them in the hashtag list, which publishes every tag twice; the block is moved into
+ * the list.
+ */
+export function splitTrailingHashtags(caption: string): { caption: string; tags: string[] } {
+    const lines = (caption || '').split('\n');
+    const tags: string[] = [];
+    while (lines.length) {
+        const last = lines[lines.length - 1].trim();
+        if (!last) { lines.pop(); continue; }
+        if (!/^(#[\p{L}\p{N}_]+[\s,.]*)+$/u.test(last)) break;
+        tags.unshift(...(last.match(/#[\p{L}\p{N}_]+/gu) || []));
+        lines.pop();
+    }
+    return tags.length ? { caption: lines.join('\n').trimEnd(), tags } : { caption, tags };
+}
+
 export function normalizeHashtag(tag: string): string | null {
     const body = String(tag || '').trim().replace(/^#+/, '').replace(/[^\p{L}\p{N}_]/gu, '');
     return body.length >= 2 ? `#${body}` : null;
@@ -54,6 +74,32 @@ function fitCaption(caption: string, hashtags: string[], max: number): { caption
 }
 
 /** Deterministic enforcement. Mutates and returns the pieces. */
+/**
+ * Stock lines the normalizers use to complete a writer reply that came back incomplete on its last attempt
+ * (normalizers.ts). They keep the calendar from failing, but they are not real content: a piece that contains one
+ * is sent to human review instead of being marked ready.
+ */
+const FALLBACK_LINES = [
+    'Here is what you need to know', 'Wait until you see how this changes everything', 'Save this post and follow for more',
+    'The initial hurdle and common misconception', 'The practical implementation step by step', 'The final outcome and key takeaway',
+    'Why standard advice fails under real-world conditions', 'The exact framework and rule to follow first',
+    'A concrete example of it working', 'The most common mistake and how to avoid it', 'How to apply it the first time',
+    'The Hidden Problem', 'Step-by-Step Blueprint', 'Take Action', 'Key Hook', 'Key Insight', 'Opening premise',
+].map((l) => l.toLowerCase());
+
+export function fallbackFillerParts(p: AutopilotPiece): string[] {
+    const isFiller = (t?: string) => !!t && FALLBACK_LINES.some((l) => t.trim().toLowerCase().startsWith(l));
+    const parts: string[] = [];
+    if (isFiller(p.spokenHook)) parts.push('hook');
+    if (p.script) {
+        if (p.script.body.some((b) => isFiller(b.beat))) parts.push('script beats');
+        if (isFiller(p.script.retentionLoop)) parts.push('retention loop');
+        if (isFiller(p.script.cta)) parts.push('script CTA');
+    }
+    if (p.carouselBrief?.slides.some((sl) => isFiller(sl.headline) || isFiller(sl.body))) parts.push('carousel slides');
+    return parts;
+}
+
 export function enforceBrandRules(pieces: AutopilotPiece[], brand: AutopilotBrandContext): AutopilotPiece[] {
     const re = forbiddenRegex(brand.forbiddenWords);
     const forbiddenTags = new Set(brand.forbiddenWords.map((w) => normalizeHashtag(w)?.toLowerCase()).filter(Boolean) as string[]);
@@ -100,9 +146,11 @@ export function enforceBrandRules(pieces: AutopilotPiece[], brand: AutopilotBran
             copy.cta = scrub(`${platform} CTA`, copy.cta);
 
             // Hashtags: normalise, drop forbidden, dedupe, brand defaults first, cap per platform.
+            const tail = splitTrailingHashtags(copy.caption);
+            copy.caption = tail.caption;
             const seen = new Set<string>();
             const tags: string[] = [];
-            for (const t of [...brandTags, ...copy.hashtags]) {
+            for (const t of [...brandTags, ...copy.hashtags, ...tail.tags]) {
                 const n = normalizeHashtag(t);
                 if (!n) continue;
                 const k = n.toLowerCase();
@@ -114,8 +162,12 @@ export function enforceBrandRules(pieces: AutopilotPiece[], brand: AutopilotBran
                 seen.add(k);
                 tags.push(n);
             }
-            if (tags.length > rules.maxHashtags) issues.push(`trimmed hashtags to ${rules.maxHashtags} for ${platform}`);
-            copy.hashtags = tags.slice(0, rules.maxHashtags);
+            // Hashtags written inside the sentence stay there and count toward the platform cap.
+            const inline = new Set(Array.from(copy.caption.matchAll(INLINE_TAG_RE), (m) => m[1].toLowerCase()));
+            const listed = tags.filter((t) => !inline.has(t.toLowerCase()));
+            const room = Math.max(0, rules.maxHashtags - inline.size);
+            if (listed.length > room) issues.push(`trimmed hashtags to ${rules.maxHashtags} for ${platform}`);
+            copy.hashtags = listed.slice(0, room);
 
             const fitted = fitCaption(copy.caption, copy.hashtags, rules.maxCaptionChars);
             if (fitted.truncated) issues.push(`shortened ${platform} caption to fit ${rules.maxCaptionChars} characters`);
@@ -144,7 +196,14 @@ export function enforceBrandRules(pieces: AutopilotPiece[], brand: AutopilotBran
     }
 
     for (const p of pieces) {
-        const unresolved = p.critic.issues.some((i) => i.startsWith('missing copy') || i.startsWith('duplicate of') || i.startsWith('empty '));
+        const filler = fallbackFillerParts(p);
+        if (filler.length && !p.critic.issues.some((i) => i.startsWith('generic filler'))) {
+            p.critic.issues.push(`generic filler in ${filler.join(', ')}: the writer's reply was incomplete; rewrite before publishing`);
+        }
+    }
+
+    for (const p of pieces) {
+        const unresolved = p.critic.issues.some((i) => i.startsWith('missing copy') || i.startsWith('duplicate of') || i.startsWith('empty ') || i.startsWith('generic filler'));
         if (unresolved) p.critic.verdict = 'flag';
         else if (p.critic.issues.length && p.critic.verdict === 'ok') p.critic.verdict = 'fixed';
         p.status = p.critic.verdict === 'flag' ? 'needs_review' : 'ready';

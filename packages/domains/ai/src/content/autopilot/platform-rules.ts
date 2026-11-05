@@ -15,7 +15,8 @@ export const PLATFORM_RULES: Record<AutopilotPlatform, PlatformRules> = {
     instagram: { maxCaptionChars: 2200, maxHashtags: 5, formats: ['reel', 'carousel', 'static'] },
     facebook: { maxCaptionChars: 5000, maxHashtags: 3, formats: ['reel', 'carousel', 'static', 'text'] },
     youtube: { maxCaptionChars: 5000, maxHashtags: 3, formats: ['reel'] },
-    linkedin: { maxCaptionChars: 3000, maxHashtags: 5, formats: ['reel', 'carousel', 'static', 'text'] },
+    // 3, matching the craft playbook (craft/platform-specs.ts) the copy linter scores against.
+    linkedin: { maxCaptionChars: 3000, maxHashtags: 3, formats: ['reel', 'carousel', 'static', 'text'] },
     tiktok: { maxCaptionChars: 2200, maxHashtags: 5, formats: ['reel'] },
 };
 

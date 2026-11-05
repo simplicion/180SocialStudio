@@ -233,3 +233,31 @@ test('repurpose: drops assets whose quote is not in the source', async () => {
     assert.equal(out.assets.length, 1);
     assert.equal(out.dropped, 1);
 });
+
+test('hook lab: hooks still weak after round 1 get one more round with the piece details; then it stops', async () => {
+    const p = reel();
+    const calls: string[] = [];
+    const prompts: string[] = [];
+    let n = 0;
+    const llm: AutopilotLLM = {
+        provider: 'fake',
+        async complete(req) {
+            calls.push(req.role); prompts.push(req.prompt); n++;
+            const candidates = n === 1 ? ['Your teeth matter a lot'] : ['Stop flossing less when your gums bleed'];
+            return { text: JSON.stringify({ items: [{ slotId: 'd1-1', candidates }] }), model: 'fake', usage: { inputTokens: 1, outputTokens: 1, estimated: false } };
+        },
+    };
+    const out = await runHookLabAgent({ llm, brand, pieces: [p] });
+    assert.deepEqual(calls, ['hook_lab', 'hook_lab']);
+    assert.match(prompts[1], /still too generic/);
+    assert.match(prompts[0], /"details":\[/);
+    assert.equal(p.spokenHook, 'Stop flossing less when your gums bleed');
+    assert.equal(out.rewritten, 1);
+
+    // Never more than two rounds, even if nothing improves.
+    const q = reel();
+    const c2: string[] = [];
+    await runHookLabAgent({ llm: fakeLLM({ hook_lab: { items: [{ slotId: 'd1-1', candidates: ['Teeth are important'] }] } }, c2), brand, pieces: [q] });
+    assert.deepEqual(c2, ['hook_lab', 'hook_lab']);
+    assert.ok(q.critic.issues.some((i) => i.startsWith('weak hook')));
+});

@@ -220,7 +220,15 @@ async function runStrategist(input: AutopilotRunInput, research: ResearchOutcome
         `Replace every <...> with real content for this brand; never copy the placeholders. Pillar percents must sum to 100. Return valid JSON only.`,
     ].join('\n');
 
-    const { value } = await runJsonAgent({
+    // Every day of the plan must get content. Without a mix nothing else enforces this, and the model sometimes
+    // copies the one-slot example (eval: a 7-day calendar came back with 1 post and no repair).
+    const requiredDays = plan ? [...new Set(plan.map((p) => p.day))] : Array.from({ length: days }, (_, i) => i + 1);
+    const missingDays = (slots: { day?: number }[] = []) => {
+        const have = new Set(slots.map((sl) => sl.day));
+        return requiredDays.filter((d) => !have.has(d));
+    };
+
+    const callStrategist = () => runJsonAgent({
         llm: deps.llm,
         role: 'strategist',
         meter,
@@ -235,6 +243,10 @@ async function runStrategist(input: AutopilotRunInput, research: ResearchOutcome
             const problems: string[] = [];
             if (!s.slots || s.slots.length === 0) problems.push('No slots were generated in the strategy');
             if (plan) problems.push(...planMismatches(plan, s.slots));
+            else {
+                const missing = missingDays(s.slots);
+                if (missing.length) problems.push(`Return ${days} slots, one for every day 1 to ${days}; days ${missing.join(', ')} have no slot`);
+            }
             // Grounding (audit A4): with research available, a share of the plan must cover what people engage with now.
             if (trendIds.size && s.slots?.length) {
                 const need = minTrendSlots(s.slots.length, trendIds.size);
@@ -256,6 +268,16 @@ async function runStrategist(input: AutopilotRunInput, research: ResearchOutcome
             return problems;
         },
     });
+
+    let { value } = await callStrategist();
+    if (missingDays(value.slots).length) {
+        deps.log?.('strategist_incomplete', { missingDays: missingDays(value.slots) });
+        ({ value } = await callStrategist());
+        const still = missingDays(value.slots);
+        if (still.length) {
+            throw new AutopilotError('AI_INVALID_OUTPUT', `The strategist left ${still.length} of ${requiredDays.length} days without content`, { errors: [`missing days: ${still.join(', ')}`] });
+        }
+    }
 
     // Ensure all slots have at least one supported platform
     for (const slot of value.slots) {

@@ -96,7 +96,7 @@ async function runFixture(fixture: EvalFixture, days: 7 | 14 | 30, provider: str
         });
         return { run: { fixtureId: fixture.id, ok: true, durationMs: Date.now() - started, result, allowedUrls: fixture.research.map((r) => r.url), agentEvents }, models: [...llm.stats.models] };
     } catch (err: any) {
-        return { run: { fixtureId: fixture.id, ok: false, error: `${err?.code || ''} ${err?.message || err}`.trim(), durationMs: Date.now() - started, allowedUrls: [], agentEvents }, models: [...llm.stats.models] };
+        return { run: { fixtureId: fixture.id, ok: false, error: `${err?.code || ''} ${err?.message || err}${Array.isArray(err?.details?.errors) ? ` | ${err.details.errors.slice(0, 6).join(' ; ')}` : ''}`.trim(), durationMs: Date.now() - started, allowedUrls: [], agentEvents }, models: [...llm.stats.models] };
     }
 }
 

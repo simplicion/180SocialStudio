@@ -127,6 +127,40 @@ export interface HookSlotRef {
 }
 
 /** Hook/script items: accepts a bare array or {items}, aliases `hook`, string beats, missing slide numbers. */
+const slideList = (it: any): any => {
+    const cb = it?.carouselBrief && typeof it.carouselBrief === 'object' ? it.carouselBrief : {};
+    return cb.slides ?? cb.cards ?? cb.slideList ?? cb.carouselSlides ?? it?.slides ?? it?.carouselSlides;
+};
+const hasSlides = (it: any) => Array.isArray(slideList(it)) && slideList(it).length > 0;
+const hasBeats = (sc: any) => !!sc && typeof sc === 'object' && ['body', 'beats', 'points', 'scriptBody', 'script_body'].some((k) => (Array.isArray(sc[k]) ? sc[k].length > 0 : typeof sc[k] === 'string' && sc[k].trim()));
+
+/** Beats from an array of strings/objects or a single block of text (split on lines or sentences). */
+function toBeats(val: any): any {
+    if (typeof val === 'string' && val.trim()) {
+        const parts = val.split(/\n+|(?<=[.!?])\s+(?=[A-Z])/).map((t) => t.trim()).filter(Boolean);
+        return parts.map((beat) => ({ beat }));
+    }
+    if (!Array.isArray(val)) return val;
+    return val
+        .map((b: any) => (typeof b === 'string' ? { beat: b } : b && typeof b === 'object' && !text(b.beat, 2000) ? { ...b, beat: text(b.text, 2000) ?? text(b.line, 2000) ?? text(b.content, 2000) } : b))
+        .filter((b: any) => text(b?.beat, 2000));
+}
+
+/** "30", 30, "30s", "about 45 seconds", "0:45" -> seconds within the schema range; anything else -> undefined. */
+function durationSec(val: any): number | undefined {
+    if (typeof val === 'number' && Number.isFinite(val)) return Math.min(180, Math.max(5, Math.round(val)));
+    if (typeof val !== 'string') return undefined;
+    const mmss = val.match(/(\d+):(\d{2})/);
+    const n = mmss ? Number(mmss[1]) * 60 + Number(mmss[2]) : Number((val.match(/\d+(?:\.\d+)?/) || [])[0]);
+    return Number.isFinite(n) && n > 0 ? Math.min(180, Math.max(5, Math.round(n))) : undefined;
+}
+
+/** Runtime of spoken lines at ~2.5 words per second (how the beat sheet times scripts), within 5-180 s. */
+function spokenSeconds(lines: (string | undefined)[]): number {
+    const words = lines.filter(Boolean).join(' ').split(/\s+/).filter(Boolean).length;
+    return Math.min(180, Math.max(5, Math.round(words / 2.5)));
+}
+
 export function normaliseHookScript(raw: any, chunk: HookSlotRef[], opts?: { attempt?: number }): any {
     if (!raw || typeof raw !== 'object') return raw;
     const isAttempt2 = opts?.attempt === 2;
@@ -144,7 +178,7 @@ export function normaliseHookScript(raw: any, chunk: HookSlotRef[], opts?: { att
     const returnedItems = list
         .filter((it: any) => it && typeof it === 'object')
         .map((it: any, idx: number) => {
-            const slotId = text(it.slotId, 40) ?? (list.length === chunk.length ? chunk[idx]?.slotId : undefined);
+            const slotId = text(it.slotId, 40) ?? text(it.slot_id, 40) ?? text(it.id, 40) ?? text(it.slot, 40) ?? (list.length === chunk.length ? chunk[idx]?.slotId : undefined);
             const slot = slotId ? byId.get(slotId) : undefined;
 
             let spokenHook = text(it.spokenHook, 300)
@@ -192,9 +226,21 @@ export function normaliseHookScript(raw: any, chunk: HookSlotRef[], opts?: { att
                 item.shotNotes = [];
             }
 
-            if (it.script && typeof it.script === 'object') {
-                const sc = it.script;
-                let body = Array.isArray(sc.body) ? sc.body.map((b: any) => (typeof b === 'string' ? { beat: b } : b)).filter((b: any) => text(b?.beat, 2000)) : sc.body;
+            // Models sometimes attach an empty script to a carousel or an empty carouselBrief to a reel; an empty block
+            // the format does not use is dropped instead of failing the whole batch (eval: "carouselBrief.slides: Required").
+            const fmt = slot?.format;
+            if (fmt && fmt !== 'carousel' && !hasSlides(it)) delete item.carouselBrief;
+            if (fmt && fmt !== 'reel' && !hasBeats(it.script)) delete item.script;
+
+            // Models sometimes flatten the script onto the item or rename its parts (beats, points, scriptBody).
+            const scriptSrc = !('script' in item) && fmt && fmt !== 'reel'
+                ? null
+                : it.script && typeof it.script === 'object'
+                ? it.script
+                : Array.isArray(it.beats) || Array.isArray(it.body) ? { body: it.beats ?? it.body, cta: it.cta, retentionLoop: it.retentionLoop } : null;
+            if (scriptSrc) {
+                const sc = scriptSrc;
+                let body = toBeats(sc.body ?? sc.beats ?? sc.points ?? sc.scriptBody ?? sc.script_body);
                 let retentionLoop = text(sc.retentionLoop, 400) ?? text(sc.retention_loop, 400) ?? text(sc.loop, 400) ?? text(sc.rehook, 400);
                 let cta = text(sc.cta, 300) ?? text(sc.callToAction, 300) ?? text(sc.call_to_action, 300) ?? text(sc.action, 300);
 
@@ -226,9 +272,9 @@ export function normaliseHookScript(raw: any, chunk: HookSlotRef[], opts?: { att
                     body,
                     retentionLoop,
                     cta,
-                    estimatedDurationSec: Number.isFinite(Number(sc.estimatedDurationSec))
-                        ? Number(sc.estimatedDurationSec)
-                        : (Number.isFinite(Number(sc.estimated_duration_sec)) ? Number(sc.estimated_duration_sec) : slot?.targetDurationSec),
+                    estimatedDurationSec: durationSec(sc.estimatedDurationSec ?? sc.estimated_duration_sec ?? sc.durationSec ?? sc.duration)
+                        ?? slot?.targetDurationSec
+                        ?? spokenSeconds([text(sc.hook, 300) ?? item.spokenHook, ...(Array.isArray(body) ? body.map((b: any) => b.beat) : [])]),
                     psychologicalJob: item.psychologicalJob,
                     visualDirection: item.visualDirection,
                     whatContentDelivers: item.whatContentDelivers,
@@ -241,9 +287,9 @@ export function normaliseHookScript(raw: any, chunk: HookSlotRef[], opts?: { att
                         { beat: 'Why standard advice fails under real-world conditions' },
                         { beat: text(slot.whatContentDelivers, 500) ?? text(slot.topic, 500) ?? 'The practical implementation step by step' },
                         { beat: 'The exact framework and rule to follow first' },
-                        { beat: 'A concrete example showing the 3x improvement' },
-                        { beat: 'The common pitfall that costs creators 80% of results' },
-                        { beat: 'How to calibrate your numbers in under 5 minutes' },
+                        { beat: 'A concrete example of it working' },
+                        { beat: 'The most common mistake and how to avoid it' },
+                        { beat: 'How to apply it the first time' },
                         { beat: 'The final outcome and key takeaway to apply today' },
                     ] : [
                         { beat: text(slot.angle, 500) ?? 'The initial hurdle and common misconception' },
@@ -266,11 +312,21 @@ export function normaliseHookScript(raw: any, chunk: HookSlotRef[], opts?: { att
                 }
             }
 
-            if (it.carouselBrief && typeof it.carouselBrief === 'object') {
-                const cb = it.carouselBrief;
-                let slides = Array.isArray(cb.slides)
-                    ? cb.slides.filter((sl: any) => sl && text(sl.headline, 300)).map((sl: any, i: number) => ({ ...sl, index: Number(sl.index) || i + 1 }))
-                    : cb.slides;
+            const briefSrc = !('carouselBrief' in item) && fmt && fmt !== 'carousel'
+                ? null
+                : it.carouselBrief && typeof it.carouselBrief === 'object'
+                ? it.carouselBrief
+                : Array.isArray(it.slides) || Array.isArray(it.carouselSlides) ? { title: it.headline ?? it.title, slides: it.slides ?? it.carouselSlides } : null;
+            if (briefSrc) {
+                const cb = briefSrc;
+                const rawSlides = cb.slides ?? cb.cards ?? cb.slideList ?? cb.carouselSlides ?? it.slides ?? it.carouselSlides;
+                let slides = Array.isArray(rawSlides)
+                    ? rawSlides
+                        .map((sl: any) => (typeof sl === 'string' ? { headline: sl } : sl))
+                        .map((sl: any) => (sl && !text(sl.headline, 300) ? { ...sl, headline: text(sl.title, 300) ?? text(sl.text, 300) ?? text(sl.heading, 300) } : sl))
+                        .filter((sl: any) => sl && text(sl.headline, 300))
+                        .map((sl: any, i: number) => ({ ...sl, role: typeof sl.role === 'string' ? sl.role : 'value', index: Number(sl.index) || i + 1 }))
+                    : rawSlides;
 
                 if (isAttempt2) {
                     const minSlides = Math.min(4, slot?.slideCount ?? 4);
@@ -298,7 +354,10 @@ export function normaliseHookScript(raw: any, chunk: HookSlotRef[], opts?: { att
             }
 
             return item;
-        });
+        })
+        // An item that matches no requested slot (a stray note, a duplicate, an unlabelled extra) is dropped instead of
+        // failing the batch; a slot left without an item is still reported by the check and repaired.
+        .filter((it: any) => it.slotId && byId.has(it.slotId));
 
     if (isAttempt2) {
         const foundSlotIds = new Set(returnedItems.map((it: any) => it.slotId).filter(Boolean));
@@ -325,9 +384,9 @@ export function normaliseHookScript(raw: any, chunk: HookSlotRef[], opts?: { att
                         { beat: 'Why standard advice fails under real-world conditions' },
                         { beat: text(slot.whatContentDelivers, 500) ?? text(slot.topic, 500) ?? 'The practical implementation step by step' },
                         { beat: 'The exact framework and rule to follow first' },
-                        { beat: 'A concrete example showing the 3x improvement' },
-                        { beat: 'The common pitfall that costs creators 80% of results' },
-                        { beat: 'How to calibrate your numbers in under 5 minutes' },
+                        { beat: 'A concrete example of it working' },
+                        { beat: 'The most common mistake and how to avoid it' },
+                        { beat: 'How to apply it the first time' },
                         { beat: 'The final outcome and key takeaway to apply today' },
                     ] : [
                             { beat: text(slot.angle, 500) ?? 'The initial hurdle and common misconception' },
