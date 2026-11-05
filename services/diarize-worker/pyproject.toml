@@ -1,0 +1,28 @@
+[project]
+name = "diarize-worker"
+version = "0.1.0"
+description = "180 Social Studio speaker diarization sidecar: who speaks when (pyannote speaker-diarization-community-1)"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.115,<1",
+    "uvicorn[standard]>=0.30,<1",
+    "python-multipart>=0.0.9,<1",
+    "numpy>=1.26,<3",
+]
+
+[project.optional-dependencies]
+# The model. Installed by setup.sh with CPU-only PyTorch wheels (no CUDA download); a GPU server can install the
+# default torch instead. Tests do not need it (they inject a fake pipeline).
+model = ["pyannote.audio>=4.0,<5"]
+dev = ["pytest>=8,<10", "httpx>=0.27,<1"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["app"]

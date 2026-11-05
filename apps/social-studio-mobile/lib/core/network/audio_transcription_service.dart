@@ -7,32 +7,44 @@ import 'api_exception.dart';
 import 'device_registration.dart';
 
 class TranscriptWord {
-  TranscriptWord({required this.text, required this.startMs, required this.endMs});
+  TranscriptWord({required this.text, required this.startMs, required this.endMs, this.speaker});
   final String text;
   final int startMs;
   final int endMs;
 
-  factory TranscriptWord.fromJson(Json j) => TranscriptWord(
-        text: jStrOr(j['text'], ''),
-        startMs: jInt(j['startMs']) ?? 0,
-        endMs: jInt(j['endMs']) ?? 0,
-      );
+  /// Who says the word ("S1", "S2"...) when the server's speaker diarization ran; null otherwise. Sent to the
+  /// Director with the transcript, so it knows who is speaking.
+  final String? speaker;
 
-  Json toJson() => {'text': text, 'startMs': startMs, 'endMs': endMs};
+  factory TranscriptWord.fromJson(Json j) {
+    final s = j['speaker'];
+    return TranscriptWord(
+      text: jStrOr(j['text'], ''),
+      startMs: jInt(j['startMs']) ?? 0,
+      endMs: jInt(j['endMs']) ?? 0,
+      speaker: s is String && s.isNotEmpty && s.length <= 40 ? s : null,
+    );
+  }
+
+  Json toJson() => {'text': text, 'startMs': startMs, 'endMs': endMs, if (speaker != null) 'speaker': speaker};
 }
 
 class Transcript {
-  Transcript({required this.language, required this.durationMs, required this.text, required this.words});
+  Transcript({required this.language, required this.durationMs, required this.text, required this.words, this.speakers});
   final String language;
   final int durationMs;
   final String text;
   final List<TranscriptWord> words;
+
+  /// Distinct speakers the server found; null when diarization did not run.
+  final int? speakers;
 
   factory Transcript.fromJson(Json j) => Transcript(
         language: jStrOr(j['language'], 'und'),
         durationMs: jInt(j['durationMs']) ?? 0,
         text: jStrOr(j['text'], ''),
         words: jList(j['words'], TranscriptWord.fromJson),
+        speakers: jInt(j['speakers']),
       );
 }
 

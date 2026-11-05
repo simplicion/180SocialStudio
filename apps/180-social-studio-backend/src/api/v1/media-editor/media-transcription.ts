@@ -33,6 +33,8 @@ export interface WordTimestamp {
   text: string;
   startMs: number;
   endMs: number;
+  /** Who says the word ("S1", "S2"...), when speaker diarization ran (DIARIZE_WORKER_URL). */
+  speaker?: string;
 }
 
 export const STT_PROVIDERS = ["groq", "openai"] as const;
@@ -45,6 +47,107 @@ export interface TranscriptionResponse {
   words: WordTimestamp[];
   /** The provider that produced this transcript. */
   provider?: SttProvider;
+  /** Distinct speakers found by diarization; absent when it did not run. */
+  speakers?: number;
+  /** labelled: words carry `speaker`; off: not configured; unavailable / failed: the words have no speakers. */
+  diarization?: "labelled" | "off" | "unavailable" | "failed";
+}
+
+export interface SpeakerTurn {
+  speaker: string;
+  startMs: number;
+  endMs: number;
+}
+
+/**
+ * Who speaks when, from the diarize worker (services/diarize-worker: pyannote speaker-diarization-community-1).
+ * Null when it is not configured; throws DiarizationUnavailableError when it is down / loading, so the transcript is
+ * still returned (without speakers) and the reason is reported.
+ */
+export class DiarizationUnavailableError extends Error {}
+
+export async function diarizeAudio(
+  audio: Buffer,
+  filename: string,
+  mimeType: string,
+  fetchImpl: typeof fetch = fetch,
+  env: Record<string, string | undefined> = process.env
+): Promise<SpeakerTurn[] | null> {
+  const url = (env.DIARIZE_WORKER_URL || "").replace(/\/+$/, "");
+  const secret = env.DIARIZE_WORKER_SECRET || env.TREND_WORKER_SECRET || "";
+  if (!url) return null;
+  const form = new FormData();
+  form.append("audio", new Blob([new Uint8Array(audio)], { type: mimeType }), filename || "audio.m4a");
+  const res = await fetchImpl(`${url}/diarize`, {
+    method: "POST",
+    headers: { "X-Worker-Secret": secret },
+    body: form,
+    signal: AbortSignal.timeout(Number(env.DIARIZE_TIMEOUT_MS) || 120_000),
+  });
+  if (!res.ok) throw new DiarizationUnavailableError(`diarize worker answered ${res.status}`);
+  const data: any = await res.json();
+  const segs: any[] = Array.isArray(data?.segments) ? data.segments : [];
+  return segs
+    .filter((s) => typeof s?.speaker === "string" && typeof s?.startMs === "number" && typeof s?.endMs === "number" && s.endMs > s.startMs)
+    .map((s) => ({ speaker: String(s.speaker).slice(0, 40), startMs: Math.round(s.startMs), endMs: Math.round(s.endMs) }))
+    .sort((a, b) => a.startMs - b.startMs);
+}
+
+/**
+ * Gives each word the speaker whose turn overlaps it most; a word in a gap between turns takes the nearest turn
+ * within 500 ms, otherwise it stays unlabelled (never guessed).
+ */
+export function labelWordsWithSpeakers(words: WordTimestamp[], turns: SpeakerTurn[], maxGapMs = 500): WordTimestamp[] {
+  if (!turns.length) return words.map(({ speaker: _s, ...w }) => w);
+  let from = 0;
+  return words.map(({ speaker: _s, ...w }) => {
+    while (from < turns.length && turns[from].endMs < w.startMs - maxGapMs) from++;
+    let best: SpeakerTurn | undefined;
+    let bestOverlap = 0;
+    let nearest: SpeakerTurn | undefined;
+    let nearestGap = Infinity;
+    for (let i = from; i < turns.length && turns[i].startMs <= w.endMs + maxGapMs; i++) {
+      const t = turns[i];
+      const overlap = Math.min(w.endMs, t.endMs) - Math.max(w.startMs, t.startMs);
+      if (overlap > bestOverlap) {
+        bestOverlap = overlap;
+        best = t;
+      }
+      const gap = Math.max(t.startMs - w.endMs, w.startMs - t.endMs, 0);
+      if (gap < nearestGap) {
+        nearestGap = gap;
+        nearest = t;
+      }
+    }
+    const who = best ?? (nearest && nearestGap <= maxGapMs ? nearest : undefined);
+    return who ? { ...w, speaker: who.speaker } : w;
+  });
+}
+
+/** Transcript plus speakers: STT and diarization run at the same time; a diarization failure never fails the transcript. */
+export async function transcribeWithSpeakers(
+  audio: Buffer,
+  filename: string,
+  mimeType: string,
+  language = AUTO_LANGUAGE,
+  fetchImpl: typeof fetch = fetch,
+  credentialsOverride?: SttCredentials,
+  env: Record<string, string | undefined> = process.env
+): Promise<TranscriptionResponse> {
+  const diar = diarizeAudio(audio, filename, mimeType, fetchImpl, env).then(
+    (turns) => ({ turns, error: undefined as unknown }),
+    (error) => ({ turns: undefined, error })
+  );
+  const transcript = await transcribeAudioBuffer(audio, filename, mimeType, language, fetchImpl, credentialsOverride);
+  const d = await diar;
+  if (d.error !== undefined) {
+    console.warn("[Transcribe] diarization skipped:", (d.error as any)?.message || d.error);
+    return { ...transcript, diarization: d.error instanceof DiarizationUnavailableError ? "unavailable" : "failed" };
+  }
+  if (d.turns === null || d.turns === undefined) return { ...transcript, diarization: "off" };
+  const words = labelWordsWithSpeakers(transcript.words, d.turns);
+  const speakers = new Set(words.map((w) => w.speaker).filter(Boolean)).size;
+  return { ...transcript, words, speakers, diarization: "labelled" };
 }
 
 export interface SttCredentials {
@@ -268,7 +371,7 @@ export async function transcribeHandler(req: Request, res: Response) {
   }
 
   try {
-    const data = await transcribeAudioBuffer(
+    const data = await transcribeWithSpeakers(
       file.buffer,
       file.originalname,
       file.mimetype,
