@@ -20,6 +20,12 @@ import {
   neutraliseWordSequence,
   deriveEditStyle,
   describeEditStyle,
+  DirectorIntent,
+  DirectorIntentSchema,
+  DIRECTOR_TOOL_SPECS,
+  INTENT_TOOL_NAME,
+  buildIntentPrompt,
+  zodToPortableJsonSchema,
 } from "@workspace/video-contracts";
 import { AIProviderService, AIClient, AISettings } from "../kernel/ai-provider.service";
 import {
@@ -58,6 +64,13 @@ export interface PlanGenerationParams {
   llmModel?: string;
   /** Extra prompt sections (brand, calendar piece, script alignment), inserted before the request. */
   contextSections?: string[];
+  /** Provenance and locks of the current timeline's items (MobileEditIR.itemMeta), shown to the model. */
+  itemMeta?: Record<string, { origin?: string; locked?: boolean }>;
+  /**
+   * The request's scope (Phase 3): the planner only gets `tools` (null = every tool), and the prompt states what
+   * may change. Absent = a whole edit (the desktop / legacy path).
+   */
+  scope?: { mode: DirectorIntent["mode"] | "open"; targets: DirectorIntent["targets"]; mustNotTouch: string[]; tools: string[] | null };
 }
 
 export interface PlannerOutcome {
@@ -91,40 +104,99 @@ const PROPOSAL_PHASES = new Set(["recommend", "gather", "confirm"]);
  * that cannot be done (captions without a transcript) are not required.
  */
 const COVERAGE_RULES: Array<{ label: string; ask: RegExp; ops: string[]; needsTranscript?: boolean; removal?: boolean }> = [
-  { label: "captions", ask: /\b(captions?|subtitles?)\b/, ops: ["autoCaptions", "styleCaption"], needsTranscript: true },
+  { label: "captions", ask: /\b(captions?|subtitles?)\b/, ops: ["autoCaptions", "styleCaption", "addCaption", "updateTextStyle", "editText"], needsTranscript: true },
   { label: "caption translation", ask: /\b(translate (the |my )?(captions?|subtitles?)|(captions?|subtitles?) (in|into|to) (hinglish|roman|english|hindi|tamil|telugu|bengali|marathi|gujarati|urdu|punjabi|spanish|french)|hinglish (captions?|subtitles?))\b/, ops: ["translateCaptions"], needsTranscript: true },
-  { label: "zoom / punch-in", ask: /\b(zooms?|punch[- ]?ins?)\b/, ops: ["addZoom", "reframeSubject"] },
-  { label: "B-roll", ask: /\b(b[- ]?roll|cutaways?|stock (clip|footage|video))\b/, ops: ["insertBroll"] },
-  { label: "sticker", ask: /\b(stickers?|emojis?)\b/, ops: ["addSticker"] },
-  { label: "background music", ask: /\b(music|soundtrack|bgm)\b/, ops: ["addBackgroundMusic"] },
+  { label: "zoom / punch-in", ask: /\b(zooms?|punch[- ]?ins?)\b/, ops: ["addZoom", "reframeSubject", "updateZoom"] },
+  { label: "B-roll", ask: /\b(b[- ]?roll|cutaways?|stock (clip|footage|video))\b/, ops: ["insertBroll", "updateOverlay"] },
+  { label: "sticker", ask: /\b(stickers?|emojis?)\b/, ops: ["addSticker", "updateOverlay"] },
+  { label: "background music", ask: /\b(music|soundtrack|bgm)\b/, ops: ["addBackgroundMusic", "updateMusic", "changeMusicTrack"] },
   { label: "colour grade", ask: /\b(colou?r ?grad\w*|grade|filter|lut)\b/, ops: ["applyFilter"] },
-  { label: "title text", ask: /\b(title|headline|hook text|text overlay)\b/, ops: ["addText"] },
+  { label: "title text", ask: /\b(title|headline|hook text|text overlay)\b/, ops: ["addText", "editText", "updateTextStyle"] },
   { label: "transitions", ask: /\b(transitions?|crossfades?|dissolves?)\b/, ops: ["addTransition"] },
   { label: "filler-word removal", ask: /\bfillers?\b/, ops: ["cleanFillers"], needsTranscript: true, removal: true },
-  { label: "sound effects", ask: /\b(sound effects?|sfx|whoosh\w*)\b/, ops: ["addSoundEffect", "autoSoundDesign"] },
+  { label: "sound effects", ask: /\b(sound effects?|sfx|whoosh\w*)\b/, ops: ["addSoundEffect", "autoSoundDesign", "setSfxVolume"] },
 ];
 const NEGATION = /\b(no|not|don'?t|do not|without|remove|keep|skip|never)\b[\w\s,'-]{0,24}$/;
+/** Verbs that ask for something NEW ("add music", "put a zoom", "with captions"). */
+const CREATE_VERB = /\b(add|adds|adding|put|insert|give|include|use|want|need|throw in|slap|drop in|with|some|more|another|new|create|generate|apply)\b/;
+/** Verbs and phrasing that change something that is already there (F-07: "make the music quieter"). */
+const MODIFY_VERB = /\b(make|change|fix|move|lower|raise|edit|adjust|replace|update|tweak|shorten|lengthen|resize|recolou?r|restyle|turn|set|reduce|increase|swap|shift|nudge|tone down|turn (up|down))\b/;
+const MODIFY_AFTER = /^\s*(is|are|was|were|should|looks?|feels?|sounds?|seems?|at \d|on \d|(is |are )?too\b|(a bit |a little )?(louder|quieter|softer|stronger|weaker|bigger|smaller|larger|longer|shorter|faster|slower|higher|lower|brighter|darker)\b)/;
+/** Pointing at an item that exists ("the music", "my title", "this zoom"). */
+const REFERENCE = /\b(the|my|this|that|these|those|your|its)\s+([\w-]+\s+)?$/;
 
-/** Feature labels the creator explicitly asked for (see COVERAGE_RULES). */
+/**
+ * Whether the feature word at `index` asks for a new item (true) or talks about an existing one (false).
+ * The current clause is what counts ("cut the pauses and add captions": "add" belongs to "captions").
+ */
+function asksForNew(text: string, index: number, length: number): boolean {
+  const clauseStart = Math.max(
+    0,
+    ...[...text.slice(0, index).matchAll(/[.,;!?]|\b(and|then|also|plus)\b/g)].map((m) => (m.index ?? 0) + m[0].length)
+  );
+  const before = text.slice(clauseStart, index).slice(-48);
+  const after = text.slice(index + length).split(/[.,;!?]|\b(and|then)\b/)[0] ?? "";
+  if (CREATE_VERB.test(before)) return true;
+  if (MODIFY_VERB.test(before) || MODIFY_AFTER.test(after) || MODIFY_VERB.test(after.slice(0, 24))) return false;
+  if (REFERENCE.test(before)) return false;
+  // Named on its own ("yellow captions please", "captions"): an ask.
+  return true;
+}
+
+/** Feature labels the creator explicitly asked to ADD (see COVERAGE_RULES). Edits of existing items do not count. */
 export function requestedFeatures(prompt: string, hasTranscript: boolean): string[] {
   const text = prompt.toLowerCase();
   const out: string[] = [];
   for (const r of COVERAGE_RULES) {
-    const m = r.ask.exec(text);
-    if (!m) continue;
-    // "remove / cut the fillers" is the ask itself, not a negation.
-    if (!r.removal && NEGATION.test(text.slice(Math.max(0, m.index - 30), m.index))) continue;
+    const re = new RegExp(r.ask.source, "g");
+    let asked = false;
+    for (const m of text.matchAll(re)) {
+      const at = m.index ?? 0;
+      // "remove / cut the fillers" is the ask itself, not a negation.
+      if (!r.removal && NEGATION.test(text.slice(Math.max(0, at - 30), at))) continue;
+      if (!r.removal && !asksForNew(text, at, m[0].length)) continue;
+      asked = true;
+      break;
+    }
+    if (!asked) continue;
     if (r.needsTranscript && !hasTranscript) continue;
     out.push(r.label);
   }
   return out;
 }
 
+/** Identity of an operation for merging two plans: same type, same target, same moment (to 0.5 s). */
+function operationKey(op: any): string {
+  const t = [op.startSec, op.timelineStartSec, op.atSec].find((v) => typeof v === "number");
+  return JSON.stringify([
+    op.type,
+    op.id ?? op.clipId ?? op.captionId ?? op.targetId ?? op.trackId ?? op.kind ?? null,
+    typeof t === "number" ? Math.round(t * 2) / 2 : null,
+    op.text ?? op.query ?? op.stockQuery ?? op.effect ?? null,
+  ]);
+}
+
+/** The first plan plus what the coverage retry added (a retry that answers with only the missing op loses nothing). */
+export function mergeCoverageOperations<T>(original: T[], retry: T[]): T[] {
+  const have = new Set(original.map(operationKey));
+  const out = [...original];
+  for (const op of retry) {
+    const k = operationKey(op);
+    if (have.has(k)) continue;
+    have.add(k);
+    out.push(op);
+  }
+  return out;
+}
+
 /** Requested tool families the plan does not contain. */
-export function missingRequestedOperations(prompt: string, operationTypes: string[], hasTranscript: boolean): string[] {
+export function missingRequestedOperations(prompt: string, operationTypes: string[], hasTranscript: boolean, allowedTools?: Set<string> | null): string[] {
   const have = new Set(operationTypes);
   const wanted = new Set(requestedFeatures(prompt, hasTranscript));
-  return COVERAGE_RULES.filter((r) => wanted.has(r.label) && !r.ops.some((o) => have.has(o))).map((r) => `${r.label} (${r.ops.join(" / ")})`);
+  return COVERAGE_RULES
+    .filter((r) => wanted.has(r.label) && !r.ops.some((o) => have.has(o)))
+    .filter((r) => !allowedTools || r.ops.some((o) => allowedTools.has(o)))
+    .map((r) => `${r.label} (${r.ops.filter((o) => !allowedTools || allowedTools.has(o)).join(" / ")})`);
 }
 
 /** Model defaults per provider. Anthropic default follows the product decision (latest Sonnet). */
@@ -173,7 +245,12 @@ export class CreativePlanner {
       return this.deterministicOutcome(params, `LLM provider "${client.provider}" does not support tool calling`, 0);
     }
 
-    const tools = [...buildDirectorToolDefinitions(), buildChatToolDefinition()];
+    // A scoped request only offers the tools of its scope (plus finish_edit and the chat reply).
+    const allowed = params.scope?.tools ? new Set(params.scope.tools) : null;
+    const tools = [
+      ...buildDirectorToolDefinitions().filter((t) => !allowed || t.function.name === "finish_edit" || allowed.has(t.function.name)),
+      buildChatToolDefinition(),
+    ];
     const basePrompt = this.buildPrompt(params);
     const options: any = { max_tokens: 16000, temperature: 0.2 };
     if (model) options.model = model;
@@ -234,7 +311,10 @@ export class CreativePlanner {
 
     // Coverage: everything the creator explicitly asked for must be planned (or honestly skipped by the model).
     const hasTranscript = (params.mediaGraph?.transcript?.length ?? 0) > 0;
-    const missing = params.checkCoverage === false ? [] : missingRequestedOperations(params.prompt, validation.operations.map((o: any) => o.type), hasTranscript);
+    // Only asks the scope can serve are checked (a scoped "make the music quieter" is never pushed to add things).
+    const missing = params.checkCoverage === false
+      ? []
+      : missingRequestedOperations(params.prompt, validation.operations.map((o: any) => o.type), hasTranscript, allowed);
     let coverageNote = "";
     if (missing.length > 0) {
       const calls = validation.operations.map((o: any) => ({ name: o.type, args: o }));
@@ -243,9 +323,11 @@ export class CreativePlanner {
         const third = await withTimeout(client.generateWithTools(prompt, tools, options), timeoutMs, "LLM coverage call");
         const thirdSplit = splitChatCalls(third?.toolCalls || []);
         const retry = validateDirectorToolCalls(thirdSplit.calls);
-        const stillMissing = missingRequestedOperations(params.prompt, retry.operations.map((o: any) => o.type), hasTranscript);
+        // Union, never replace: the good operations of the first plan stay (the retry may answer with only the missing op).
+        const merged = mergeCoverageOperations(validation.operations, retry.operations);
+        const stillMissing = missingRequestedOperations(params.prompt, merged.map((o: any) => o.type), hasTranscript);
         if (retry.errors.length === 0 && retry.operations.length > 0 && stillMissing.length < missing.length) {
-          validation = retry;
+          validation = { ...retry, operations: merged, finish: retry.finish ?? validation.finish };
           if (thirdSplit.conversation) conversation = thirdSplit.conversation;
           coverageNote = `, completed ${missing.length - stillMissing.length} skipped request(s)`;
         } else {
@@ -270,6 +352,42 @@ export class CreativePlanner {
       preserve: validation.finish?.preserve,
       ...(conversation ? { conversation } : {}),
     };
+  }
+
+  /**
+   * The intent step (Phase 3.1): one small structured call that classifies the request before planning. Returns null
+   * when there is no usable LLM or its answer is not valid; the caller then classifies offline.
+   */
+  static async classifyIntent(params: Pick<PlanGenerationParams, "prompt" | "history" | "currentEditIR" | "itemMeta" | "llmClient" | "llmModel" | "companyId" | "llmTimeoutMs">): Promise<{ intent: DirectorIntent; reason: string } | null> {
+    const { client, model } = await this.resolveClient(params as PlanGenerationParams);
+    if (!client || typeof client.generateWithTools !== "function") return null;
+    const tool = {
+      type: "function",
+      function: {
+        name: INTENT_TOOL_NAME,
+        description: "Classify the creator's request (mode, targets, the tools needed, tracks to leave alone, or one clarifying question).",
+        parameters: zodToPortableJsonSchema(DirectorIntentSchema),
+      },
+    };
+    const prompt = buildIntentPrompt({
+      prompt: params.prompt,
+      timelineLines: params.currentEditIR ? this.describeEditIR(params.currentEditIR, params.itemMeta).slice(0, 120) : ["(raw clip, nothing edited yet)"],
+      history: params.history,
+    });
+    const options: any = { max_tokens: 600, temperature: 0 };
+    if (model) options.model = model;
+    try {
+      const res = await withTimeout(client.generateWithTools(prompt, [tool], options), Math.min(20000, directorLlmTimeoutMs(params.llmTimeoutMs)), "LLM intent call");
+      const call = (res?.toolCalls || []).find((c: any) => c?.name === INTENT_TOOL_NAME);
+      if (!call) return null;
+      const parsed = DirectorIntentSchema.safeParse(call.args || {});
+      if (!parsed.success) return null;
+      // Tool names the model invented are dropped; real ones are kept.
+      const known = new Set(DIRECTOR_TOOL_SPECS.map((s) => s.name as string));
+      return { intent: { ...parsed.data, allowedTools: parsed.data.allowedTools.filter((t) => known.has(t)) }, reason: `${client.provider}${model ? `/${model}` : ""} intent call` };
+    } catch {
+      return null;
+    }
   }
 
   private static async resolveClient(params: PlanGenerationParams): Promise<{ client: AIClient | null; reason: string; model?: string }> {
@@ -352,21 +470,47 @@ export class CreativePlanner {
     const ctx = params.timelineContext;
     const g = params.mediaGraph;
     const lines: string[] = [];
+    const mode = params.scope?.mode ?? "full_edit";
+    const fullEdit = mode === "full_edit";
 
+    // The first rule, before anything else: change only what was asked (Phase 3.2).
     lines.push(
       DIRECTOR_PERSONA,
-      `## Editing craft (how you edit; never recite this to the creator)`,
+      `## The most important rule`,
+      `Change only what the creator asked. Everything not mentioned must stay exactly as it is. Prefer the update tools over removing and re-adding. Never regenerate captions, replace music, reframe or re-cut unless asked.`,
+      ``
+    );
+    if (params.scope) {
+      const targets = params.scope.targets.map((t) => `${t.kind}${t.ids?.length ? ` (${t.ids.join(", ")})` : ""}${t.timeSec !== undefined ? ` at ${t.timeSec}s` : ""}`);
+      lines.push(
+        `## Scope of this request (decided before planning)`,
+        mode === "open"
+          ? `- the request could not be scoped before planning: work out what it asks for and change only that.`
+          : `- mode: ${mode}${targets.length ? `; about: ${targets.join(", ")}` : ""}`,
+        ...(params.scope.mustNotTouch.length ? [`- do not touch: ${params.scope.mustNotTouch.join(", ")}`] : []),
+        params.scope.tools
+          ? `- you only have the tools for this scope; anything else on the timeline is locked for this turn.`
+          : `- whole-video edit: every tool is available.`,
+        ``
+      );
+    }
+    if (fullEdit) lines.push(
+      `## Editing craft for a whole-video edit (how you edit; never recite this to the creator)`,
       `- Hook: start tight on the first spoken word; a pattern interrupt in the first 1.5s (punch-in zoom, bold title or cutaway) works well.`,
       `- Pacing: on energetic edits avoid a static frame for more than ~4s; alternate the main shot, punch-in zooms on key phrases, B-roll that shows what is being said, highlighted captions.`,
       `- High-energy styles (MrBeast, Hormozi): cut pauses over 0.4s, zooms on punchlines, kinetic captions, sound design. Calm / educational styles (Vox, Ali Abdaal): cleaner cuts, clean captions, atmospheric B-roll, subtle music.`,
       `- Audio: voice first; background music via addBackgroundMusic with duckUnderSpeech=true (about -18 to -22 dB under speech); whooshes and pops sparingly.`,
       `- B-roll: insertBroll with a vivid, specific stockQuery that matches what is being said ('laptop keyboard typing code', 'drone skyline sunset').`,
       `- 9:16: keep faces and captions in the middle safe zone, away from the platform UI at the top and bottom.`,
-      ``,
+      ``
+    );
+    lines.push(
       `Rules:`,
       `- All times are SECONDS on the CURRENT timeline described below (0 .. ${ctx.projectDurationSec.toFixed(2)}). Never go past the end.`,
       `- Times in one response all refer to the timeline as it is NOW, before any of your operations; the server orders cuts safely. Do not adjust later times for earlier cuts.`,
-      `- Do what the creator asked. For vague style requests ("make it punchier for TikTok") choose a small set of concrete, tasteful operations (e.g. remove pauses, captions, 1-3 zooms on key moments, vertical reframe, autoSoundDesign).`,
+      fullEdit
+        ? `- Do what the creator asked. For a whole-video ask ("make it punchier for TikTok") choose a small set of concrete, tasteful operations (e.g. remove pauses, captions, 1-3 zooms on key moments, autoSoundDesign); reframe only a clip that is not already in the target aspect.`
+        : `- Do exactly what the creator asked and nothing more: no extra zooms, captions, music, B-roll or cuts.`,
       `- Use the transcript to find moments ("the punchline", "when I talk about the gym"). A zoom on a moment should start just before the key words.`,
       `- Prefer removeSilences over many removeRange calls for pauses, and autoCaptions for captions.`,
       `- Colours are #RRGGBB (yellow = #FFE600, cyan = #00E5FF, white = #FFFFFF).`,
@@ -375,13 +519,15 @@ export class CreativePlanner {
       `- When you edit: call the edit tools, then ${CHAT_TOOL_NAME} (phase "done": 1-2 casual sentences on what you actually did, quickReplies for likely tweaks), then exactly one finish_edit with the same short summary.`,
       `- When you only talk (recommend / gather / confirm / chat): call ONLY ${CHAT_TOOL_NAME}. No edit tools, no finish_edit.`,
       `- When the creator asks to keep something unchanged ("don't touch the music", "keep the first 10 seconds"), put it in finish_edit.preserve and do not edit it.`,
+      `- To change something that is already on the timeline, use the update tools on its id (editText, updateTextStyle, retimeItem, updateOverlay, updateZoom, updateEffect, updateMusic, setSfxVolume, setClipVolume, panClip ...). Never remove an item and add a new one to change it.`,
+      `- Items marked "by":"manual" are the creator's own work: change them only when the request is about them. Items marked "locked":true must not be changed or removed at all (the server refuses it).`,
       `- ${UNTRUSTED_DATA_POLICY}`,
       ``
     );
 
     lines.push(`## Current timeline`);
     lines.push(`- duration: ${ctx.projectDurationSec.toFixed(2)}s, canvas ${ctx.currentAspect} (${ctx.currentResolution.width}x${ctx.currentResolution.height}), ${ctx.clipsCount} clip(s)`);
-    if (params.currentEditIR) lines.push(...this.describeEditIR(params.currentEditIR));
+    if (params.currentEditIR) lines.push(...this.describeEditIR(params.currentEditIR, params.itemMeta));
     lines.push(``);
 
     lines.push(`## Media analysis (timeline seconds)`);
@@ -390,22 +536,37 @@ export class CreativePlanner {
       lines.push(`Transcript: NONE AVAILABLE (captions, filler removal and transcript-based edits are not possible).`);
     } else {
       const shown = words.slice(0, MAX_TRANSCRIPT_WORDS);
-      lines.push(`Transcript (${words.length} words, format start-end:word${words.length > shown.length ? `, first ${shown.length} shown` : ""}):`);
       // Spoken words are untrusted data (a video can say "ignore your instructions"): fenced and neutralised.
       // Phrase detection runs on the joined words (the timed listing would hide "ignore previous instructions").
       const safeWords = neutraliseWordSequence(shown.map((w) => w.word)).words;
-      lines.push(fenceUntrusted("transcript", shown.map((w, i) => `${w.startSeconds.toFixed(2)}-${w.endSeconds.toFixed(2)}:${safeWords[i]}`).join(" "), { maxChars: 120000 }).block);
+      // Word-level times are needed to place things on words (add / whole edit); a change to existing items works from
+      // the spoken lines below, which saves about 40% of the prompt (Phase 3.2).
+      // Targets placed on spoken words (cuts, captions, zooms, B-roll ...) keep the word timings.
+      const untimed = new Set(["music", "audio", "color", "canvas", "watermark", "voiceover", "transition"]);
+      const needsWordTimes = mode !== "modify_existing" || (params.scope?.targets ?? []).some((t) => !untimed.has(t.kind));
+      if (needsWordTimes) {
+        lines.push(`Transcript (${words.length} words, format start-end:word${words.length > shown.length ? `, first ${shown.length} shown` : ""}):`);
+        lines.push(fenceUntrusted("transcript", shown.map((w, i) => `${w.startSeconds.toFixed(2)}-${w.endSeconds.toFixed(2)}:${safeWords[i]}`).join(" "), { maxChars: 120000 }).block);
+      } else {
+        lines.push(`Transcript: ${words.length} words (spoken lines with times below).`);
+      }
       // The same words as spoken lines (split at pauses), so sentences, questions and changes of speaker are
       // readable; a long pause before/after a line that sounds like a question usually means another speaker.
       const spoken: string[] = [];
       let from = 0;
+      // Speaker labels, when the transcriber gives them (diarization): a new line starts at each change of speaker.
+      const labelled = shown.some((w) => !!w.speakerId);
       for (let i = 1; i <= shown.length; i++) {
-        if (i < shown.length && shown[i].startSeconds - shown[i - 1].endSeconds < SPOKEN_LINE_PAUSE_SEC) continue;
+        const sameSpeaker = !labelled || i >= shown.length || shown[i].speakerId === shown[i - 1].speakerId;
+        if (i < shown.length && sameSpeaker && shown[i].startSeconds - shown[i - 1].endSeconds < SPOKEN_LINE_PAUSE_SEC) continue;
         const gapBefore = from > 0 ? shown[from].startSeconds - shown[from - 1].endSeconds : shown[0].startSeconds;
-        spoken.push(`[${shown[from].startSeconds.toFixed(2)}-${shown[i - 1].endSeconds.toFixed(2)}, pause before ${gapBefore.toFixed(1)}s] ${safeWords.slice(from, i).join(" ")}`);
+        const who = labelled ? ` ${sanitizeInlineUntrusted(shown[from].speakerId || "?", 20)}:` : "";
+        spoken.push(`[${shown[from].startSeconds.toFixed(2)}-${shown[i - 1].endSeconds.toFixed(2)}, pause before ${gapBefore.toFixed(1)}s]${who} ${safeWords.slice(from, i).join(" ")}`);
         from = i;
       }
-      lines.push(`Spoken lines (split at pauses of ${SPOKEN_LINE_PAUSE_SEC}s+; speakers are NOT labelled, judge from wording and pauses):`);
+      lines.push(labelled
+        ? `Spoken lines (split at pauses of ${SPOKEN_LINE_PAUSE_SEC}s+ and at each change of speaker; speakers are labelled by the transcriber):`
+        : `Spoken lines (split at pauses of ${SPOKEN_LINE_PAUSE_SEC}s+; speakers are NOT labelled, judge from wording and pauses):`);
       lines.push(fenceUntrusted("transcript", spoken.join("\n"), { maxChars: 60000 }).block);
     }
     const sil = g.silences || [];
@@ -435,7 +596,17 @@ export class CreativePlanner {
     const history = (params.history || []).slice(-MAX_HISTORY_TURNS);
     if (history.length) {
       lines.push(`## Conversation so far (oldest first)`);
-      for (const t of history) lines.push(`${t.role === "user" ? "Creator" : "You"}: ${truncate(t.content, 900)}`);
+      // Only what actually landed on the timeline is history: a proposal the creator never applied, or a change
+      // they undid, is labelled so (F-16).
+      const label: Record<string, string> = { applied: "You (applied)", proposed_not_applied: "You (proposal, NOT applied)", undone: "You (applied, then UNDONE by the creator)" };
+      for (const t of history) {
+        if (t.role === "user") {
+          lines.push(`Creator: ${truncate(t.content, 900)}`);
+          continue;
+        }
+        const ops = t.appliedOps?.length ? ` [changes: ${truncate(t.appliedOps.slice(0, 12).join("; "), 600)}]` : "";
+        lines.push(`${t.status ? label[t.status] : "You"}: ${truncate(t.content, 900)}${t.status ? ops : ""}`);
+      }
       lines.push(``);
     }
 
@@ -446,36 +617,115 @@ export class CreativePlanner {
     return lines.join("\n");
   }
 
-  private static describeEditIR(ir: EditIR): string[] {
-    const s = (t: any) => RationalTimeMath.toSeconds(t).toFixed(2);
+  /**
+   * The timeline as the model sees it (F-15): one compact JSON line per item with its id, who made it, whether it is
+   * locked, its time range and the properties the update tools can change. Each lane shows at most 60 items and the
+   * whole description stays under ~24k characters (~6k tokens).
+   */
+  static describeEditIR(ir: EditIR, itemMeta: Record<string, { origin?: string; locked?: boolean }> = {}): string[] {
+    const n2 = (v: number) => Math.round(v * 100) / 100;
+    const t = (x: any) => n2(RationalTimeMath.toSeconds(x));
+    const span = (start: any, dur: any) => [t(start), n2(RationalTimeMath.toSeconds(start) + RationalTimeMath.toSeconds(dur))];
+    const txt = (v: string | undefined, n = 60) => sanitizeInlineUntrusted(truncate(v || "", n), n + 10);
+    const tag = (id: string) => ({ ...(itemMeta[id]?.origin ? { by: itemMeta[id].origin } : {}), ...(itemMeta[id]?.locked ? { locked: true } : {}) });
+    const clean = (o: Record<string, any>) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined && v !== null && v !== false && !(Array.isArray(v) && !v.length)));
     const out: string[] = [];
-    const main = ir.tracks.videoTracks[0];
-    if (main) {
-      const clips = main.clips.slice(0, 40).map((c) => {
-        const rot = c.transform?.rotationDeg ? ` rot${c.transform.rotationDeg}` : "";
-        const flip = c.transform?.flipH ? " mirrored" : "";
-        const mute = (c.volumeDb ?? 0) <= -60 ? " muted" : "";
-        return `${c.id}[${s(c.timelineRange.start)}+${s(c.timelineRange.duration)}${(c.speedMultiplier || 1) !== 1 ? ` @${c.speedMultiplier}x` : ""}${rot}${flip}${mute}]`;
-      });
-      out.push(`- main clips: ${clips.join(" ")}${main.clips.length > 40 ? " ..." : ""}`);
-    }
+    let budget = 24000;
+    const lane = (title: string, rows: Array<Record<string, any>>) => {
+      if (!rows.length) {
+        out.push(`- ${title}: none`);
+        return;
+      }
+      out.push(`- ${title} (${rows.length}):`);
+      for (const r of rows.slice(0, 60)) {
+        const line = `  ${JSON.stringify(clean(r))}`;
+        if (budget - line.length < 0) {
+          out.push(`  … (description shortened)`);
+          return;
+        }
+        budget -= line.length;
+        out.push(line);
+      }
+      if (rows.length > 60) out.push(`  … ${rows.length - 60} more`);
+    };
+    const label = (path: string) => {
+      if (path.startsWith("stock-query://") || path.startsWith("stock-music://")) return `search:${decodeURIComponent(path.replace(/^stock-(query|music):\/\//, ""))}`;
+      if (/^https?:\/\//i.test(path)) return path.split("?")[0].split("/").pop() || "online file";
+      if (path.startsWith("device-asset://") || path.startsWith("device-file://") || path.startsWith("asset://")) return "file on the phone";
+      return path;
+    };
+
+    const main = ir.tracks.videoTracks.find((v) => v.type === "MAIN_VIDEO") || ir.tracks.videoTracks[0];
+    lane("main clips (footage, in order)", (main?.clips ?? []).map((c) => {
+      const tr: any = c.transform || {};
+      return {
+        id: c.id, at: span(c.timelineRange.start, c.timelineRange.duration), src: txt(c.assetId, 40),
+        speed: (c.speedMultiplier || 1) !== 1 ? c.speedMultiplier : undefined,
+        vol: (c.volumeDb ?? 0) !== 0 ? c.volumeDb : undefined,
+        rot: tr.rotationDeg || undefined, mirrored: tr.flipH,
+        framing: tr.letterbox ? "fit (whole frame)" : tr.crop ? "crop set" : undefined,
+        filter: tr.filterPreset && tr.filterPreset !== "NORMAL" ? tr.filterPreset : undefined,
+        transitionIn: c.transitionIn ? `${c.transitionIn.type} ${t(c.transitionIn.duration)}s` : undefined,
+        fadeIn: (c as any).audioFadeInMs ? (c as any).audioFadeInMs / 1000 : undefined,
+        fadeOut: (c as any).audioFadeOutMs ? (c as any).audioFadeOutMs / 1000 : undefined,
+        cleanVoice: (c as any).voiceCleanup,
+        ...tag(c.id),
+      };
+    }));
+
+    // Speech captions share one look: shown once, with each caption's own differences.
     const caps = ir.tracks.captionTrack.filter((c) => c.role !== "title");
-    const titles = ir.tracks.captionTrack.filter((c) => c.role === "title");
-    out.push(`- captions: ${caps.length}${caps[0] ? ` (preset ${caps[0].style.preset}, text ${caps[0].style.textColor}, highlight ${caps[0].style.highlightColor})` : ""}; titles: ${titles.map((t) => `${t.id}:"${sanitizeInlineUntrusted(truncate(t.text, 40), 60)}"@${s(t.timeRange.start)}+${s(t.timeRange.duration)}`).join(", ") || "none"}`);
-    out.push(`- zooms: ${ir.tracks.cameraTrack.map((z) => `${z.id}@${s(z.timeRange.start)}+${s(z.timeRange.duration)} x${z.scale}`).join(", ") || "none"}`);
-    const fx = ir.tracks.effectTrack ?? [];
-    if (fx.length) out.push(`- effects: ${fx.slice(0, 40).map((e: any) => `${e.id}:${e.type}@${s(e.timeRange.start)}+${s(e.timeRange.duration)}`).join(", ")}`);
-    const sfx = ir.tracks.audioTracks.filter((t) => t.type === "SFX").flatMap((t) => t.clips);
-    if (sfx.length) out.push(`- sound effects: ${sfx.slice(0, 40).map((c: any) => `${c.id}@${s(c.timelineRange.start)}`).join(", ")}`);
-    const vo = ir.tracks.audioTracks.filter((t) => t.type === "VOICEOVER").flatMap((t) => t.clips);
-    if (vo.length) out.push(`- creator's recorded voiceovers (keep them; music ducks under them): ${vo.slice(0, 20).map((c) => `${s(c.timelineRange.start)}+${s(c.timelineRange.duration)}`).join(", ")}`);
-    const broll = ir.tracks.videoTracks.filter((t) => t.type !== "MAIN_VIDEO").flatMap((t) => t.clips);
-    const layerDesc = (b: (typeof broll)[number]) =>
-      b.layer?.mode === "overlay" ? ` layer(x${b.layer.x} y${b.layer.y} scale${b.layer.scale}${b.layer.keyframes?.length ? " keyframed" : ""})` : "";
-    out.push(`- b-roll overlays: ${broll.map((b) => `${b.id}(${sanitizeInlineUntrusted(b.assetId, 60)})@${s(b.timelineRange.start)}+${s(b.timelineRange.duration)}${layerDesc(b)}`).join(", ") || "none"}`);
-    const bgm = ir.tracks.audioTracks.find((t) => t.type === "BGM" && t.clips.length > 0);
-    out.push(`- music: ${bgm ? `yes (track "${bgm.id}", ${bgm.volumeDb}dB${bgm.duckWithSpeech ? ", ducked under speech" : ""})` : "none"}`);
-    const original = ir.tracks.audioTracks.find((t) => t.id === "original");
+    const styleOf = (c: CaptionLike) => ({
+      font: c.style.fontFamily, size: c.style.fontSize, color: c.style.textColor, highlight: c.style.highlightColor,
+      stroke: c.style.strokeWidth ? `${c.style.strokeColor} ${c.style.strokeWidth}px` : undefined,
+      box: c.style.pillBackground, upper: c.style.uppercase, glow: c.style.glow,
+      pos: c.style.position ? [n2(c.style.position.x), n2(c.style.position.y)] : undefined,
+      look: c.style.presetLabel || c.style.preset,
+    });
+    if (caps.length) {
+      const common = JSON.stringify(clean(styleOf(caps[0])));
+      out.push(`- caption look (unless a caption says otherwise): ${common}`);
+    }
+    lane("captions (speech)", caps.map((c) => {
+      const own = JSON.stringify(clean(styleOf(c)));
+      return { id: c.id, at: span(c.timeRange.start, c.timeRange.duration), text: txt(c.text), ...(own !== JSON.stringify(clean(styleOf(caps[0]))) ? { style: JSON.parse(own) } : {}), ...tag(c.id) };
+    }));
+    lane("titles / text", ir.tracks.captionTrack.filter((c) => c.role === "title").map((c) => ({
+      id: c.id, at: span(c.timeRange.start, c.timeRange.duration), text: txt(c.text), ...clean(styleOf(c)),
+      motion: [c.style.enter?.type && `in:${c.style.enter.type}`, c.style.exit?.type && `out:${c.style.exit.type}`, c.style.loop?.type && `loop:${c.style.loop.type}`].filter(Boolean),
+      ...tag(c.id),
+    })));
+    lane("zooms", ir.tracks.cameraTrack.map((z) => ({ id: z.id, at: span(z.timeRange.start, z.timeRange.duration), scale: z.scale, center: [n2(z.targetCoords.x), n2(z.targetCoords.y)], rampMs: z.rampMs, ...tag(z.id) })));
+    lane("effects", (ir.tracks.effectTrack ?? []).map((e: any) => ({ id: e.id, type: e.type, at: span(e.timeRange.start, e.timeRange.duration), intensity: e.intensity, ...tag(e.id) })));
+    lane("B-roll / layers / stickers", ir.tracks.videoTracks.filter((v) => v !== main).flatMap((v) => v.clips).map((b) => {
+      const sticker = b.mediaType === "image" && b.layer?.mode === "overlay";
+      return {
+        id: b.id, kind: sticker ? "sticker" : b.layer?.mode === "overlay" ? "pip" : b.mediaType === "image" ? "photo cutaway" : "cutaway",
+        at: span(b.timelineRange.start, b.timelineRange.duration),
+        source: txt(b.assetId.startsWith("emoji:") ? b.assetId : label(b.sourcePath), 50),
+        pos: b.layer?.mode === "overlay" ? [n2(b.layer.x), n2(b.layer.y)] : undefined,
+        scale: b.layer?.mode === "overlay" ? b.layer.scale : undefined,
+        rot: b.layer?.rotation || undefined,
+        keyframes: b.layer?.keyframes?.length || undefined,
+        opacity: (b.transform?.opacity ?? 1) !== 1 ? b.transform?.opacity : undefined,
+        sound: (b.volumeDb ?? -60) > -60 ? "on" : undefined,
+        mask: b.mask?.shape, greenScreen: b.chromaKey ? true : undefined,
+        ...tag(b.id),
+      };
+    }));
+    lane("music", ir.tracks.audioTracks.filter((a) => a.type === "BGM").flatMap((a) => a.clips.map((c) => ({
+      id: c.id, track: txt(c.sourceQuery || label(c.sourcePath), 50), levelDb: (a.volumeDb ?? 0) + (c.volumeDb ?? 0),
+      fadeIn: c.fadeInDuration ? t(c.fadeInDuration) : undefined, fadeOut: c.fadeOutDuration ? t(c.fadeOutDuration) : undefined,
+      duck: a.duckWithSpeech ? `${a.duckingConfig?.duckDb ?? -12}dB under speech` : "off",
+      ...tag(c.id),
+    }))));
+    lane("sound effects", ir.tracks.audioTracks.filter((a) => a.type === "SFX").flatMap((a) => a.clips.map((c: any) => ({
+      id: c.id, at: t(c.timelineRange.start), sound: txt(label(c.sourcePath), 40), levelDb: (a.volumeDb ?? 0) + (c.volumeDb ?? 0), ...tag(c.id),
+    }))));
+    lane("voiceovers (the creator's recordings / narration; music ducks under them)", ir.tracks.audioTracks.filter((a) => a.type === "VOICEOVER").flatMap((a) => a.clips.map((c) => ({
+      id: c.id, at: span(c.timelineRange.start, c.timelineRange.duration), levelDb: (a.volumeDb ?? 0) + (c.volumeDb ?? 0), ...tag(c.id),
+    }))));
+    const original = ir.tracks.audioTracks.find((a) => a.id === "original");
     out.push(`- original audio (trackId "original"): ${original ? original.volumeDb : 0}dB`);
     // Measured edit style + the still-raw tail, so "complete / continue this video" follows the creator's own style.
     out.push(...describeEditStyle(deriveEditStyle(ir)));
@@ -522,6 +772,8 @@ export class CreativePlanner {
     return DeterministicPlanner.plan(prompt, context, graph, directorState, availableAssets);
   }
 }
+
+type CaptionLike = EditIR["tracks"]["captionTrack"][number];
 
 function truncate(s: string, n: number): string {
   return s.length > n ? `${s.slice(0, n)}…` : s;

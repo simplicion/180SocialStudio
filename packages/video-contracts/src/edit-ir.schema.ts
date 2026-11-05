@@ -39,6 +39,10 @@ export const TransformSchema = z.object({
    * Distinguishes an explicit "fit" choice from "no crop computed yet" (mobile `crop: null`).
    */
   letterbox: z.boolean().optional(),
+  /** Main track: follow the speaker with a moving crop (Phase 6.1); the projection turns it into `cropKeyframes`. */
+  reframeTrack: z.boolean().optional(),
+  /** How smoothly the moving crop follows (0..1, the reframeSubject smoothingFactor). */
+  reframeSmoothing: z.number().min(0).max(1).optional(),
   opacity: z.number().min(0).max(1).default(1.0),
   /** Normalized insets (0..1) of the source frame, after rotation/flip. */
   crop: z
@@ -218,6 +222,11 @@ export const VideoClipSchema = z.object({
    * Set by the AI Director; the phone runs it on the device, swaps in the processed file and clears the flag.
    */
   process: z.enum(["reverse", "stabilize", "remove_background"]).optional(),
+  /** Main track: moving framing, crop top-left at SOURCE ms (see MobileClipSchema.cropKeyframes, Phase 6.1). */
+  cropKeyframes: z.array(z.object({ sourceMs: z.number().int().min(0), x: z.number().min(0).max(1), y: z.number().min(0).max(1) })).max(240).optional(),
+  /** Main track: J-cut lead / L-cut lag of the clip's own sound, in ms (Phase 6.2). */
+  audioLeadMs: z.number().int().min(0).max(2000).optional(),
+  audioLagMs: z.number().int().min(0).max(2000).optional(),
 });
 
 export type VideoClip = z.infer<typeof VideoClipSchema>;
@@ -324,6 +333,13 @@ export const CaptionSegmentSchema = z.object({
     enter: TextEnterSchema.optional(),
     exit: TextExitSchema.optional(),
     loop: TextLoopSchema.optional(),
+    /** Text transform (Phase 6.5), see MobileCaptionStyleSchema. */
+    rotationDeg: z.number().min(-180).max(180).optional(),
+    scale: z.number().min(0.2).max(4).optional(),
+    transformKeyframes: z
+      .array(z.object({ atMs: z.number().int().min(0), rotationDeg: z.number().optional(), scale: z.number().optional(), positionX: z.number().optional(), positionY: z.number().optional() }))
+      .max(60)
+      .optional(),
   }),
 });
 
@@ -355,6 +371,8 @@ export const AudioTrackSchema = z.object({
       sourceQuery: z.string().optional(),
       fadeInDuration: RationalTimeSchema.optional(),
       fadeOutDuration: RationalTimeSchema.optional(),
+      /** SFX that plays its whole file (mobile `durationMs` absent); the ranges hold a placeholder length. */
+      fullFile: z.boolean().optional(),
     })
   ),
 });

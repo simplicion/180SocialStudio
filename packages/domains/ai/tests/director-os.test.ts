@@ -6,7 +6,7 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { MobileAIDirectRequestSchema, MobileAIDirectRequest, buildDirectorToolDefinitions, NEUTRALISED_MARKER, RationalTimeMath } from "@workspace/video-contracts";
+import { MobileAIDirectRequestSchema, MobileAIDirectRequest, buildDirectorToolDefinitions, NEUTRALISED_MARKER, RationalTimeMath, scopedTools, classifyDirectorIntentOffline } from "@workspace/video-contracts";
 import { VideoAIDirectorService } from "../src/builders/video-ai-director.service";
 import { InMemoryAgentEventStore, createAgentRunEmitter, sanitizeEventPayload } from "../src/agent-runs/agent-events";
 import type { AIClient, ToolCallResponse } from "../src/kernel/ai-provider.service";
@@ -79,21 +79,30 @@ test("the model can only ADD locks through finish_edit.preserve", async () => {
   assert.ok(res.constraints!.lockedTracks.includes("captions"));
 });
 
-test("autonomy: AUTO + safe ops => autoApplied; AUTO + unsafe => proposal; MANUAL => proposal; default ASSISTED", async () => {
+test("autonomy (F-09): AUTO + safe ops => autoApplied; AUTO + structural => proposal; MANUAL => proposal; ASSISTED applies only additive ops", async () => {
   const safe = () => mockClient([{ text: "", toolCalls: [tc("removeSilences", {}), tc("autoCaptions", {}), finish("Tightened + captions.")] }]).client;
   const auto = await director.directMobile(req("clean it up"), { llmClient: safe(), autonomy: { editing: "AUTO" } });
   assert.equal(auto.autoApplied, true);
   assert.equal(auto.requiresConfirmation, false);
-  const unsafe = mockClient([{ text: "", toolCalls: [tc("removeSilences", {}), tc("insertBroll", { stockQuery: "gym", timelineStartSec: 2, durationSec: 2 }), finish("x")] }]).client;
+  const unsafe = mockClient([{ text: "", toolCalls: [tc("removeSilences", {}), tc("changeSpeed", { clipId: "all", speed: 1.5 }), finish("x")] }]).client;
   const auto2 = await director.directMobile(req("clean it up"), { llmClient: unsafe, autonomy: { editing: "AUTO" } });
   assert.equal(auto2.autoApplied, false);
   assert.equal(auto2.requiresConfirmation, true);
   const manual = await director.directMobile(req("clean it up"), { llmClient: safe(), context: { warnings: [], brand: { projectId: "p", colors: {}, autonomy: { editing: "MANUAL", publishing: "MANUAL" } } } as any });
   assert.equal(manual.autoApplied, false);
   assert.equal(manual.requiresConfirmation, true);
+  // ASSISTED (the default): cutting pauses changes the footage, so it is a proposal the creator applies.
   const assisted = await director.directMobile(req("clean it up"), { llmClient: safe() });
   assert.equal(assisted.autoApplied, false);
-  assert.equal(assisted.requiresConfirmation, false);
+  assert.equal(assisted.requiresConfirmation, true);
+  // ... while an edit that only adds something is applied straight away.
+  const additive = mockClient([{ text: "", toolCalls: [tc("addZoom", { startSec: 1, durationSec: 1, scale: 1.2, targetCoords: { x: 0.5, y: 0.4 } }), finish("Zoom.")] }]).client;
+  const added = await director.directMobile(req("add a zoom at 1s"), { llmClient: additive });
+  assert.equal(added.autoApplied, true);
+  assert.equal(added.requiresConfirmation, false);
+  // The offline rule-based director never applies on its own.
+  const offline = await director.directMobile(req("add captions"), { llmClient: null });
+  assert.equal(offline.autoApplied, false);
 });
 
 test("critic + repair: unducked loud music is repaired by the model in one bounded round", async () => {
@@ -115,7 +124,8 @@ test("critic + repair: unducked loud music is repaired by the model in one bound
 test("critic + repair: a repair that does not help is discarded and the remaining issue is reported honestly", async () => {
   const { client, calls } = mockClient([
     { text: "", toolCalls: [tc("addBackgroundMusic", { query: "upbeat", volumeDb: -8, duckUnderSpeech: false }), finish("Added music.")] },
-    { text: "", toolCalls: [tc("addZoom", { startSec: 8, durationSec: 1, targetCoords: { x: 0.5, y: 0.4 } }), finish("zoom")] },
+    // A repair inside the request's scope (music) that does not fix the loud, unducked music.
+    { text: "", toolCalls: [tc("adjustVolume", { trackId: "music", volumeDb: -8 }), finish("same level")] },
   ]);
   const res = await director.directMobile(req("add upbeat music"), { llmClient: client, maxRepairRounds: 3 });
   assert.equal(calls.length, 2, "stops instead of looping");
@@ -176,8 +186,9 @@ test("fencing: an injection spoken in the video is fenced as data; tools and con
   assert.match(prompt, /SECURITY RULE/);
   assert.ok(prompt.includes(NEUTRALISED_MARKER));
   assert.ok(!/Ignore all previous instructions/i.test(prompt.replace(/## Creator's latest message[\s\S]*$/, "")));
-  // The edit tools are unchanged; the only addition is the chat tool the director talks through.
-  assert.deepEqual(calls[0].tools.map((t: any) => t.function.name), [...buildDirectorToolDefinitions().map((t) => t.function.name), "reply_to_creator"]);
+  // The tools are exactly those of the request's scope ("add captions"): the spoken injection changes nothing.
+  const scoped = new Set(scopedTools(classifyDirectorIntentOffline("add captions"), buildDirectorToolDefinitions().map((t) => t.function.name)) ?? []);
+  assert.deepEqual(calls[0].tools.map((t: any) => t.function.name), [...buildDirectorToolDefinitions().map((t) => t.function.name).filter((n) => n === "finish_edit" || scoped.has(n)), "reply_to_creator"]);
   assert.ok(res.warnings.some((w) => /instruction-like text/.test(w)));
   assert.equal(res.violations, undefined);
 });

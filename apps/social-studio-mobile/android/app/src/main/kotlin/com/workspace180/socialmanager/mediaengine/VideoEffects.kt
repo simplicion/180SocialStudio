@@ -436,15 +436,20 @@ class CaptionOverlay(
         val blockH = lineHeight * lines.size
         val lineWidths = lines.map { l -> if (l.isEmpty()) 0f else l.sumOf { it.slot.toDouble() }.toFloat() + space * (l.size - 1) }
         val blockW = lineWidths.maxOrNull() ?: 0f
-        val cx = (st.positionX * w).toFloat()
-        val cy = (st.positionY * h).toFloat()
+        // Text transform (rotationDeg / scale / transformKeyframes): its position replaces the style's, and its
+        // rotation and scale compose with the enter / exit / loop motion around the block centre.
+        val tr = TextTransform.at(st, cap.startMs, cap.endMs, t)
+        val cx = (tr.positionX * w).toFloat()
+        val cy = (tr.positionY * h).toFloat()
+        val rotation = tr.rotationDeg + motion.rotationDeg
+        val blockScale = tr.scale * motion.scale
         val top = cy - blockH / 2f
 
         // Motion: move, rotate and scale the whole block around its centre; fade through the paints' alpha.
         canvas.save()
         canvas.translate((motion.dx * w).toFloat(), (motion.dy * h).toFloat())
-        if (motion.rotationDeg != 0.0) canvas.rotate(motion.rotationDeg.toFloat(), cx, cy)
-        if (motion.scale != 1.0) canvas.scale(motion.scale.toFloat(), motion.scale.toFloat(), cx, cy)
+        if (rotation != 0.0) canvas.rotate(rotation.toFloat(), cx, cy)
+        if (blockScale != 1.0) canvas.scale(blockScale.toFloat(), blockScale.toFloat(), cx, cy)
         val alpha = (motion.opacity * 255).toInt().coerceIn(0, 255)
 
         st.background?.let { b ->
@@ -601,5 +606,52 @@ class WatermarkOverlay(
         }
         canvas.drawBitmap(bitmap, null, dst, paint)
     }
+}
+
+/**
+ * Moving framing of a clip (contract `cropKeyframes`): translates the picture so the crop window at the current
+ * SOURCE time ([CropPath.at]) lands where the static `crop` window is; the static Crop effect that follows then
+ * shows the moving window at a constant size. Placed per item, before the crop.
+ *
+ * Source time is anchored on the item's first frame: frame [anchorSourceMs] is the first one this effect sees, and
+ * later frames advance by their timestamp delta times [speed] (Media3 1.11 applies EditedMediaItem speed in the media
+ * source, so item effects see output-time stamps). The export decodes every item from its first frame. The preview can start
+ * part-way into an item after a seek, so it calls [reanchorAtTimeline] with the seek target first.
+ */
+@UnstableApi
+class CropPanTransformation(
+    private val crop: IrCrop,
+    private val keyframes: List<IrCropKeyframe>,
+    private val anchorSourceMs: Double,
+    private val itemTimelineStartMs: Double,
+    private val itemTimelineEndMs: Double,
+    private val speed: Double,
+    /** A still: one source instant, the framing does not move. */
+    private val frozen: Boolean = false,
+) : MatrixTransformation {
+    @Volatile private var baseUs: Long? = null
+    @Volatile private var pendingSourceMs: Double? = null
+
+    /** The next frame this item shows is timeline [timelineMs] (a preview seek); ignored outside this item. */
+    fun reanchorAtTimeline(timelineMs: Double) {
+        if (frozen || timelineMs < itemTimelineStartMs || timelineMs >= itemTimelineEndMs) return
+        pendingSourceMs = anchorSourceMs + (timelineMs - itemTimelineStartMs) * speed
+    }
+
+    override fun getMatrix(presentationTimeUs: Long): Matrix {
+        val sourceMs = if (frozen) anchorSourceMs else {
+            pendingSourceMs?.let { s ->
+                baseUs = presentationTimeUs - ((s - anchorSourceMs) / speed * 1000).toLong()
+                pendingSourceMs = null
+            }
+            val base = baseUs ?: presentationTimeUs.also { baseUs = it }
+            anchorSourceMs + (presentationTimeUs - base) / 1000.0 * speed
+        }
+        val (dx, dy) = CropPath.shiftAt(crop, keyframes, sourceMs)
+        // Frame fractions (y down) to NDC (y up, 2 units across).
+        return Matrix().apply { setTranslate((2 * dx).toFloat(), (-2 * dy).toFloat()) }
+    }
+
+    override fun isNoOp(inputWidth: Int, inputHeight: Int): Boolean = keyframes.isEmpty()
 }
 

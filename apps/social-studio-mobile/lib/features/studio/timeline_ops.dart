@@ -176,17 +176,28 @@ class TimelineOps {
   /// Speech intervals on the timeline from source-time transcript words (gaps < 300 ms merge).
   static List<List<int>> speechRanges(
     List<TranscriptWord> words,
-    MobileEditIr ir,
-  ) {
+    MobileEditIr ir, {
+    String assetId = 'primary',
+  }) =>
+      speechRangesAll({assetId: words}, ir);
+
+  /// Speech on the timeline from the words of every source (Phase 4: clips 2..N duck the music too).
+  static List<List<int>> speechRangesAll(Map<String, List<TranscriptWord>> wordsByAsset, MobileEditIr ir) {
     final out = <List<int>>[];
-    for (final w in words) {
-      final s = sourceToTimeline(ir, w.startMs);
-      final e = sourceToTimeline(ir, math.max(w.startMs, w.endMs - 1));
-      if (s == null || e == null || e < s) continue;
-      if (out.isNotEmpty && s - out.last[1] < 300 && s >= out.last[0]) {
-        out.last[1] = math.max(out.last[1], e + 1);
-      } else {
+    for (final entry in wordsByAsset.entries) {
+      for (final w in entry.value) {
+        final s = sourceToTimeline(ir, w.startMs, assetId: entry.key);
+        final e = sourceToTimeline(ir, math.max(w.startMs, w.endMs - 1), assetId: entry.key);
+        if (s == null || e == null || e < s) continue;
         out.add([s, e + 1]);
+      }
+    }
+    out.sort((a, b) => a[0].compareTo(b[0]));
+    // Words closer than 300 ms are one stretch of speech.
+    for (var i = out.length - 1; i > 0; i--) {
+      if (out[i][0] - out[i - 1][1] < 300) {
+        out[i - 1][1] = math.max(out[i - 1][1], out[i][1]);
+        out.removeAt(i);
       }
     }
     out.sort((a, b) => a[0].compareTo(b[0]));
@@ -201,18 +212,33 @@ class TimelineOps {
     return merged.where((r) => r[1] > r[0]).toList();
   }
 
-  static List<EditIrClip> _relayout(List<EditIrClip> clips) {
+  /// Clip ends land on frame boundaries (Phase 6.7): an end that is not within 1.5 ms of a frame moves back to the
+  /// previous one (at most one frame shorter). Already-snapped ends never move, so repeated edits are stable.
+  static ({int len, int sourceEndMs}) _snapToFrame(EditIrClip c, int t, int len, num? fps) {
+    if (fps == null || fps <= 0 || len <= 0) return (len: len, sourceEndMs: c.sourceEndMs);
+    final frame = 1000 / fps;
+    final end = t + len;
+    final frames = end / frame;
+    if ((end - frames.round() * frame).abs() <= 1.5) return (len: len, sourceEndMs: c.sourceEndMs);
+    final snapped = (frames.floor() * frame).round();
+    if (snapped - t < frame) return (len: len, sourceEndMs: c.sourceEndMs); // shorter than a frame: left alone
+    final srcEnd = c.sourceStartMs + ((snapped - t) * c.speed).round();
+    return (len: ((srcEnd - c.sourceStartMs) / c.speed).round(), sourceEndMs: srcEnd);
+  }
+
+  static List<EditIrClip> _relayout(List<EditIrClip> clips, {num? fps}) {
     var t = 0;
     return [
       for (var i = 0; i < clips.length; i++)
         () {
           final c = clips[i];
-          final len = ((c.sourceEndMs - c.sourceStartMs) / c.speed).round();
+          final snap = _snapToFrame(c, t, ((c.sourceEndMs - c.sourceStartMs) / c.speed).round(), fps);
+          final len = snap.len;
           final out = EditIrClip(
             id: c.id,
             assetId: c.assetId,
             sourceStartMs: c.sourceStartMs,
-            sourceEndMs: c.sourceEndMs,
+            sourceEndMs: snap.sourceEndMs,
             timelineStartMs: t,
             timelineEndMs: t + len,
             speed: c.speed,
@@ -226,6 +252,10 @@ class TimelineOps {
             audioFadeOutMs: c.audioFadeOutMs,
             voiceCleanup: c.voiceCleanup,
             process: c.process,
+            cropKeyframes: c.cropKeyframes,
+            // A J-cut needs a clip before it, an L-cut one after it.
+            audioLeadMs: i == 0 ? 0 : c.audioLeadMs,
+            audioLagMs: i == clips.length - 1 ? 0 : c.audioLagMs,
           );
           t += len;
           return out;
@@ -244,7 +274,7 @@ class TimelineOps {
         'A video needs at least one clip.',
       );
     }
-    final laid = _relayout(newClips);
+    final laid = _relayout(newClips, fps: ir.canvas.fps);
     final segs = <_Seg>[];
     for (final n in laid) {
       bool covers(EditIrClip o) => o.assetId == n.assetId && n.sourceStartMs >= o.sourceStartMs && n.sourceEndMs <= o.sourceEndMs;
@@ -359,6 +389,7 @@ class TimelineOps {
       durationMs: duration,
       sources: ir.sources,
       watermark: ir.watermark,
+      itemMeta: ir.itemMeta,
       clips: laid,
       overlays: overlays,
       captions: captions..sort((a, b) => a.startMs.compareTo(b.startMs)),
@@ -484,6 +515,9 @@ class TimelineOps {
     int? audioFadeInMs,
     int? audioFadeOutMs,
     bool? voiceCleanup,
+    List<EditIrCropKeyframe>? cropKeyframes,
+    int? audioLeadMs,
+    int? audioLagMs,
   }) => EditIrClip(
     id: id ?? c.id,
     assetId: c.assetId,
@@ -502,6 +536,10 @@ class TimelineOps {
     audioFadeOutMs: audioFadeOutMs ?? c.audioFadeOutMs,
     voiceCleanup: voiceCleanup ?? c.voiceCleanup,
     process: c.process,
+    // Framing set by hand replaces the moving framing (the path was made for the old window).
+    cropKeyframes: cropKeyframes ?? (crop != null || clearCrop ? const [] : c.cropKeyframes),
+    audioLeadMs: audioLeadMs ?? c.audioLeadMs,
+    audioLagMs: audioLagMs ?? c.audioLagMs,
   );
 
   static int clipIndexAt(MobileEditIr ir, int timelineMs) {
@@ -534,8 +572,9 @@ class TimelineOps {
     }
     final clips = [...ir.clips]
       ..replaceRange(i, i + 1, [
-        _clip(c, sourceEndMs: at, audioFadeOutMs: 0),
-        _clip(c, id: _id('c'), sourceStartMs: at, clearTransition: true, audioFadeInMs: 0),
+        // A split is seamless: the J-cut lead stays at the front, the L-cut lag at the back.
+        _clip(c, sourceEndMs: at, audioFadeOutMs: 0, audioLagMs: 0),
+        _clip(c, id: _id('c'), sourceStartMs: at, clearTransition: true, audioFadeInMs: 0, audioLeadMs: 0),
       ]);
     return _replaceClips(ir, clips);
   }
@@ -832,7 +871,8 @@ class TimelineOps {
     );
     // Same length within a frame: everything else keeps its place.
     final clips = [...ir.clips]..[index] = clip;
-    return ir.copyWith(sources: sources, clips: _relayout(clips), durationMs: _relayout(clips).last.timelineEndMs);
+    final laid = _relayout(clips, fps: ir.canvas.fps);
+    return ir.copyWith(sources: sources, clips: laid, durationMs: laid.last.timelineEndMs);
   }
 
   /// The crossfade layer on screen at [tMs], mirroring `crossfades` in the Android renderer: the incoming clip's
@@ -910,6 +950,20 @@ class TimelineOps {
   }
 
   /// Fades the clip's own sound in / out (0 = off). Each fade is at most half the clip.
+  /// J-cut / L-cut on clip [index] (Phase 6.2): [leadMs] = its sound starts that early, over the previous clip;
+  /// [lagMs] = its sound carries on over the next clip. Clamped to the footage before / after the clip and to half of
+  /// the neighbouring clip (the renderer plays the extra source sound).
+  static MobileEditIr setJLCut(MobileEditIr ir, int index, {int? leadMs, int? lagMs}) {
+    if (index < 0 || index >= ir.clips.length) throw MediaEngineException('INVALID_EDIT', 'That clip is no longer on the timeline.');
+    final c = ir.clips[index];
+    final src = ir.sources.where((s) => s.assetId == c.assetId).firstOrNull;
+    int half(int i) => i < 0 || i >= ir.clips.length ? 0 : (ir.clips[i].timelineEndMs - ir.clips[i].timelineStartMs) ~/ 2;
+    final lead = leadMs == null ? c.audioLeadMs : math.min(leadMs, math.min(half(index - 1), (c.sourceStartMs / c.speed).floor())).clamp(0, 2000).toInt();
+    final after = src == null ? 0 : ((src.durationMs - c.sourceEndMs) / c.speed).floor();
+    final lag = lagMs == null ? c.audioLagMs : math.min(lagMs, math.min(half(index + 1), after)).clamp(0, 2000).toInt();
+    return _copy(ir, clips: [...ir.clips]..[index] = _clip(c, audioLeadMs: lead, audioLagMs: lag));
+  }
+
   static MobileEditIr setClipAudioFades(MobileEditIr ir, {required int fadeInMs, required int fadeOutMs, int? index}) {
     if (fadeInMs < 0 || fadeOutMs < 0) throw MediaEngineException('INVALID_EDIT', 'Fades cannot be negative.');
     final targets = _targets(ir, index).toSet();
@@ -1786,7 +1840,10 @@ class TimelineOps {
     int height = 1920,
     bool prepend = false,
     int? atIndex,
+    ({double x, double y})? focus,
   }) {
+    // Framed like the first clip: filled to the canvas, centred on the speaker when known (F-11). [width] / [height]
+    // are the DISPLAY size (rotation applied), so portrait phone footage is not treated as landscape.
     final clip = EditIrClip(
       id: _id('c'),
       assetId: assetId,
@@ -1794,6 +1851,7 @@ class TimelineOps {
       sourceEndMs: durationMs,
       timelineStartMs: 0,
       timelineEndMs: durationMs,
+      crop: centerCrop(width, height, ir.canvas, focus: focus),
     );
     final clips = [...ir.clips];
     if (prepend) {
@@ -1846,27 +1904,45 @@ class TimelineOps {
   static MobileEditIr setOriginalVolume(MobileEditIr ir, double db) =>
       _withAudio(ir, originalVolumeDb: db.clamp(-60.0, 12.0));
 
-  /// Background music under the whole video from an HTTPS [url] or local file path.
+  /// Source of an audio file for music / SFX: a device-asset reference ([source], from
+  /// `StudioController.localMediaSource`), an HTTPS [url], or (legacy) a raw local path.
+  /// Plain-http links are refused: the server and the renderers only fetch HTTPS (F-05).
+  static Map<String, dynamic> _audioSource({String? url, Map<String, dynamic>? source, String? title, required String what}) {
+    if (source != null) {
+      if (source['kind'] != 'asset' || '${source['assetId'] ?? ''}'.isEmpty) {
+        throw MediaEngineException('INVALID_EDIT', '$what must be a file on this phone or an HTTPS link.');
+      }
+      return {...source, 'query': ?title, 'title': ?title};
+    }
+    final u = url ?? '';
+    final uri = Uri.tryParse(u);
+    if (uri != null && uri.isScheme('http')) {
+      throw MediaEngineException('INVALID_EDIT', '$what links must be HTTPS.');
+    }
+    if (uri != null && uri.isScheme('https')) return {'kind': 'url', 'url': u, 'query': ?title, 'title': ?title};
+    final isLocal = u.startsWith('/') || u.contains(':\\') || u.startsWith('file://');
+    if (!isLocal) throw MediaEngineException('INVALID_EDIT', '$what must be a valid file or HTTPS link.');
+    return {'kind': 'file', 'path': u, 'query': ?title, 'title': ?title};
+  }
+
+  /// Background music under the whole video from an HTTPS [url], or a file on this phone ([source] =
+  /// `{kind: asset, assetId}` from `StudioController.localMediaSource`; never a raw path, which the server rejects).
   static MobileEditIr setMusic(
     MobileEditIr ir, {
-    required String url,
+    String? url,
+    Map<String, dynamic>? source,
     String? title,
     double volumeDb = -16,
     int fadeInMs = 500,
     int fadeOutMs = 1000,
     bool duckUnderSpeech = true,
   }) {
-    final uri = Uri.tryParse(url);
-    final isHttp = uri != null && (uri.isScheme('https') || uri.isScheme('http'));
-    final isLocal = url.startsWith('/') || url.contains(':\\') || url.startsWith('file://');
-    if (!isHttp && !isLocal) {
-      throw MediaEngineException('INVALID_EDIT', 'Music must be a valid file or URL.');
-    }
+    final src = _audioSource(url: url, source: source, title: title, what: 'Music');
     final m = EditIrMusic(
       id: ir.audio.music.firstOrNull?.id ?? _id('m'),
       timelineStartMs: 0,
       timelineEndMs: ir.durationMs,
-      source: isHttp ? {'kind': 'url', 'url': url, 'query': ?title, 'title': ?title} : {'kind': 'file', 'path': url, 'query': ?title, 'title': ?title},
+      source: src,
       volumeDb: volumeDb,
       fadeInMs: fadeInMs,
       fadeOutMs: fadeOutMs,
@@ -1877,55 +1953,96 @@ class TimelineOps {
     return _withAudio(ir, music: [m]);
   }
 
+  /// Changes one music bed ([id], default the first); the other beds stay as they are.
   static MobileEditIr updateMusic(
     MobileEditIr ir, {
+    String? id,
     double? volumeDb,
     int? fadeInMs,
     int? fadeOutMs,
     bool? duck,
   }) {
-    final m = ir.audio.music.firstOrNull;
+    final m = id == null ? ir.audio.music.firstOrNull : ir.audio.music.where((x) => x.id == id).firstOrNull;
     if (m == null) {
-      throw MediaEngineException('INVALID_EDIT', 'Add music first.');
+      throw MediaEngineException('INVALID_EDIT', id == null ? 'Add music first.' : 'That music is no longer on the timeline.');
     }
     return _withAudio(
       ir,
       music: [
-        _music(
-          m,
-          volumeDb: volumeDb,
-          fadeInMs: fadeInMs,
-          fadeOutMs: fadeOutMs,
-          duck: duck == null
-              ? null
-              : EditIrDuck(enabled: duck && ir.audio.speechRangesMs.isNotEmpty),
-        ),
+        for (final x in ir.audio.music)
+          x.id == m.id
+              ? _music(
+                  x,
+                  volumeDb: volumeDb,
+                  fadeInMs: fadeInMs,
+                  fadeOutMs: fadeOutMs,
+                  duck: duck == null ? null : EditIrDuck(enabled: duck && ir.audio.speechRangesMs.isNotEmpty),
+                )
+              : x,
       ],
     );
   }
 
-  static MobileEditIr removeMusic(MobileEditIr ir) =>
-      _withAudio(ir, music: []);
+  /// Removes one music bed ([id]), or all of them.
+  static MobileEditIr removeMusic(MobileEditIr ir, {String? id}) =>
+      _withAudio(ir, music: id == null ? [] : ir.audio.music.where((m) => m.id != id).toList());
+
+  /// Most music beds a video may have (contract `audio.music`, Phase 6.6).
+  static const maxMusicBeds = 4;
+
+  /// A music bed for part of the video ([startMs]..[endMs]): a music change or a stinger. Beds never overlap.
+  static MobileEditIr addMusicBed(
+    MobileEditIr ir, {
+    String? url,
+    Map<String, dynamic>? source,
+    String? title,
+    required int startMs,
+    required int endMs,
+    double volumeDb = -16,
+    int fadeInMs = 300,
+    int fadeOutMs = 600,
+    bool duckUnderSpeech = true,
+  }) {
+    final s = startMs.clamp(0, math.max(0, ir.durationMs - 300)).toInt();
+    final e = math.min(endMs, ir.durationMs);
+    if (e - s < 300) throw MediaEngineException('INVALID_EDIT', 'A music bed needs at least 0.3 s.');
+    if (ir.audio.music.length >= maxMusicBeds) throw MediaEngineException('INVALID_EDIT', 'A video has at most $maxMusicBeds music beds.');
+    if (ir.audio.music.any((m) => s < m.timelineEndMs && e > m.timelineStartMs)) {
+      throw MediaEngineException('INVALID_EDIT', 'That part already has music. Shorten it first: beds play one after another.');
+    }
+    final half = (e - s) ~/ 2;
+    final m = EditIrMusic(
+      id: _id('m'),
+      timelineStartMs: s,
+      timelineEndMs: e,
+      source: _audioSource(url: url, source: source, title: title, what: 'Music'),
+      volumeDb: volumeDb,
+      fadeInMs: math.min(fadeInMs, half),
+      fadeOutMs: math.min(fadeOutMs, half),
+      duck: EditIrDuck(enabled: duckUnderSpeech && ir.audio.speechRangesMs.isNotEmpty),
+    );
+    return _withAudio(ir, music: [...ir.audio.music, m]..sort((a, b) => a.timelineStartMs.compareTo(b.timelineStartMs)));
+  }
 
   // ── Sound effects ──────────────────────────────────────────────────────────
 
   static const maxSfx = 40;
 
-  /// One-shot sound effect at [startMs] from an HTTPS [url] or local file. [credit] is kept for export attribution.
+  /// One-shot sound effect at [startMs] from an HTTPS [url] or a file on this phone ([source], see [setMusic]).
+  /// [durationMs] null = play the whole file. [credit] is kept for export attribution.
   static MobileEditIr addSfx(
     MobileEditIr ir, {
-    required String url,
+    String? url,
+    Map<String, dynamic>? source,
     required int startMs,
     int? durationMs,
     double volumeDb = -8,
     String? credit,
     String? name,
   }) {
-    final isHttp = url.startsWith('https://') || url.startsWith('http://');
-    final isLocal = url.startsWith('/') || url.contains(':\\') || url.startsWith('file://');
-    if (!isHttp && !isLocal) {
-      throw MediaEngineException('INVALID_EDIT', 'Sound effect audio source is invalid.');
-    }
+    final src = _audioSource(url: url, source: source, what: 'Sound effect');
+    src.remove('query');
+    src.remove('title');
     if (ir.audio.sfx.length >= maxSfx) {
       throw MediaEngineException('INVALID_EDIT', 'This video already has $maxSfx sound effects.');
     }
@@ -1934,7 +2051,7 @@ class TimelineOps {
       id: _id('sfx'),
       timelineStartMs: s,
       durationMs: durationMs == null ? null : math.max(100, math.min(durationMs, ir.durationMs - s)),
-      source: isHttp ? {'kind': 'url', 'url': url} : {'kind': 'file', 'path': url},
+      source: src,
       volumeDb: volumeDb.clamp(-60.0, 12.0),
       credit: credit ?? name,
     );
@@ -1945,6 +2062,14 @@ class TimelineOps {
         for (final e in ir.audio.sfx)
           e.id == id
               ? EditIrSfx(id: e.id, timelineStartMs: e.timelineStartMs, durationMs: e.durationMs, source: e.source, volumeDb: db.clamp(-60.0, 12.0), credit: e.credit)
+              : e,
+      ]);
+
+  /// Points sound effect [id] at another file (same timing, level and credit).
+  static MobileEditIr setSfxSource(MobileEditIr ir, String id, Map<String, dynamic> source) => _withSfx(ir, [
+        for (final e in ir.audio.sfx)
+          e.id == id
+              ? EditIrSfx(id: e.id, timelineStartMs: e.timelineStartMs, durationMs: e.durationMs, source: source, volumeDb: e.volumeDb, credit: e.credit)
               : e,
       ]);
 

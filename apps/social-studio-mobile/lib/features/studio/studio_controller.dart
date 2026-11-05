@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -14,8 +15,10 @@ import '../../core/network/audio_transcription_service.dart';
 import '../director/ai_director_service.dart';
 import 'caption_fonts.dart';
 import 'caption_languages.dart';
+import 'clip_analysis.dart';
 import 'sticker_maker.dart';
 import 'studio_drafts_service.dart';
+import 'timeline_merge.dart';
 import 'timeline_ops.dart';
 
 enum TranscriptState { idle, running, ready, failed }
@@ -27,8 +30,27 @@ class DirectorMessage {
     this.response,
     this.applied = false,
     this.error,
+    this.baseIr,
+    this.baseRevision,
+    this.prompt,
+    this.structuralConflict = false,
+    this.appliedIr,
   });
   final bool fromUser;
+
+  /// The timeline right after this turn was applied: when undo leaves it, the turn counts as undone (F-16).
+  final MobileEditIr? appliedIr;
+
+  /// The timeline the Director's response was computed from: a response applied after newer edits is merged onto
+  /// them from this base, never swapped in wholesale (audit F-01, F-02).
+  final MobileEditIr? baseIr;
+  final int? baseRevision;
+
+  /// What the creator asked for in this turn (to re-run it on the latest timeline).
+  final String? prompt;
+
+  /// The creator and the Director both changed the cuts: the response was not applied; the chat offers a choice.
+  final bool structuralConflict;
 
   /// What the chat shows. For a failed turn this is a friendly sentence; the raw failure is in [error].
   final String text;
@@ -41,12 +63,17 @@ class DirectorMessage {
   /// A director turn that failed (the chat offers "Try again", see [StudioController.retryLastDirectorTurn]).
   bool get failed => error != null;
 
-  DirectorMessage copyWith({bool? applied}) => DirectorMessage(
+  DirectorMessage copyWith({bool? applied, bool? structuralConflict, MobileEditIr? appliedIr}) => DirectorMessage(
     fromUser: fromUser,
     text: text,
     response: response,
     applied: applied ?? this.applied,
     error: error,
+    baseIr: baseIr,
+    baseRevision: baseRevision,
+    prompt: prompt,
+    structuralConflict: structuralConflict ?? this.structuralConflict,
+    appliedIr: appliedIr ?? this.appliedIr,
   );
 }
 
@@ -134,6 +161,7 @@ class StudioController extends ChangeNotifier {
     }
     _greeted = true;
     directorBusy = true;
+    final baseRevision = revision;
     _notify();
     try {
       final r = await director.direct(
@@ -145,10 +173,11 @@ class StudioController extends ChangeNotifier {
         calendarPieceId: pieceId,
         postId: postId,
         currentEditIR: ir.toJson(),
+        baseRevision: baseRevision,
       );
       r.editIr.validate();
       messages.add(
-        DirectorMessage(fromUser: false, text: r.reply, response: r),
+        DirectorMessage(fromUser: false, text: r.reply, response: r, baseIr: ir, baseRevision: baseRevision),
       );
     } catch (_) {
       // Optional opening turn: the user can still direct the edit themselves.
@@ -164,7 +193,18 @@ class StudioController extends ChangeNotifier {
   final Map<String, String> sourcePaths = {};
   final Map<String, String> proxyPaths = {};
   VideoMetadata? meta;
-  MobileEditIr? _ir;
+  MobileEditIr? _irValue;
+
+  /// Bumped on every timeline change (manual edit, gesture step, undo / redo, Director turn, draft load). A Director
+  /// response made from an older revision is merged, not swapped in.
+  int revision = 0;
+
+  MobileEditIr? get _ir => _irValue;
+  set _ir(MobileEditIr? v) {
+    if (identical(v, _irValue)) return;
+    _irValue = v;
+    revision++;
+  }
   final List<MobileEditIr> _undo = [];
   final List<MobileEditIr> _redo = [];
 
@@ -242,33 +282,30 @@ class StudioController extends ChangeNotifier {
   Future<VideoMetadata> _inspectVideoWithPlayer(String path) async {
     final remote = kIsWeb || path.startsWith('http://') || path.startsWith('https://');
     final controller = remote ? VideoPlayerController.networkUrl(Uri.parse(path)) : VideoPlayerController.file(File(path));
+    // Never invented numbers (F-12): a timeline built on a guessed length or size exports truncated or fails.
     try {
       await controller.initialize();
+    } catch (e) {
+      throw MediaEngineException('PROBE_FAILED', 'This video could not be opened on this device ($e).');
+    }
+    try {
       final d = controller.value.duration.inMilliseconds;
       final w = controller.value.size.width.toInt();
       final h = controller.value.size.height.toInt();
+      if (d <= 0 || w <= 0 || h <= 0) {
+        throw MediaEngineException('PROBE_FAILED', 'The length or size of this video could not be read.');
+      }
       return VideoMetadata(
-        durationMs: d > 0 ? d : 10000,
-        width: w > 0 ? w : 1080,
-        height: h > 0 ? h : 1920,
+        durationMs: d,
+        width: w,
+        height: h,
         rotation: 0,
-        displayWidth: w > 0 ? w : 1080,
-        displayHeight: h > 0 ? h : 1920,
+        displayWidth: w,
+        displayHeight: h,
         hasVideo: true,
+        // The player cannot tell whether there is sound: it is tried, and transcription reports it if there is none.
         hasAudio: true,
-        frameRate: 30.0,
-      );
-    } catch (_) {
-      return VideoMetadata(
-        durationMs: 15000,
-        width: 1080,
-        height: 1920,
-        rotation: 0,
-        displayWidth: 1080,
-        displayHeight: 1920,
-        hasVideo: true,
-        hasAudio: true,
-        frameRate: 30.0,
+        frameRate: null,
       );
     } finally {
       await controller.dispose();
@@ -362,6 +399,11 @@ class StudioController extends ChangeNotifier {
       sourcePaths['main'] = draft.sourcePath;
     }
     _ir = _migrateLocalOverlays(draft.ir);
+    // Every other source of the draft is analysed again (the analysis is not stored in the draft).
+    for (final id in _ir!.clips.map((c) => c.assetId).toSet()) {
+      final p = pathForAsset(id);
+      if (id != 'primary' && p != null) _queueClipAnalysis(id, p);
+    }
     unawaited(prefetchRemoteMedia());
     unawaited(materializeEmojiStickers(_ir!).then((_) => _notify(), onError: (_) {}));
     playheadMs = draft.playheadMs.clamp(0, draft.ir.durationMs);
@@ -448,6 +490,7 @@ class StudioController extends ChangeNotifier {
         durationMs: ir.durationMs,
         sources: ir.sources,
         watermark: ir.watermark,
+        itemMeta: ir.itemMeta,
         clips: ir.clips,
         overlays: ir.overlays,
         captions: ir.captions,
@@ -456,7 +499,7 @@ class StudioController extends ChangeNotifier {
         audio: EditIrAudio(
           originalVolumeDb: ir.audio.originalVolumeDb,
           music: ir.audio.music,
-          speechRangesMs: TimelineOps.speechRanges(transcriptWords, ir),
+          speechRangesMs: TimelineOps.speechRangesAll({..._wordsByAsset, 'primary': transcriptWords}, ir),
           sfx: ir.audio.sfx,
           voiceovers: ir.audio.voiceovers,
         ),
@@ -585,6 +628,7 @@ class StudioController extends ChangeNotifier {
           durationMs: ir.durationMs,
           sources: ir.sources,
           watermark: ir.watermark,
+          itemMeta: ir.itemMeta,
           clips: ir.clips,
           overlays: ir.overlays,
           captions: ir.captions,
@@ -593,7 +637,7 @@ class StudioController extends ChangeNotifier {
           audio: EditIrAudio(
             originalVolumeDb: ir.audio.originalVolumeDb,
             music: ir.audio.music,
-            speechRangesMs: TimelineOps.speechRanges(t.words, ir),
+            speechRangesMs: TimelineOps.speechRangesAll({..._wordsByAsset, 'primary': t.words}, ir),
             sfx: ir.audio.sfx,
             voiceovers: ir.audio.voiceovers,
           ),
@@ -686,6 +730,35 @@ class StudioController extends ChangeNotifier {
     }
   }
 
+  /// Freeze frames the AI Director placed reference `freeze:<assetId>@<sourceMs>`: the exact frame is captured here,
+  /// on the phone, before the edit is shown (like the manual Freeze tool). Already-captured ones are reused.
+  Future<void> materializeFreezeFrames(MobileEditIr ir) async {
+    if (kIsWeb) return;
+    for (final c in ir.clips) {
+      final id = c.assetId;
+      if (!id.startsWith('freeze:')) continue;
+      final existing = sourcePaths[id];
+      if (existing != null && File(existing).existsSync()) continue;
+      final at = id.lastIndexOf('@');
+      final from = at > 7 ? id.substring(7, at) : '';
+      final ms = at > 0 ? int.tryParse(id.substring(at + 1)) : null;
+      final path = pathForAsset(from);
+      if (path == null || ms == null) {
+        throw MediaEngineException('FILE_NOT_FOUND', 'The clip to freeze is no longer on this phone.');
+      }
+      final docs = await getApplicationDocumentsDirectory();
+      final frames = await MediaEngineService.generateThumbnails(
+        sourcePath: path,
+        outputDir: '${docs.path}/stills/${DateTime.now().microsecondsSinceEpoch}',
+        timesMs: [ms],
+        maxWidth: 1920,
+        exact: true,
+      );
+      if (frames.isEmpty) throw MediaEngineException('NATIVE_ERROR', 'The frame could not be captured.');
+      sourcePaths[id] = frames.first;
+    }
+  }
+
   /// Corrects generated narration to its real spoken length (the server can only estimate it).
   MobileEditIr _withGeneratedDurations(MobileEditIr ir) {
     var out = ir;
@@ -713,7 +786,7 @@ class StudioController extends ChangeNotifier {
   void apply(MobileEditIr Function(MobileEditIr ir) edit) {
     final current = _ir;
     if (current == null) return;
-    final next = edit(current);
+    final next = _markManual(current, edit(current));
     // A gesture still open (drag on the preview) is folded into this edit: one undo step restores the state before both.
     _push(_liveStart ?? current);
     _liveStart = null;
@@ -725,7 +798,61 @@ class StudioController extends ChangeNotifier {
   void applyWithoutHistory(MobileEditIr Function(MobileEditIr ir) edit) {
     final current = _ir;
     if (current == null) return;
-    _setTimeline(edit(current));
+    _setTimeline(_markManual(current, edit(current)));
+  }
+
+  /// Items a manual edit created are the creator's own (`origin: manual`): the Director then changes them only when
+  /// asked, and never sweeps them away (F-21).
+  MobileEditIr _markManual(MobileEditIr before, MobileEditIr after) {
+    final fresh = after.itemIds.difference(before.itemIds).where((id) => after.itemMeta[id]?.origin == null);
+    if (fresh.isEmpty) return after;
+    return after.copyWith(itemMeta: {
+      ...after.itemMeta,
+      for (final id in fresh) id: EditIrItemMeta(origin: 'manual', locked: after.itemMeta[id]?.locked ?? false),
+    });
+  }
+
+  /// Locks or unlocks a timeline item: the AI Director will not change or remove a locked item.
+  void toggleItemLock(String id) {
+    final ir = _ir;
+    if (ir == null || !ir.itemIds.contains(id)) return;
+    apply((cur) => cur.withItemMeta(id, locked: !cur.isLocked(id)));
+  }
+
+  bool isItemLocked(String id) => _ir?.isLocked(id) ?? false;
+
+  /// Director-applied timelines the creator has undone (identity), for the history the Director sees.
+  final Set<MobileEditIr> _undoneDirectorStates = Set.identity();
+
+  /// When each Director turn's result was applied (identity of the applied timeline), for the regret rate: a turn the
+  /// creator undoes within 30 s is reported as such (Phase 7.2).
+  final Map<MobileEditIr, ({DateTime at, DirectorResponse r})> _appliedTurns = Map.identity();
+
+  void _reportApplied(DirectorResponse r, MobileEditIr applied, {int conflicts = 0}) {
+    _appliedTurns[applied] = (at: DateTime.now(), r: r);
+    final pid = projectId;
+    if (pid == null || pid == 'local') return;
+    unawaited(director.sendFeedback(
+      projectId: pid,
+      accepted: true,
+      runId: r.runId,
+      summary: conflicts > 0 ? 'applied, merged with the creator\'s edits ($conflicts conflict(s) kept theirs)' : 'applied',
+      operations: [for (final o in r.operations) '${o['type'] ?? o['op'] ?? ''}'],
+    ));
+  }
+
+  void _reportUndone(MobileEditIr undone) {
+    final t = _appliedTurns[undone];
+    final pid = projectId;
+    if (t == null || pid == null || pid == 'local') return;
+    final secs = DateTime.now().difference(t.at).inSeconds;
+    unawaited(director.sendFeedback(
+      projectId: pid,
+      accepted: false,
+      runId: t.r.runId,
+      summary: secs <= 30 ? 'undone within 30 s of applying (regret)' : 'undone ${secs}s after applying',
+      operations: [for (final o in t.r.operations) '${o['type'] ?? o['op'] ?? ''}'],
+    ));
   }
 
   /// Timeline before the gesture in progress (drag on the preview); null when no gesture is open.
@@ -779,15 +906,234 @@ class StudioController extends ChangeNotifier {
     if (!kIsWeb && (info.displayWidth > 1080 || info.displayHeight > 1080)) {
       unawaited(_generateProxy(assetId, path));
     }
+    // The DISPLAY size (rotation applied): portrait phone footage is registered as portrait (F-11).
     apply((ir) => TimelineOps.addTimelineClip(
       ir,
       assetId: assetId,
       durationMs: info.durationMs,
-      width: info.width,
-      height: info.height,
+      width: info.displayWidth,
+      height: info.displayHeight,
       prepend: prepend,
       atIndex: atIndex,
     ));
+    // Analysed like the first clip, so the AI Director can caption, clean and frame it (F-10).
+    _queueClipAnalysis(assetId, path, info: info);
+  }
+
+  // ── Analysis of every clip (Phase 4) ───────────────────────────────────────
+
+  /// Analysis of each source other than the primary one, by assetId (one file can back several assets).
+  final Map<String, ClipAnalysis> clipAnalyses = {};
+  final Map<String, ClipAnalysis> _analysisByFile = {};
+  final List<ClipAnalysis> _analysisQueue = [];
+  int _analysesRunning = 0;
+  static const _maxConcurrentAnalyses = 2;
+
+  /// A Director turn is waiting for clip transcripts ("Listening to your clips…").
+  bool waitingForClipAnalysis = false;
+
+  /// Same file (path, size, modified time) = same analysis: a clip added twice is analysed once.
+  static String? _fileKey(String path) {
+    try {
+      final st = File(path).statSync();
+      return '$path|${st.size}|${st.modified.millisecondsSinceEpoch}';
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void _queueClipAnalysis(String assetId, String path, {VideoMetadata? info}) {
+    if (kIsWeb || clipAnalyses.containsKey(assetId) || isStillAsset(assetId)) return;
+    final key = _fileKey(path);
+    final cached = key == null ? null : _analysisByFile[key];
+    if (cached != null) {
+      clipAnalyses[assetId] = cached;
+      return;
+    }
+    final a = ClipAnalysis(path: path, info: info)..queued = true;
+    clipAnalyses[assetId] = a;
+    if (key != null) _analysisByFile[key] = a;
+    _analysisQueue.add(a);
+    _pumpAnalyses();
+  }
+
+  void _pumpAnalyses() {
+    while (_analysesRunning < _maxConcurrentAnalyses && _analysisQueue.isNotEmpty && !_disposed) {
+      final a = _analysisQueue.removeAt(0);
+      _analysesRunning++;
+      unawaited(_runClipAnalysis(a).whenComplete(() {
+        _analysesRunning--;
+        _pumpAnalyses();
+      }));
+    }
+  }
+
+  /// Silences, faces, picture, beats, then the transcript of one source (one after another: they share the decoder).
+  /// Each part is optional; a failure leaves only that part out, and a failed transcript is reported, never guessed.
+  Future<void> _runClipAnalysis(ClipAnalysis a) async {
+    Future<T?> attempt<T>(Future<T> Function() f) async {
+      try {
+        return await f();
+      } catch (_) {
+        return null;
+      }
+    }
+
+    a.queued = false;
+    a.transcriptState = TranscriptState.running;
+    _notify();
+    a.info ??= await attempt(() => MediaEngineService.getVideoInfo(a.path));
+    final hasAudio = a.info?.hasAudio ?? true;
+    if (hasAudio) {
+      final s = await attempt(() => MediaEngineService.detectSilences(sourcePath: a.path));
+      a.silences = s == null ? null : [for (final x in s) SilenceRange(x.startMs, x.endMs)];
+    }
+    if (_disposed) return;
+    a.faces = await attempt(() => MediaEngineService.detectFaces(sourcePath: a.path));
+    if (_disposed) return;
+    a.intelligence = a.intelligence.merge(scenesMs: await attempt(() => MediaEngineService.detectScenes(sourcePath: a.path)));
+    a.intelligence = a.intelligence.merge(labels: await attempt(() => MediaEngineService.labelScenes(sourcePath: a.path)));
+    a.intelligence = a.intelligence.merge(ocr: await attempt(() => MediaEngineService.recognizeText(sourcePath: a.path)));
+    if (hasAudio) {
+      a.intelligence = a.intelligence.merge(loudness: await attempt(() => MediaEngineService.measureLoudness(sourcePath: a.path)));
+      a.beatsMs = (await attempt(() => MediaEngineService.detectBeats(audioPath: a.path)))?.beatsMs;
+    }
+    if (_disposed) return;
+    _focusClipCrops(a);
+    if (!hasAudio) {
+      a.transcriptState = TranscriptState.failed;
+      a.transcriptError = MediaEngineException('NO_AUDIO', 'This clip has no sound.');
+      _notify();
+      return;
+    }
+    try {
+      final audioPath = await MediaEngineService.getOutputAudioPath('stt_clip_${DateTime.now().microsecondsSinceEpoch}.m4a');
+      final audio = await MediaEngineService.extractAudio(sourcePath: a.path, destPath: audioPath);
+      if (audio.fileSizeBytes > AudioTranscriptionService.maxBytes) {
+        throw MediaEngineException('AUDIO_TOO_LARGE', 'This clip is too long to transcribe (audio over 25 MB).');
+      }
+      a.transcript = await transcriber.transcribe(audio.path, language: spokenLanguage);
+      unawaited(File(audio.path).delete().catchError((_) => File(audio.path)));
+      a.transcriptState = TranscriptState.ready;
+      _refreshSpeechRanges();
+    } catch (e) {
+      a.transcriptState = TranscriptState.failed;
+      a.transcriptError = e;
+    }
+    _notify();
+  }
+
+  /// The transcript words of every source on the timeline, by assetId.
+  Map<String, List<TranscriptWord>> get _wordsByAsset => {
+        'primary': words,
+        for (final e in clipAnalyses.entries)
+          if (e.value.words.isNotEmpty) e.key: e.value.words,
+      };
+
+  /// Speech ranges (music ducking) from every clip's words, without an undo step (it is analysis, not an edit).
+  void _refreshSpeechRanges() {
+    final ir = _ir;
+    if (ir == null || _disposed) return;
+    _ir = ir.copyWith(
+      audio: EditIrAudio(
+        originalVolumeDb: ir.audio.originalVolumeDb,
+        music: ir.audio.music,
+        speechRangesMs: TimelineOps.speechRangesAll(_wordsByAsset, ir),
+        sfx: ir.audio.sfx,
+        voiceovers: ir.audio.voiceovers,
+      ),
+    );
+  }
+
+  /// A clip whose framing is still the automatic centre fill is re-centred on its speaker once faces are known.
+  void _focusClipCrops(ClipAnalysis a) {
+    final ir = _ir;
+    final f = a.faces;
+    if (ir == null || f == null || f.isEmpty) return;
+    final focus = TimelineOps.faceFocus(f);
+    var next = ir;
+    for (var i = 0; i < ir.clips.length; i++) {
+      final c = ir.clips[i];
+      if (!identical(clipAnalyses[c.assetId], a)) continue;
+      final src = ir.sources.where((s) => s.assetId == c.assetId).firstOrNull;
+      if (src == null) continue;
+      final auto = TimelineOps.centerCrop(src.width, src.height, ir.canvas);
+      // Only the untouched automatic crop moves; framing the creator chose stays.
+      if (c.crop == null || auto == null || jsonEncode(c.crop!.toJson()) != jsonEncode(auto.toJson())) continue;
+      final focused = TimelineOps.centerCrop(src.width, src.height, ir.canvas, focus: focus);
+      if (focused != null) next = TimelineOps.setCrop(next, focused, index: i);
+    }
+    if (!identical(next, ir)) {
+      _ir = next;
+      _notify();
+    }
+  }
+
+  /// Sources on the timeline (other than the primary one) and their analysis, for the Director request.
+  List<MediaAnalysis> _otherClipAnalyses() {
+    final ir = _ir;
+    if (ir == null) return const [];
+    return [
+      for (final id in ir.clips.map((c) => c.assetId).toSet())
+        if (id != 'primary') ?clipAnalyses[id]?.toAnalysis(id),
+    ];
+  }
+
+  List<String> _pendingAnalyses() {
+    final ir = _ir;
+    if (ir == null) return const [];
+    return [
+      for (final id in ir.clips.map((c) => c.assetId).toSet())
+        if (clipAnalyses[id]?.pending ?? false) id,
+    ];
+  }
+
+  /// Beats of each music file (source ms), measured once per file.
+  final Map<String, List<int>> _musicBeatsByFile = {};
+
+  /// Beats of the music bed(s) on the TIMELINE (ms), from the downloaded / local track files (Phase 6.4). A bed whose
+  /// file is not on the phone yet, or a phone without beat detection, simply contributes none.
+  Future<List<int>> _musicBeatsOnTimeline() async {
+    final ir = _ir;
+    if (ir == null || kIsWeb) return const [];
+    final out = <int>[];
+    for (final m in ir.audio.music) {
+      final kind = m.source['kind'];
+      final path = kind == 'asset' || kind == 'file'
+          ? localOverlayPath(m.source)
+          : kind == 'url'
+              ? AssetCache.instance.cachedPath('${m.source['url']}')
+              : null;
+      if (path == null || !File(path).existsSync()) continue;
+      var beats = _musicBeatsByFile[path];
+      if (beats == null) {
+        try {
+          beats = (await MediaEngineService.detectBeats(audioPath: path)).beatsMs;
+        } catch (_) {
+          beats = const [];
+        }
+        _musicBeatsByFile[path] = beats;
+      }
+      for (final b in beats) {
+        final t = m.timelineStartMs + b - m.sourceStartMs;
+        if (t >= m.timelineStartMs && t < m.timelineEndMs) out.add(t);
+      }
+    }
+    out.sort();
+    return out.take(5000).toList();
+  }
+
+  /// Before a Director turn: waits up to [max] for clips still being transcribed, so it does not plan blind.
+  Future<void> _awaitClipAnalyses({Duration max = const Duration(seconds: 10)}) async {
+    if (_pendingAnalyses().isEmpty) return;
+    waitingForClipAnalysis = true;
+    _notify();
+    final until = DateTime.now().add(max);
+    while (_pendingAnalyses().isNotEmpty && DateTime.now().isBefore(until) && !_disposed) {
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+    }
+    waitingForClipAnalysis = false;
+    _notify();
   }
 
   void _push(MobileEditIr ir) {
@@ -799,6 +1145,11 @@ class StudioController extends ChangeNotifier {
   void undo() {
     if (_undo.isEmpty || _ir == null) return;
     _liveStart = null;
+    // Stepping back out of a Director turn's result undoes that turn.
+    if (messages.any((m) => identical(m.appliedIr, _ir))) {
+      _undoneDirectorStates.add(_ir!);
+      _reportUndone(_ir!);
+    }
     _redo.add(_ir!);
     selectedClip = null;
     _setTimeline(_undo.removeLast());
@@ -811,6 +1162,7 @@ class StudioController extends ChangeNotifier {
     if (_undo.length > _maxUndo) _undo.removeAt(0);
     selectedClip = null;
     _setTimeline(_redo.removeLast());
+    _undoneDirectorStates.remove(_ir);
   }
 
   void seek(int ms) {
@@ -828,7 +1180,11 @@ class StudioController extends ChangeNotifier {
 
   /// Registers a file on this phone (gallery photo / video, sticker, recording) and returns the overlay source that
   /// references it. The server only ever sees `{kind: asset, assetId}`; the path stays in the draft.
-  Map<String, dynamic> localOverlaySource(String path, {String? label}) {
+  Map<String, dynamic> localOverlaySource(String path, {String? label}) => localMediaSource(path, label: label);
+
+  /// Registers any file on this phone (overlay, music, sound effect, recording) and returns `{kind: asset, assetId}`.
+  /// The server never sees the path, and round-trips the reference untouched (F-03).
+  Map<String, dynamic> localMediaSource(String path, {String? label}) {
     final assetId = 'local_${DateTime.now().microsecondsSinceEpoch}';
     sourcePaths[assetId] = path;
     return {'kind': 'asset', 'assetId': assetId, 'query': ?label};
@@ -1148,7 +1504,18 @@ class StudioController extends ChangeNotifier {
         overlays.add(o.copyWith(source: localOverlaySource(path, label: o.source['query'] as String?)));
       }
     }
-    return changed ? ir.copyWith(overlays: overlays) : ir;
+    var out = changed ? ir.copyWith(overlays: overlays) : ir;
+    // Music and sound effects imported from the phone were stored as raw paths (`kind: file`) until 2026-11, which made
+    // every later AI Director request fail (F-03). They become asset references too.
+    final m = out.audio.music.firstOrNull;
+    if (m != null && m.source['kind'] == 'file' && '${m.source['path'] ?? ''}'.isNotEmpty) {
+      final label = (m.source['title'] ?? m.source['query']) as String?;
+      out = TimelineOps.setMusicSource(out, {...localMediaSource('${m.source['path']}', label: label), 'title': ?label});
+    }
+    for (final e in out.audio.sfx.where((e) => e.source['kind'] == 'file' && '${e.source['path'] ?? ''}'.isNotEmpty).toList()) {
+      out = TimelineOps.setSfxSource(out, e.id, localMediaSource('${e.source['path']}')..remove('query'));
+    }
+    return out;
   }
 
   /// Proxy file if available (e.g. 720p hardware-downscaled copy for fluid scrubbing), else the original source path.
@@ -1227,6 +1594,13 @@ class StudioController extends ChangeNotifier {
     await _directorTurn(prompt, messages.length - 1);
   }
 
+  String? _turnStatus(DirectorMessage m) {
+    final r = m.response;
+    if (m.fromUser || r == null || r.appliedOperations.isEmpty) return null;
+    if (!m.applied) return 'proposed_not_applied';
+    return m.appliedIr != null && _undoneDirectorStates.contains(m.appliedIr) ? 'undone' : 'applied';
+  }
+
   /// "Try again" after a failed turn: resends the last thing the user said without adding it to the chat a second
   /// time; the failure reply it replaces is removed.
   Future<void> retryLastDirectorTurn() async {
@@ -1250,19 +1624,31 @@ class StudioController extends ChangeNotifier {
           DirectorTurn(
             role: m.fromUser ? 'user' : 'assistant',
             content: m.fromUser ? m.text : (m.response?.reply ?? m.text),
+            // What really happened to the turn's edits on this phone (F-16).
+            status: _turnStatus(m),
+            appliedOps: m.fromUser ? const [] : (m.response?.appliedOperations ?? const []),
           ),
     ];
     directorBusy = true;
     _notify();
     try {
+      // Clips still being transcribed: wait a little (up to 10 s) so the Director hears them too (Phase 4).
+      await _awaitClipAnalyses();
+      // The editor stays usable while the Director thinks: edits made meanwhile are merged with its answer (F-01).
+      final current = _ir ?? ir;
+      final baseRevision = revision;
       final r = await director.direct(
         prompt: prompt,
         history: history,
         media: _analysis(),
+        mediaList: _otherClipAnalyses(),
+        analysisPending: _pendingAnalyses(),
+        musicBeatsMs: await _musicBeatsOnTimeline(),
         projectId: projectId,
         calendarPieceId: pieceId,
         postId: postId,
-        currentEditIR: ir.toJson(),
+        currentEditIR: current.toJson(),
+        baseRevision: baseRevision,
       );
       r.editIr.validate();
       await materializeEmojiStickers(r.editIr);
@@ -1272,17 +1658,25 @@ class StudioController extends ChangeNotifier {
         // The edit still applies; the narration that could not be spoken is reported, not faked.
         messages.add(DirectorMessage(fromUser: false, text: 'I could not create the narration voice on this phone: ${e.message}'));
       }
-      final autoApply =
-          !r.requiresConfirmation && r.appliedOperations.isNotEmpty;
+      try {
+        await materializeFreezeFrames(r.editIr);
+      } on MediaEngineException catch (e) {
+        messages.add(DirectorMessage(fromUser: false, text: 'I could not capture the frozen frame on this phone: ${e.message} Remove the freeze before exporting.'));
+      }
+      // The server decides what is applied without asking (autonomy + operation kinds, F-09); a proposal waits for
+      // "Apply to timeline".
+      final autoApply = r.autoApplied && r.appliedOperations.isNotEmpty;
       messages.add(
         DirectorMessage(
           fromUser: false,
           text: r.reply,
           response: r,
-          applied: autoApply,
+          baseIr: current,
+          baseRevision: baseRevision,
+          prompt: prompt,
         ),
       );
-      if (autoApply) _applyDirector(r);
+      if (autoApply) _applyDirectorMessage(messages.length - 1);
     } catch (e, st) {
       debugPrint('AI Director turn failed: $e\n$st');
       messages.add(DirectorMessage(fromUser: false, text: directorFailureText(e), error: e));
@@ -1317,10 +1711,63 @@ class StudioController extends ChangeNotifier {
     return generic;
   }
 
-  void _applyDirector(DirectorResponse r) {
+  /// Applies the Director's answer in [messages] at [index]: as is when the timeline did not change since the
+  /// request, otherwise merged onto the creator's newer edits ([TimelineMerge]). Both sides changing the cuts is not
+  /// merged: the message is marked so the chat offers a choice. Returns whether the timeline changed.
+  bool _applyDirectorMessage(int index) {
+    final m = messages[index];
+    final r = m.response;
+    final current = _ir;
+    if (r == null || current == null || m.applied) return false;
+    final base = m.baseIr;
+    if (base == null || m.baseRevision == revision || identical(base, current)) {
+      _applyDirector(r, r.editIr);
+      messages[index] = m.copyWith(applied: true, appliedIr: _ir);
+      _reportApplied(r, _ir!);
+      return true;
+    }
+    final merged = TimelineMerge.merge(base: base, mine: current, theirs: r.editIr);
+    if (merged.structuralConflict) {
+      messages[index] = m.copyWith(structuralConflict: true);
+      return false;
+    }
+    _applyDirector(r, merged.ir);
+    messages[index] = m.copyWith(applied: true, appliedIr: _ir);
+    _reportApplied(r, _ir!, conflicts: merged.conflicts.length);
+    final notes = merged.conflicts.toSet();
+    messages.add(DirectorMessage(
+      fromUser: false,
+      text: notes.isEmpty
+          ? 'I added my changes on top of the edits you made in the meantime.'
+          : 'I added my changes on top of the edits you made in the meantime. ${notes.join(' ')}',
+    ));
+    return true;
+  }
+
+  /// The choice offered when the creator and the Director both changed the cuts.
+  /// [useDirectors]: the Director's whole version replaces the timeline (one undo brings the creator's back).
+  void resolveDirectorConflict(int index, {required bool useDirectors}) {
+    final m = messages[index];
+    final r = m.response;
+    if (r == null || !m.structuralConflict) return;
+    if (useDirectors) _applyDirector(r, r.editIr);
+    messages[index] = m.copyWith(structuralConflict: false, applied: useDirectors, appliedIr: useDirectors ? _ir : null);
+    _notify();
+  }
+
+  /// "Re-run on my latest edit": the same request again, made from the timeline as it is now.
+  Future<void> rerunDirectorOnLatest(int index) async {
+    final m = messages[index];
+    final prompt = m.prompt;
+    if (prompt == null || directorBusy) return;
+    messages[index] = m.copyWith(structuralConflict: false);
+    messages.add(DirectorMessage(fromUser: true, text: prompt));
+    await _directorTurn(prompt, messages.length - 1);
+  }
+
+  void _applyDirector(DirectorResponse r, MobileEditIr next) {
     final ir = _ir;
     if (ir == null) return;
-    final next = r.editIr;
     mediaCredits.addAll(r.credits);
     // Keep the source metadata if the server omitted it, so the next turn stays valid.
     final withSources = next.sources.isNotEmpty
@@ -1331,6 +1778,7 @@ class StudioController extends ChangeNotifier {
             durationMs: next.durationMs,
             sources: ir.sources,
             watermark: next.watermark,
+            itemMeta: next.itemMeta,
             clips: next.clips,
             overlays: next.overlays,
             captions: next.captions,
@@ -1352,12 +1800,12 @@ class StudioController extends ChangeNotifier {
     selectedClip = null;
   }
 
-  /// Applies a proposal the director asked the user to confirm.
+  /// Applies a proposal the director asked the user to confirm. Work done since the proposal was made is kept
+  /// (merged), never overwritten (F-02).
   void applyProposal(int messageIndex) {
     final m = messages[messageIndex];
     if (m.response == null || m.applied) return;
-    _applyDirector(m.response!);
-    messages[messageIndex] = m.copyWith(applied: true);
+    _applyDirectorMessage(messageIndex);
     _notify();
   }
 
@@ -1383,19 +1831,9 @@ class StudioController extends ChangeNotifier {
     }
     final warnings = <String>[];
     if (kIsWeb) {
+      // No renderer runs in the browser: say so instead of reporting the untouched source as an export (F-12).
       export = ExportState(
-        progress: 1.0,
-        stage: 'Done',
-        result: RenderResult(
-          outputPath: src,
-          durationMs: ir.durationMs,
-          expectedDurationMs: ir.durationMs,
-          width: ir.canvas.width,
-          height: ir.canvas.height,
-          hasAudio: true,
-          fileSizeBytes: 1024 * 1024,
-        ),
-        warnings: warnings,
+        error: MediaEngineException('NOT_SUPPORTED_ON_WEB', 'Exporting runs on the phone app. Open this draft on your phone to export it.'),
       );
       _notify();
       return;
@@ -1472,6 +1910,18 @@ class StudioController extends ChangeNotifier {
       final musicPaths = <String, String>{};
       for (final m in working.audio.music) {
         final kind = m.source['kind'];
+        if (kind == 'asset' || kind == 'file') {
+          // The creator's own track, on this phone (F-04: it used to be dropped as "could not be found").
+          final local = localOverlayPath(m.source);
+          final name = '${m.source['title'] ?? m.source['query'] ?? 'your music file'}';
+          if (local == null || !File(local).existsSync()) {
+            warnings.add('Music "$name" is no longer on this phone, so the video was exported without it. Add it again to keep it.');
+            working = TimelineOps.removeMusic(working, id: m.id);
+          } else {
+            musicPaths[m.id] = local;
+          }
+          continue;
+        }
         String? url = kind == 'url' ? m.source['url'] as String? : null;
         final query = '${m.source['query'] ?? ''}';
         if (kind == 'stock_query') {
@@ -1489,9 +1939,9 @@ class StudioController extends ChangeNotifier {
         }
         if (url == null) {
           warnings.add(
-            'Music "${m.source['query'] ?? ''}" could not be found, so the video was exported without music.',
+            'Music "${m.source['query'] ?? ''}" could not be found, so the video was exported without it.',
           );
-          working = TimelineOps.removeMusic(working);
+          working = TimelineOps.removeMusic(working, id: m.id);
           continue;
         }
         export = ExportState(stage: 'Downloading music…', warnings: warnings);
@@ -1501,14 +1951,25 @@ class StudioController extends ChangeNotifier {
           usedUrls.add(url);
         } catch (e) {
           warnings.add(
-            'Background music could not be downloaded ($e). Exporting video without music.',
+            'Background music "${m.source['title'] ?? m.source['query'] ?? m.id}" could not be downloaded ($e). Exporting without it.',
           );
-          working = TimelineOps.removeMusic(working);
+          working = TimelineOps.removeMusic(working, id: m.id);
         }
       }
       final sfxPaths = <String, String>{};
       final keptSfx = <EditIrSfx>[];
       for (final e in working.audio.sfx) {
+        final kind = e.source['kind'];
+        if (kind == 'asset' || kind == 'file') {
+          final local = localOverlayPath(e.source);
+          if (local == null || !File(local).existsSync()) {
+            warnings.add('Sound effect "${e.credit ?? e.id}" is no longer on this phone and was left out.');
+          } else {
+            sfxPaths[e.id] = local;
+            keptSfx.add(e);
+          }
+          continue;
+        }
         final url = e.source['url'] as String?;
         if (url == null || !url.startsWith('https://')) {
           warnings.add('Skipped a sound effect with no downloadable file.');
@@ -1544,6 +2005,7 @@ class StudioController extends ChangeNotifier {
             voiceovers: a.voiceovers,
           ),
           watermark: working.watermark,
+          itemMeta: working.itemMeta,
         );
       }
       String? watermarkPath;

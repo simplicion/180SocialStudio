@@ -7,6 +7,7 @@ import {
 import { RationalTimeMath } from "./time";
 import { ORIGINAL_AUDIO_TRACK_ID } from "./creative-plan.schema";
 import { MobileWatermarkSchema, MobileWatermark } from "./director-context";
+import { computeCropPath, FaceSampleSrc } from "./reframe-path";
 
 /**
  * MobileEditIR ("mobile-editir/1") — the millisecond, renderer-oriented projection of the
@@ -69,6 +70,24 @@ export const MobileClipSchema = z.object({
   voiceCleanup: z.boolean().optional(),
   /** On-device processing still to run (set by the AI Director; the phone clears it). */
   process: z.enum(["reverse", "stabilize"]).optional(),
+  /**
+   * Moving framing (added 2026-11, editor overhaul Phase 6.1: a virtual camera operator that follows the speaker).
+   * Top-left of the `crop` window at SOURCE times of this clip's file (so cuts, splits and speed changes never move
+   * them); the window keeps `crop`'s width / height. Renderers interpolate linearly between keyframes and hold the
+   * first / last value outside them. Requires `crop`. Absent = the static `crop`.
+   */
+  cropKeyframes: z
+    .array(z.object({ sourceMs: ms, x: z.number().min(0).max(1), y: z.number().min(0).max(1) }))
+    .max(240)
+    .optional(),
+  /**
+   * J-cut / L-cut (Phase 6.2). `audioLeadMs`: this clip's own sound starts that long BEFORE its picture, over the end of
+   * the previous clip (whose sound fades out under it). `audioLagMs`: its sound carries on that long AFTER its picture,
+   * over the start of the next clip. Needs that much source material before `sourceStartMs` / after `sourceEndMs`, and
+   * at most half of the neighbouring clip. Absent = 0 (a straight cut).
+   */
+  audioLeadMs: ms.max(2000).optional(),
+  audioLagMs: ms.max(2000).optional(),
 });
 
 export const MobileMediaSourceSchema = z.discriminatedUnion("kind", [
@@ -163,6 +182,23 @@ export const MobileCaptionStyleSchema = z.object({
   enter: MobileTextEnterSchema.optional(),
   exit: MobileTextExitSchema.optional(),
   loop: MobileTextLoopSchema.optional(),
+  /** Text transform (added 2026-11, Phase 6.5): clockwise degrees and size multiplier, around the text centre. */
+  rotationDeg: z.number().min(-180).max(180).optional(),
+  scale: z.number().min(0.2).max(4).optional(),
+  /**
+   * Animated transform: values at ms from the text's own start, interpolated linearly (absent fields hold the
+   * style's value). Applied on top of enter / exit / loop motion.
+   */
+  transformKeyframes: z
+    .array(z.object({
+      atMs: ms,
+      rotationDeg: z.number().min(-720).max(720).optional(),
+      scale: z.number().min(0.2).max(4).optional(),
+      positionX: z.number().min(0).max(1).optional(),
+      positionY: z.number().min(0).max(1).optional(),
+    }))
+    .max(60)
+    .optional(),
 });
 
 export const MobileCaptionSchema = z.object({
@@ -186,14 +222,26 @@ export const MobileZoomSchema = z.object({
   rampMs: ms,
 });
 
+/**
+ * A file that lives on the phone. `asset` (preferred, added 2026-11) is resolved through the draft's local asset
+ * paths at export; `file` is the raw device path older app versions wrote. The server round-trips both verbatim
+ * and never resolves or replaces them.
+ */
+/** `query` / `title`: the label the phone shows for the file (e.g. its name). */
+const deviceLabel = { query: z.string().max(200).optional(), title: z.string().max(200).optional() };
+export const MobileDeviceAssetSourceSchema = z.object({ kind: z.literal("asset"), assetId: z.string().min(1), ...deviceLabel });
+export const MobileDeviceFileSourceSchema = z.object({ kind: z.literal("file"), path: z.string().min(1).max(4096), ...deviceLabel });
+
 export const MobileMusicSchema = z.object({
   id: z.string().min(1),
   timelineStartMs: ms,
   timelineEndMs: ms,
   sourceStartMs: ms,
   source: z.union([
-    z.object({ kind: z.literal("url"), url: z.string().url(), query: z.string().optional() }),
+    z.object({ kind: z.literal("url"), url: z.string().url(), query: z.string().optional(), title: z.string().max(200).optional() }),
     z.object({ kind: z.literal("stock_query"), query: z.string().min(1), url: z.null() }),
+    MobileDeviceAssetSourceSchema,
+    MobileDeviceFileSourceSchema,
   ]),
   volumeDb: z.number(),
   fadeInMs: ms,
@@ -214,7 +262,7 @@ export const MobileSfxSchema = z.object({
   id: z.string().min(1),
   timelineStartMs: ms,
   durationMs: ms.optional(),
-  source: z.object({ kind: z.literal("url"), url: z.string().url() }),
+  source: z.union([z.object({ kind: z.literal("url"), url: z.string().url() }), MobileDeviceAssetSourceSchema, MobileDeviceFileSourceSchema]),
   volumeDb: z.number(),
   /** Attribution to show on export (CC BY needs it). Absent = no credit required. */
   credit: z.string().optional(),
@@ -259,7 +307,13 @@ export const MobileEditIRSchema = z.object({
   effects: z.array(MobileEffectSchema).max(60).optional(),
   audio: z.object({
     originalTrack: z.object({ volumeDb: z.number() }),
-    music: z.array(MobileMusicSchema).max(1),
+    /** Up to 4 music beds (added 2026-11, Phase 6.6: a music change or a stinger); they must not overlap. */
+    music: z.array(MobileMusicSchema).max(4).superRefine((beds, ctx) => {
+      const s = [...beds].sort((a, b) => a.timelineStartMs - b.timelineStartMs);
+      for (let i = 1; i < s.length; i++) {
+        if (s[i].timelineStartMs < s[i - 1].timelineEndMs) ctx.addIssue({ code: z.ZodIssueCode.custom, message: `music ${s[i].id} overlaps music ${s[i - 1].id}` });
+      }
+    }),
     speechRangesMs: z.array(z.tuple([ms, ms])),
     /** Optional SFX lane; omitted when empty. */
     sfx: z.array(MobileSfxSchema).max(40).optional(),
@@ -271,6 +325,17 @@ export const MobileEditIRSchema = z.object({
    * Absent = no watermark. The server keeps a watermark the client sent unless the turn adds/removes it.
    */
   watermark: MobileWatermarkSchema.optional(),
+  /**
+   * Provenance and locks per item id (added 2026-11, editor overhaul Phase 2.2). `origin`: who made the item
+   * (the phone writes "manual", the server "director"); `locked`: the Director must not change or remove it.
+   * Absent = unknown origin, unlocked.
+   */
+  itemMeta: z
+    .record(
+      z.string().min(1).max(128),
+      z.object({ origin: z.enum(["manual", "director", "template"]).optional(), locked: z.boolean().optional() })
+    )
+    .optional(),
 });
 
 export type MobileEditIR = z.infer<typeof MobileEditIRSchema>;
@@ -286,7 +351,8 @@ export const MobileMediaDescriptorSchema = z.object({
   transcript: z
     .object({
       words: z
-        .array(z.object({ text: z.string().max(100), startMs: ms, endMs: ms }))
+        // `speaker` (added 2026-11, Phase 6.3): who says the word, when the transcriber labels speakers (diarization).
+        .array(z.object({ text: z.string().max(100), startMs: ms, endMs: ms, speaker: z.string().max(40).optional() }))
         .max(20000),
     })
     .optional(),
@@ -486,6 +552,23 @@ function rectToInsets(r: { x: number; y: number; width: number; height: number }
   return { left: r.x, top: r.y, right: Math.max(0, 1 - r.x - r.width), bottom: Math.max(0, 1 - r.y - r.height) };
 }
 
+const DEVICE_ASSET = "device-asset://";
+const DEVICE_FILE = "device-file://";
+
+/** Canonical sourcePath of a phone-side audio source (music / SFX); null when it is not one. */
+function deviceAudioPath(src: { kind: string; assetId?: string; path?: string }): string | null {
+  if (src.kind === "asset" && src.assetId) return `${DEVICE_ASSET}${src.assetId}`;
+  if (src.kind === "file" && src.path) return `${DEVICE_FILE}${encodeURIComponent(src.path)}`;
+  return null;
+}
+
+/** Phone-side source of a canonical audio sourcePath, or null when it is not one. */
+function deviceAudioSource(path: string): { kind: "asset"; assetId: string } | { kind: "file"; path: string } | null {
+  if (path.startsWith(DEVICE_ASSET) && path.length > DEVICE_ASSET.length) return { kind: "asset", assetId: path.slice(DEVICE_ASSET.length) };
+  if (path.startsWith(DEVICE_FILE) && path.length > DEVICE_FILE.length) return { kind: "file", path: decodeURIComponent(path.slice(DEVICE_FILE.length)) };
+  return null;
+}
+
 const CANONICAL_CAPTION_PRESETS = ["HORMOZI_BOUNCE", "ALI_ABDAAL_CLEAN", "MINIMAL_SUBTITLE", "BOLD_CENTER"];
 
 /**
@@ -497,15 +580,25 @@ export function speechRangesForClips(
   clips: Array<Pick<MobileClip, "assetId" | "sourceStartMs" | "sourceEndMs" | "timelineStartMs" | "timelineEndMs" | "speed" | "volumeDb">>,
   sourceWords: Array<{ startSec: number; endSec: number }>,
   primaryAssetId: string,
-  mergeGapMs = 300
+  mergeGapMs = 300,
+  /** Words of every source, by assetId (Phase 4); without it only the primary source has speech. */
+  wordsByAsset?: Record<string, Array<{ startSec: number; endSec: number }>>
 ): Array<[number, number]> {
-  const words = sourceWords
-    .map((w) => [w.startSec * 1000, w.endSec * 1000] as [number, number])
-    .filter(([a, b]) => b > a)
-    .sort((p, q) => p[0] - q[0]);
+  const prep = (ws: Array<{ startSec: number; endSec: number }>) =>
+    ws.map((w) => [w.startSec * 1000, w.endSec * 1000] as [number, number]).filter(([a, b]) => b > a).sort((p, q) => p[0] - q[0]);
+  const byAsset = new Map<string, Array<[number, number]>>();
+  const wordsOf = (assetId: string) => {
+    if (!byAsset.has(assetId)) {
+      const src = wordsByAsset?.[assetId] ?? (assetId === primaryAssetId ? sourceWords : []);
+      byAsset.set(assetId, prep(src));
+    }
+    return byAsset.get(assetId)!;
+  };
   const raw: Array<[number, number]> = [];
   for (const c of clips) {
-    if (c.assetId !== primaryAssetId || c.volumeDb <= -60) continue;
+    if (c.volumeDb <= -60) continue;
+    const words = wordsOf(c.assetId);
+    if (!words.length) continue;
     for (const [ws, we] of words) {
       if (we <= c.sourceStartMs) continue;
       if (ws >= c.sourceEndMs) break;
@@ -538,10 +631,23 @@ export interface MobileProjectionInput {
   primaryAssetId: string;
   /** Where fill crops of the primary asset centre (e.g. `dominantFaceCenter(media.faces)`). Default {0.5, 0.4}. */
   faceCenter?: { x: number; y: number } | null;
+  /** Fill-crop centre per source (Phase 4: every clip is framed on its own speaker). Wins over `faceCenter`. */
+  faceCenterByAsset?: Record<string, { x: number; y: number } | null>;
+  /** Face track per source (SOURCE ms), for moving crops of clips that follow the speaker (Phase 6.1). */
+  faceSamplesByAsset?: Record<string, FaceSampleSrc[] | undefined>;
+  /** Scene cuts per source (SOURCE ms): a moving crop re-centres at once on a new shot. */
+  scenesByAsset?: Record<string, number[] | undefined>;
+  /** Source-time words of every source (seconds), by assetId, for speech ranges (Phase 4). */
+  sourceWordsByAsset?: Record<string, Array<{ startSec: number; endSec: number }>>;
   /** Credit line per SFX clip id (canonical clips have no credit field). */
   sfxCredits?: Record<string, string>;
   /** Optional brand watermark explicitly provided or passed down. */
   watermark?: MobileWatermark | null;
+  /**
+   * Ids of items the client already had (`request.currentEditIR`). Their timing is the creator's choice: they are not
+   * trimmed against neighbours or dropped for being short. Only items created this turn get those clean-ups.
+   */
+  preexistingIds?: ReadonlySet<string>;
 }
 
 /**
@@ -550,6 +656,7 @@ export interface MobileProjectionInput {
  */
 export function toMobileEditIR(input: MobileProjectionInput): { editIR: MobileEditIR; warnings: string[] } {
   const { editIR, sources, primaryAssetId } = input;
+  const keep = (id: string) => !!input.preexistingIds?.has(id);
   const warnings: string[] = [];
   const canvas = { w: editIR.meta.resolution.width, h: editIR.meta.resolution.height };
   const srcById = new Map(sources.map((s) => [s.assetId, s]));
@@ -582,7 +689,8 @@ export function toMobileEditIR(input: MobileProjectionInput): { editIR: MobileEd
     }
     if (!t.letterbox && !crop && src) {
       // Face coordinates are in the unrotated display frame, so a quarter-turned clip keeps the default.
-      const faceCenter = (c.assetId === primaryAssetId && !sideways && input.faceCenter) || defaultCenter;
+      const own = input.faceCenterByAsset?.[c.assetId] ?? (c.assetId === primaryAssetId ? input.faceCenter : null);
+      const faceCenter = (!sideways && own) || defaultCenter;
       crop = cropFor(sideways ? src.height : src.width, sideways ? src.width : src.height, canvas.w, canvas.h, faceCenter.x, faceCenter.y);
     }
     const hasFilter =
@@ -591,6 +699,15 @@ export function toMobileEditIR(input: MobileProjectionInput): { editIR: MobileEd
       !!t.exposure || !!t.temperature || !!t.tint || !!t.vignette;
     // EditIR keeps temperature / tint / vignette in -100..100 (0..100); the phone uses -1..1 (0..1).
     const unit = (v: number | undefined, lo: number, hi: number) => Math.min(hi, Math.max(lo, (v ?? 0) / 100));
+    // Following the speaker: the moving crop is rebuilt from the face track for this clip's source range (Phase 6.1).
+    let cropKeyframes: Array<{ sourceMs: number; x: number; y: number }> = [];
+    if (crop && t.reframeTrack && !sideways) {
+      const path = computeCropPath(input.faceSamplesByAsset?.[c.assetId], { sourceStartMs, sourceEndMs }, crop, input.scenesByAsset?.[c.assetId] ?? [], { smoothing: t.reframeSmoothing });
+      if (path.length > 1) cropKeyframes = path;
+      else if (path.length === 1) crop = { ...crop, x: path[0].x, y: path[0].y }; // a still subject: one static crop
+    } else if (crop && c.cropKeyframes?.length) {
+      cropKeyframes = c.cropKeyframes;
+    }
     let transitionIn: MobileClip["transitionIn"] = null;
     if (i > 0 && c.transitionIn) {
       const t = c.transitionIn.type;
@@ -627,6 +744,9 @@ export function toMobileEditIR(input: MobileProjectionInput): { editIR: MobileEd
       ...(c.audioFadeOutMs ? { audioFadeOutMs: c.audioFadeOutMs } : {}),
       ...(c.voiceCleanup ? { voiceCleanup: true } : {}),
       ...(c.process === "reverse" || c.process === "stabilize" ? { process: c.process } : {}),
+      ...(cropKeyframes.length ? { cropKeyframes } : {}),
+      ...(c.audioLeadMs ? { audioLeadMs: c.audioLeadMs } : {}),
+      ...(c.audioLagMs ? { audioLagMs: c.audioLagMs } : {}),
     };
   });
   const durationMs = cursor;
@@ -642,7 +762,7 @@ export function toMobileEditIR(input: MobileProjectionInput): { editIR: MobileEd
     for (const c of track.clips) {
       const start = clampT(toMs(sec(c.timelineRange.start)));
       const end = clampT(toMs(sec(c.timelineRange.start) + sec(c.timelineRange.duration)));
-      if (end - start < 100) continue;
+      if (end - start < (keep(c.id) ? 1 : 100)) continue;
       let source: MobileEditIR["overlays"][number]["source"];
       if (/^https:\/\//i.test(c.sourcePath)) {
         source = { kind: "url", url: c.sourcePath, ...(c.assetId.startsWith("stock:") ? { query: c.assetId.slice(6) } : {}) };
@@ -672,7 +792,9 @@ export function toMobileEditIR(input: MobileProjectionInput): { editIR: MobileEd
       const highlightColor = hexOr(cap.style.highlightColor, "#FFE600");
       // A speech caption that had words but lost all of them to cuts was not heard: it is dropped below.
       const allWordsCut = kind === "caption" && cap.words.length > 0;
-      const words = (kind === "text"
+      // A title keeps its own styled words (per-word colours / highlights) when it has them.
+      const styledTitle = kind === "text" && (cap.words.length > 1 || cap.words.some((w) => !!w.color));
+      const words = (kind === "text" && !styledTitle
         ? [{ text: cap.text, startMs, endMs, highlight: false, color: null, scale: 1 }]
         : cap.words.map((w) => ({
             text: w.word,
@@ -715,11 +837,14 @@ export function toMobileEditIR(input: MobileProjectionInput): { editIR: MobileEd
           ...(cap.style.enter ? { enter: cap.style.enter } : {}),
           ...(cap.style.exit ? { exit: cap.style.exit } : {}),
           ...(cap.style.loop ? { loop: cap.style.loop } : {}),
+          ...(cap.style.rotationDeg ? { rotationDeg: cap.style.rotationDeg } : {}),
+          ...(cap.style.scale !== undefined && cap.style.scale !== 1 ? { scale: cap.style.scale } : {}),
+          ...(cap.style.transformKeyframes?.length ? { transformKeyframes: cap.style.transformKeyframes } : {}),
         },
       } as MobileEditIR["captions"][number] & { dropped?: boolean };
     })
     // A caption is kept when it has something to draw: a title, timed words, or (manual caption) plain text.
-    .filter((c) => !c.dropped && c.endMs - c.startMs >= 50 && (c.kind === "text" || c.words.length > 0 || c.text.trim().length > 0))
+    .filter((c) => !c.dropped && c.endMs - c.startMs >= (keep(c.id) ? 1 : 50) && (c.kind === "text" || c.words.length > 0 || c.text.trim().length > 0))
     .map(({ dropped: _dropped, ...c }) => c as MobileEditIR["captions"][number])
     .sort((a, b) => a.startMs - b.startMs);
 
@@ -729,8 +854,9 @@ export function toMobileEditIR(input: MobileProjectionInput): { editIR: MobileEd
   for (const z of cams) {
     let startMs = clampT(toMs(sec(z.timeRange.start)));
     const endMs = clampT(toMs(sec(z.timeRange.start) + sec(z.timeRange.duration)));
-    if (startMs < lastEnd) startMs = lastEnd;
-    if (endMs - startMs < 200) continue;
+    // New zooms are kept clear of the one before; the creator's own overlaps are their choice.
+    if (startMs < lastEnd && !keep(z.id)) startMs = lastEnd;
+    if (endMs - startMs < (keep(z.id) ? 1 : 200)) continue;
     zooms.push({
       id: z.id, startMs, endMs,
       scale: Math.min(4, Math.max(1, z.scale)),
@@ -739,7 +865,7 @@ export function toMobileEditIR(input: MobileProjectionInput): { editIR: MobileEd
         ? Math.max(0, Math.min(Math.round(z.rampMs), Math.floor((endMs - startMs) / 2)))
         : Math.min(250, Math.floor((endMs - startMs) / 3)),
     });
-    lastEnd = endMs;
+    lastEnd = Math.max(lastEnd, endMs);
   }
 
   const effects: NonNullable<MobileEditIR["effects"]> = (editIR.tracks.effectTrack ?? [])
@@ -750,7 +876,7 @@ export function toMobileEditIR(input: MobileProjectionInput): { editIR: MobileEd
       endMs: clampT(toMs(sec(e.timeRange.start) + sec(e.timeRange.duration))),
       intensity: Math.min(1, Math.max(0, e.intensity ?? 0.6)),
     }))
-    .filter((e) => e.endMs - e.startMs >= 100)
+    .filter((e) => e.endMs - e.startMs >= (keep(e.id) ? 1 : 100))
     .sort((a, b) => a.startMs - b.startMs)
     .slice(0, 60);
 
@@ -761,10 +887,15 @@ export function toMobileEditIR(input: MobileProjectionInput): { editIR: MobileEd
     if (t.type === "BGM") {
       const c = t.clips[0];
       if (!c) continue;
-      if (music.length > 0) { warnings.push("only one music track is supported on mobile; extra dropped"); continue; }
-      const source = /^https:\/\//i.test(c.sourcePath)
-        ? { kind: "url" as const, url: c.sourcePath, ...(c.sourceQuery ? { query: c.sourceQuery } : {}) }
-        : { kind: "stock_query" as const, query: c.sourceQuery || decodeURIComponent(c.sourcePath.replace(/^stock-music:\/\//, "")) || "background music", url: null };
+      if (music.length >= 4) { warnings.push("at most 4 music beds are supported on mobile; extra dropped"); continue; }
+      // A track on the phone stays that track, and a URL stays that URL (http included: turning it into a search
+      // for its own address swapped the creator's music at export).
+      const device = deviceAudioSource(c.sourcePath);
+      const source: MobileEditIR["audio"]["music"][number]["source"] = device
+        ? { ...device, ...(c.sourceQuery ? { query: c.sourceQuery, title: c.sourceQuery } : {}) }
+        : /^https?:\/\//i.test(c.sourcePath)
+          ? { kind: "url" as const, url: c.sourcePath, ...(c.sourceQuery ? { query: c.sourceQuery } : {}) }
+          : { kind: "stock_query" as const, query: c.sourceQuery || decodeURIComponent(c.sourcePath.replace(/^stock-music:\/\//, "")) || "background music", url: null };
       music.push({
         id: c.id,
         timelineStartMs: clampT(toMs(sec(c.timelineRange.start))),
@@ -782,21 +913,23 @@ export function toMobileEditIR(input: MobileProjectionInput): { editIR: MobileEd
         },
       });
     } else if (t.type === "SFX") {
-      // Only real HTTPS files reach mobile; synthetic desktop placeholders are dropped.
+      // Real HTTPS files and the creator's own files on the phone reach mobile; synthetic desktop placeholders are dropped.
       let dropped = 0;
       for (const c of t.clips) {
         const startMs = toMs(sec(c.timelineRange.start));
-        if (!/^https:\/\//i.test(c.sourcePath) || startMs >= durationMs) { dropped++; continue; }
+        const device = deviceAudioSource(c.sourcePath);
+        if ((!device && !/^https:\/\//i.test(c.sourcePath)) || startMs >= durationMs) { dropped++; continue; }
         sfx.push({
           id: c.id,
           timelineStartMs: clampT(startMs),
-          durationMs: toMs(sec(c.sourceRange.duration)),
-          source: { kind: "url", url: c.sourcePath },
+          // "Play the whole file" stays that (it used to come back as a 1 s clip).
+          ...(c.fullFile ? {} : { durationMs: toMs(sec(c.sourceRange.duration)) }),
+          source: device ?? { kind: "url" as const, url: c.sourcePath },
           volumeDb: (t.volumeDb ?? 0) + (c.volumeDb ?? 0),
           ...(input.sfxCredits?.[c.id] ? { credit: input.sfxCredits[c.id] } : {}),
         });
       }
-      if (dropped) warnings.push(`${dropped} SFX clip(s) without an HTTPS file were dropped on mobile`);
+      if (dropped) warnings.push(`${dropped} SFX clip(s) without an HTTPS or on-device file were dropped on mobile`);
     } else if (t.type === "VOICEOVER") {
       for (const c of t.clips) {
         const assetId = c.sourcePath.startsWith("asset://") ? c.sourcePath.slice("asset://".length) : "";
@@ -821,11 +954,20 @@ export function toMobileEditIR(input: MobileProjectionInput): { editIR: MobileEd
     }
   }
 
+  // Music beds play one after another: a bed that would overlap the one before it is dropped and reported.
+  music.sort((a, b) => a.timelineStartMs - b.timelineStartMs);
+  for (let i = music.length - 1; i > 0; i--) {
+    if (music[i].timelineStartMs < music[i - 1].timelineEndMs) {
+      warnings.push(`music ${music[i].id} overlapped the music before it and was dropped`);
+      music.splice(i, 1);
+    }
+  }
+
   const originalVolumeDb = editIR.tracks.audioTracks.find((t) => t.id === ORIGINAL_AUDIO_TRACK_ID)?.volumeDb ?? 0;
 
   // Speech ranges on the EDITED timeline (cuts, reorders, speed), from the source transcript.
   // Nothing is ducked for when the original audio is muted.
-  const speech = originalVolumeDb <= -60 ? [] : speechRangesForClips(mClips, input.sourceWords || [], primaryAssetId)
+  const speech = originalVolumeDb <= -60 ? [] : speechRangesForClips(mClips, input.sourceWords || [], primaryAssetId, 300, input.sourceWordsByAsset)
     .map(([s, e]) => [clampT(s), clampT(e)] as [number, number])
     .filter(([s, e]) => e > s);
 
@@ -935,6 +1077,9 @@ export function editIRFromMobile(m: MobileEditIR, title = "Mobile project"): Edi
             ...(c.audioFadeOutMs ? { audioFadeOutMs: c.audioFadeOutMs } : {}),
             ...(c.voiceCleanup ? { voiceCleanup: true } : {}),
             ...(c.process ? { process: c.process } : {}),
+            ...(c.cropKeyframes?.length ? { cropKeyframes: c.cropKeyframes } : {}),
+            ...(c.audioLeadMs ? { audioLeadMs: c.audioLeadMs } : {}),
+            ...(c.audioLagMs ? { audioLagMs: c.audioLagMs } : {}),
           })),
         },
         ...(m.overlays.length > 0
@@ -1004,6 +1149,9 @@ export function editIRFromMobile(m: MobileEditIR, title = "Mobile project"): Edi
           ...(c.style.enter ? { enter: c.style.enter } : {}),
           ...(c.style.exit ? { exit: c.style.exit } : {}),
           ...(c.style.loop ? { loop: c.style.loop } : {}),
+          ...(c.style.rotationDeg ? { rotationDeg: c.style.rotationDeg } : {}),
+          ...(c.style.scale !== undefined && c.style.scale !== 1 ? { scale: c.style.scale } : {}),
+          ...(c.style.transformKeyframes?.length ? { transformKeyframes: c.style.transformKeyframes } : {}),
         },
       })),
       audioTracks: [
@@ -1020,8 +1168,10 @@ export function editIRFromMobile(m: MobileEditIR, title = "Mobile project"): Edi
         duckingConfig: { duckDb: mu.duck.duckDb, attackMs: mu.duck.attackMs, releaseMs: mu.duck.releaseMs },
         clips: [{
           id: mu.id,
-          sourcePath: mu.source.kind === "url" ? mu.source.url : `stock-music://${encodeURIComponent(mu.source.query)}`,
-          ...(mu.source.query ? { sourceQuery: mu.source.query } : {}),
+          sourcePath:
+            deviceAudioPath(mu.source) ??
+            (mu.source.kind === "url" ? mu.source.url : `stock-music://${encodeURIComponent((mu.source as { query: string }).query)}`),
+          ...("query" in mu.source && mu.source.query ? { sourceQuery: mu.source.query } : {}),
           sourceRange: { start: S(mu.sourceStartMs), duration: S(mu.timelineEndMs - mu.timelineStartMs) },
           timelineRange: { start: S(mu.timelineStartMs), duration: S(mu.timelineEndMs - mu.timelineStartMs) },
           volumeDb: 0,
@@ -1038,10 +1188,13 @@ export function editIRFromMobile(m: MobileEditIR, title = "Mobile project"): Edi
             duckWithSpeech: false,
             clips: m.audio.sfx.map((fx) => ({
               id: fx.id,
-              sourcePath: fx.source.url,
+              sourcePath: deviceAudioPath(fx.source) ?? (fx.source as { url: string }).url,
+              // No durationMs = the whole file: a placeholder length on the canonical timeline, flagged so the
+              // projection gives back "whole file" instead of a 1 s clip.
               sourceRange: { start: S(0), duration: S(fx.durationMs ?? 1000) },
               timelineRange: { start: S(fx.timelineStartMs), duration: S(fx.durationMs ?? 1000) },
               volumeDb: fx.volumeDb,
+              ...(fx.durationMs === undefined ? { fullFile: true } : {}),
             })),
           }]
           : []),

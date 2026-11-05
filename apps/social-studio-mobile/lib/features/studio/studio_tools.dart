@@ -4054,8 +4054,10 @@ class _UploadsTabState extends ConsumerState<_UploadsTab> {
                 onPressed: () {
                   Navigator.pop(ctx);
                   _close(context);
+                  // The file stays on the phone: the timeline (and the AI Director) only see an asset reference.
+                  final source = widget.c.localMediaSource(path, label: name);
                   widget.onEdit(
-                    (ir) => TimelineOps.setMusic(ir, url: path, title: name),
+                    (ir) => TimelineOps.setMusic(ir, source: source, title: name),
                     done: 'Background music updated',
                   );
                 },
@@ -4067,8 +4069,10 @@ class _UploadsTabState extends ConsumerState<_UploadsTab> {
                 onPressed: () {
                   Navigator.pop(ctx);
                   _close(context);
+                  final source = widget.c.localMediaSource(path, label: name);
+                  // No length = the whole file plays (it used to be cut to 2 s).
                   widget.onEdit(
-                    (ir) => TimelineOps.addSfx(ir, credit: name, url: path, startMs: widget.c.playheadMs, durationMs: 2000),
+                    (ir) => TimelineOps.addSfx(ir, credit: name, source: source, startMs: widget.c.playheadMs),
                     done: 'Sound effect added',
                   );
                 },

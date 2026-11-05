@@ -107,6 +107,82 @@ class MusicGainModel(
     }
 }
 
+/** Minimum fade applied on both sides of every clip-to-clip boundary, so hard cuts mid-waveform do not click. */
+const val DECLICK_FADE_MS = 10.0
+
+/** Clips shorter than this (timeline ms) get no de-click fade: 2 x 10 ms would eat most of their sound. */
+const val DECLICK_MIN_CLIP_MS = 40.0
+
+/**
+ * Audio fade-in / fade-out (ms) of clip [index]'s own sound: the longer of half the adjoining non-CUT transition and
+ * the clip's manual fade, raised to at least [DECLICK_FADE_MS] at every boundary with another clip (the timeline's
+ * very start and end are left alone). The de-click minimum never shortens a longer fade and is skipped for clips
+ * shorter than [DECLICK_MIN_CLIP_MS] or muted ones. Mirrored by `clipPreviewFadesMs` in Dart (clip_audio_fades.dart).
+ */
+fun clipAudioFadesMs(clips: List<IrClip>, index: Int, originalVolumeDb: Double = 0.0): Pair<Double, Double> {
+    val clip = clips[index]
+    val next = clips.getOrNull(index + 1)
+    var fadeIn = max(clip.transitionIn?.takeIf { it.type != "CUT" }?.durationMs?.div(2.0) ?: 0.0, clip.audioFadeInMs.toDouble())
+    var fadeOut = max(next?.transitionIn?.takeIf { it.type != "CUT" }?.durationMs?.div(2.0) ?: 0.0, clip.audioFadeOutMs.toDouble())
+    val durMs = (clip.timelineEndMs - clip.timelineStartMs).toDouble()
+    val muted = dbToGain(originalVolumeDb + clip.volumeDb) == 0f
+    if (durMs >= DECLICK_MIN_CLIP_MS && !muted) {
+        if (index > 0) fadeIn = max(fadeIn, DECLICK_FADE_MS)
+        if (next != null) fadeOut = max(fadeOut, DECLICK_FADE_MS)
+    }
+    return fadeIn to fadeOut
+}
+
+/**
+ * Sound of one clip with its J-cut / L-cut applied (all timeline ms). The audio item runs from
+ * `timelineStartMs - leadMs` to `timelineEndMs + lagMs`; [fadeInMs] / [fadeOutMs] are measured from the item's own
+ * start / end.
+ */
+data class ClipAudioPlan(val leadMs: Double, val lagMs: Double, val fadeInMs: Double, val fadeOutMs: Double) {
+    val hasJl: Boolean get() = leadMs > 0 || lagMs > 0
+}
+
+/**
+ * Effective J-cut lead / L-cut lag (timeline ms) of clip [index], clamped to the source material the file has
+ * before `sourceStartMs` ([sourceBeforeMs], source ms) / after `sourceEndMs` ([sourceAfterMs], source ms; a still
+ * has none: pass 0), and to half of the neighbouring clip. The first clip has no lead and the last no lag.
+ */
+fun clipJlMs(clips: List<IrClip>, index: Int, sourceBeforeMs: Double, sourceAfterMs: Double): Pair<Double, Double> {
+    val c = clips[index]
+    val speed = c.speed.coerceAtLeast(0.01)
+    val prev = clips.getOrNull(index - 1)
+    val next = clips.getOrNull(index + 1)
+    val lead = if (prev == null || c.audioLeadMs <= 0) 0.0 else minOf(
+        c.audioLeadMs.toDouble(),
+        maxOf(0.0, sourceBeforeMs) / speed,
+        (prev.timelineEndMs - prev.timelineStartMs) / 2.0,
+    )
+    val lag = if (next == null || c.audioLagMs <= 0) 0.0 else minOf(
+        c.audioLagMs.toDouble(),
+        maxOf(0.0, sourceAfterMs) / speed,
+        (next.timelineEndMs - next.timelineStartMs) / 2.0,
+    )
+    return kotlin.math.floor(lead) to kotlin.math.floor(lag)
+}
+
+/**
+ * Audio plan of clip [index] with J/L cuts. [jl] holds every clip's effective (lead, lag) from [clipJlMs].
+ * Fades start from [clipAudioFadesMs] (transition half-fades, manual fades and the 10 ms de-click, kept at the
+ * item's new edges) and are lengthened so that:
+ *  - under the NEXT clip's lead, this clip's sound fades out over the whole overlap (its own lag + that lead);
+ *  - under the PREVIOUS clip's lag, this clip's sound fades in over the whole overlap (its own lead + that lag).
+ * The overlapping clip's own sound keeps its short edge fade, so it starts / ends at full level.
+ */
+fun clipAudioPlanMs(clips: List<IrClip>, index: Int, jl: List<Pair<Double, Double>>, originalVolumeDb: Double = 0.0): ClipAudioPlan {
+    val (lead, lag) = jl[index]
+    var (fadeIn, fadeOut) = clipAudioFadesMs(clips, index, originalVolumeDb)
+    val prevLag = jl.getOrNull(index - 1)?.second ?: 0.0
+    val nextLead = jl.getOrNull(index + 1)?.first ?: 0.0
+    if (prevLag > 0) fadeIn = max(fadeIn, lead + prevLag)
+    if (nextLead > 0) fadeOut = max(fadeOut, lag + nextLead)
+    return ClipAudioPlan(lead, lag, fadeIn, fadeOut)
+}
+
 /**
  * Main-track clip audio gain: originalTrack.volumeDb + clip.volumeDb, plus a short audio fade at
  * transition boundaries (half the transition duration on each side, contract §3.2).

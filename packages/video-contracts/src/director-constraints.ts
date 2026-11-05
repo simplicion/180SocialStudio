@@ -190,22 +190,34 @@ export function extractConstraintsFromPrompt(prompt: string, durationMs: number)
 
 /** The operations each locked track forbids. */
 export const TRACK_OPS: Record<DirectorLockableTrack, readonly string[]> = {
-  music: ["addBackgroundMusic", "duckAudio"],
+  music: ["addBackgroundMusic", "duckAudio", "updateMusic", "changeMusicTrack"],
   captions: ["autoCaptions", "addCaption", "styleCaption", "translateCaptions", "emphasizeWord", "clearCaptions"],
-  broll: ["insertBroll", "addImage", "addSticker"],
-  sfx: ["addSoundEffect", "autoSoundDesign"],
-  effects: ["addEffect", "applyFilter", "addTransition"],
+  broll: ["insertBroll", "addImage", "addSticker", "updateOverlay", "setKeyframe", "removeKeyframe"],
+  sfx: ["addSoundEffect", "autoSoundDesign", "setSfxVolume"],
+  effects: ["addEffect", "applyFilter", "addTransition", "updateEffect"],
   text: ["addText"],
 };
 
-/** removeItem kinds that belong to a lockable track (zooms are not lockable). */
-const REMOVE_KIND_TRACK: Record<string, DirectorLockableTrack> = { caption: "captions", title: "text", broll: "broll", effect: "effects", sfx: "sfx" };
+/** removeItem / retimeItem kinds that belong to a lockable track (zooms are not lockable). */
+const REMOVE_KIND_TRACK: Record<string, DirectorLockableTrack> = { caption: "captions", title: "text", broll: "broll", sticker: "broll", effect: "effects", sfx: "sfx", music: "music" };
+
+/** Which lockable track an id-targeted text op touches: titles are "text", captions "captions". */
+function textTrackOf(op: any, captionKinds?: Map<string, "caption" | "title">): DirectorLockableTrack | null {
+  if (op.type !== "editText" && op.type !== "updateTextStyle") return null;
+  const t = op.type === "editText" ? op.id : op.target;
+  if (t === "all_captions") return "captions";
+  if (t === "all_titles") return "text";
+  const k = captionKinds?.get(t);
+  return k === "title" ? "text" : k === "caption" ? "captions" : null;
+}
 
 export interface ConstraintTimeline {
   durationSec: number;
   clips: Array<{ id: string; startSec: number; endSec: number }>;
   /** Audio track ids that are the music bed (adjustVolume on them touches the music). */
   musicTrackIds: string[];
+  /** Caption / title ids (text ops by id are checked against the captions or text lock). */
+  captionKinds?: Map<string, "caption" | "title">;
 }
 
 export function mainTrackOf(ir: EditIR) {
@@ -219,6 +231,7 @@ export function constraintTimelineFromEditIR(ir: EditIR): ConstraintTimeline {
     durationSec: s(ir.meta.totalDuration),
     clips: (main?.clips || []).map((c) => ({ id: c.id, startSec: s(c.timelineRange.start), endSec: s(c.timelineRange.start) + s(c.timelineRange.duration) })),
     musicTrackIds: ir.tracks.audioTracks.filter((t) => t.type === "BGM").map((t) => t.id),
+    captionKinds: new Map(ir.tracks.captionTrack.map((c) => [c.id, c.role === "title" ? ("title" as const) : ("caption" as const)])),
   };
 }
 
@@ -285,6 +298,17 @@ function touchedRanges(op: any, tl: ConstraintTimeline): { ranges: Array<[number
     case "removeItem":
       // By time it touches that moment; by id / "all" the item's span is unknown here, so treat it as the whole video.
       return typeof op.atSec === "number" && !op.id ? { ranges: [], points: [op.atSec] } : { ranges: [[0, tl.durationSec]], points: [] };
+    case "retimeItem":
+    case "updateZoom":
+      // Moving an item into a locked range changes that range.
+      return typeof op.startSec === "number" ? { ranges: [r(op.startSec, op.durationSec ?? 0.1)], points: [] } : { ranges: [], points: [] };
+    case "setClipVolume":
+    case "setCrop":
+    case "panClip": {
+      if (op.clipId === "all") return { ranges: [[0, tl.durationSec]], points: [] };
+      const c = clip(op.clipId);
+      return { ranges: c ? [[c.startSec, c.endSec]] : [], points: [] };
+    }
     default:
       return { ranges: [], points: [] };
   }
@@ -294,7 +318,9 @@ function touchedRanges(op: any, tl: ConstraintTimeline): { ranges: Array<[number
 export function constraintViolation(op: CreativeOperation | any, c: ResolvedDirectorConstraints, tl: ConstraintTimeline): string | null {
   for (const track of c.lockedTracks) {
     if (TRACK_OPS[track].includes(op.type)) return `${op.type} would change the locked ${track}`;
-    if (op.type === "removeItem" && REMOVE_KIND_TRACK[op.kind as string] === track) return `removeItem would change the locked ${track}`;
+    if ((op.type === "removeItem" || op.type === "retimeItem") && REMOVE_KIND_TRACK[op.kind as string] === track) return `${op.type} would change the locked ${track}`;
+    if (textTrackOf(op, tl.captionKinds) === track) return `${op.type} would change the locked ${track}`;
+    if (op.type === "muteTrack" && ((op.track === "music" && track === "music") || (op.track === "sfx" && track === "sfx"))) return `muteTrack would change the locked ${track}`;
     if (op.type === "processFootage" && op.action === "remove_background" && track === "broll") return `processFootage would change the locked broll`;
     if (track === "music" && op.type === "adjustVolume" && (op.trackId === "music" || tl.musicTrackIds.includes(op.trackId))) {
       return `adjustVolume would change the locked music`;
@@ -453,6 +479,29 @@ export type SafeOp = (typeof SAFE_OPS)[number];
 
 export const isSafeOp = (type: string): type is SafeOp => (SAFE_OPS as readonly string[]).includes(type);
 
+/**
+ * Operations that only ADD or RESTYLE something and leave the creator's existing footage, cuts and items alone
+ * (audit F-09). Under ASSISTED these are applied straight away; anything else (cuts, reorders, speed, reframe,
+ * removals, replacing music, regenerating captions) is a proposal the creator applies.
+ */
+export const ADDITIVE_OPS = [
+  "addCaption", "styleCaption", "emphasizeWord", "translateCaptions", "addText", "addZoom", "addEffect", "addSticker",
+  "insertBroll", "addSoundEffect", "autoSoundDesign", "addNarration", "adjustVolume", "duckAudio", "applyFilter",
+  "fadeClipAudio", "cleanVoice", "addTransition", "autoCaptions", "addBackgroundMusic",
+  // Phase 2 update tools: they change one named item the way the creator asked (look, level, timing, framing).
+  "editText", "updateTextStyle", "retimeItem", "updateOverlay", "setKeyframe", "removeKeyframe", "updateZoom",
+  "updateEffect", "updateMusic", "setSfxVolume", "setClipVolume", "setCrop", "panClip", "muteTrack", "updateVoiceover",
+] as const;
+
+/** The operation as the auto-apply rules see it: a few ops turn destructive with a flag. */
+export function isAdditiveOperation(op: { type: string; [k: string]: unknown }): boolean {
+  if (!(ADDITIVE_OPS as readonly string[]).includes(op.type)) return false;
+  if (op.type === "autoCaptions" && op.replaceExisting) return false;
+  if (op.type === "addBackgroundMusic" && op.replace) return false;
+  if (op.type === "addTransition" && op.overwrite) return false;
+  return true;
+}
+
 export function normalizeAutonomy(a: Partial<AutonomyPolicy> | null | undefined): AutonomyPolicy {
   const editing = (EDITING_AUTONOMY_LEVELS as readonly string[]).includes(a?.editing as string) ? (a!.editing as EditingAutonomy) : DEFAULT_AUTONOMY.editing;
   const publishing = (PUBLISHING_AUTONOMY_LEVELS as readonly string[]).includes(a?.publishing as string) ? (a!.publishing as PublishingAutonomy) : DEFAULT_AUTONOMY.publishing;
@@ -466,26 +515,44 @@ export interface AutoApplyDecision {
 }
 
 /**
- * AUTO: applied without asking only when there is at least one operation, every operation is in SAFE_OPS and no
- * operation was dropped for a constraint; otherwise it becomes a proposal. ASSISTED: the planner's own
- * `requiresConfirmation`. MANUAL: always a proposal.
+ * The one rule for "apply now or propose" (the phone follows `autoApplied`; it no longer derives its own):
+ * - greeting, MANUAL, the offline rule-based planner, or a planner that asked: always a proposal (F-09, F-19).
+ * - ASSISTED: applied when every operation is additive (ADDITIVE_OPS); cuts, reorders, speed, reframe, removals,
+ *   music replacement and caption regeneration are proposals.
+ * - AUTO: additive operations plus SAFE_OPS (pause / filler removal, reframe) are applied; the rest are proposals.
+ * Either way, an operation dropped for the creator's constraints makes the turn a proposal.
  */
 export function decideAutoApply(params: {
   editing: EditingAutonomy;
   operationTypes: string[];
+  /** Full operations, when known: flags such as `replace` make an otherwise additive op destructive. */
+  operations?: Array<{ type: string; [k: string]: unknown }>;
   plannerRequiresConfirmation: boolean;
   violations: number;
   isGreeting?: boolean;
+  /** "deterministic" = the offline keyword planner: its guess is never applied without the creator. */
+  plannerSource?: "llm" | "deterministic";
+  /** The creator said yes in the chat to exactly this plan: that is the confirmation. */
+  confirmedByCreator?: boolean;
 }): AutoApplyDecision {
   const { editing, operationTypes, plannerRequiresConfirmation, violations } = params;
-  if (params.isGreeting) return { autoApplied: false, requiresConfirmation: true, reason: "opening proposal" };
-  if (editing === "MANUAL") return { autoApplied: false, requiresConfirmation: true, reason: "editing autonomy is MANUAL: every change is a proposal" };
-  if (editing === "AUTO") {
-    if (!operationTypes.length) return { autoApplied: false, requiresConfirmation: plannerRequiresConfirmation, reason: "no operations" };
-    const unsafe = Array.from(new Set(operationTypes.filter((t) => !isSafeOp(t))));
-    if (unsafe.length) return { autoApplied: false, requiresConfirmation: true, reason: `not auto-applied: ${unsafe.join(", ")} ${unsafe.length === 1 ? "is" : "are"} not in the safe list` };
-    if (violations > 0) return { autoApplied: false, requiresConfirmation: true, reason: "not auto-applied: some operations were dropped for your constraints" };
-    return { autoApplied: true, requiresConfirmation: false, reason: "auto-applied: every operation is in the safe list" };
+  const propose = (reason: string): AutoApplyDecision => ({ autoApplied: false, requiresConfirmation: true, reason });
+  if (params.isGreeting) return propose("opening proposal");
+  if (!operationTypes.length) return { autoApplied: false, requiresConfirmation: plannerRequiresConfirmation, reason: "no operations" };
+  if (editing === "MANUAL") return propose("editing autonomy is MANUAL: every change is a proposal");
+  if (params.confirmedByCreator) {
+    return violations > 0
+      ? propose("not auto-applied: some operations were dropped for your constraints")
+      : { autoApplied: true, requiresConfirmation: false, reason: "the creator agreed to this plan in the chat" };
   }
-  return { autoApplied: false, requiresConfirmation: plannerRequiresConfirmation, reason: "editing autonomy is ASSISTED" };
+  if (params.plannerSource === "deterministic") return propose("offline director: its edit is a proposal, never applied on its own");
+  if (plannerRequiresConfirmation) return propose("the director asked for confirmation");
+  if (violations > 0) return propose("not auto-applied: some operations were dropped for your constraints");
+  const ops = params.operations ?? operationTypes.map((type) => ({ type }));
+  const allowed = (op: { type: string; [k: string]: unknown }) => isAdditiveOperation(op) || (editing === "AUTO" && isSafeOp(op.type));
+  const blocked = Array.from(new Set(ops.filter((op) => !allowed(op)).map((op) => op.type)));
+  if (blocked.length) {
+    return propose(`${blocked.join(", ")} ${blocked.length === 1 ? "changes" : "change"} existing footage or items, so it is a proposal (editing autonomy ${editing})`);
+  }
+  return { autoApplied: true, requiresConfirmation: false, reason: `auto-applied: every operation only adds or restyles (editing autonomy ${editing})` };
 }

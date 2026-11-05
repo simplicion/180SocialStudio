@@ -116,3 +116,6 @@ generated/
 *.env
 .recovered_chats/
 
+
+# Claude Code agent worktrees
+.claude/worktrees/

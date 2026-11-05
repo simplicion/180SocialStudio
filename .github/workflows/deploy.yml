@@ -72,6 +72,9 @@ jobs:
             echo "=== [4/6] Installing dependencies and generating client ==="
             pnpm install
             pnpm db:generate
+            # The backend runs from source (tsx) but loads @workspace/video-contracts from its compiled dist/
+            # (git-ignored): build it on every deploy, or the server runs new code against old contracts.
+            pnpm --filter @workspace/video-contracts build
 
             # Ensure trend-worker virtual environment exists
             if [ -d "services/trend-worker" ] && [ ! -f "services/trend-worker/.venv/bin/uvicorn" ]; then

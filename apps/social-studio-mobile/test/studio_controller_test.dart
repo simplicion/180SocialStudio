@@ -76,7 +76,7 @@ void main() {
   });
 
   /// The director's answer: keep the first 5 s (a valid edit of the loaded timeline).
-  Map<String, dynamic> directorAnswer({bool confirm = false, Map<String, dynamic>? editIR}) => {
+  Map<String, dynamic> directorAnswer({bool confirm = false, Map<String, dynamic>? editIR, bool? autoApplied}) => {
         'success': true,
         'data': {
           'plannerSource': 'llm',
@@ -89,9 +89,153 @@ void main() {
           'rejectedOperations': [],
           'warnings': [],
           'requiresConfirmation': confirm,
+          // The server decides what applies without asking (F-09); the phone follows it.
+          'autoApplied': autoApplied ?? !confirm,
           'editIR': editIR ?? TimelineOps.removeRange(c.ir!, 5000, 10000).toJson(),
         },
       };
+
+  Future<void> settle() async {
+    for (var i = 0; i < 300 && c.directorBusy; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+    }
+  }
+
+  test('F-01 a manual edit made while the Director is thinking is merged with its answer, not lost', () async {
+    final gate = backend.hold('POST', _direct, directorAnswer());
+    final turn = c.askDirector('cut the second half');
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    expect(c.directorBusy, isTrue);
+    c.apply((ir) => TimelineOps.addText(ir, 'My hook', startMs: 1000, durationMs: 1500));
+    gate.complete();
+    await turn;
+    await settle();
+    expect(c.ir!.durationMs, 5000, reason: "the Director's cut");
+    expect(c.ir!.captions.where((t) => t.text == 'My hook'), hasLength(1), reason: 'the manual title survives');
+    expect(c.messages.any((m) => m.text.contains('on top of the edits you made')), isTrue);
+  });
+
+  test('F-02 applying a proposal after two manual edits keeps both edits', () async {
+    backend.json('POST', _direct, directorAnswer(confirm: true));
+    await c.askDirector('cut the second half');
+    final idx = c.messages.lastIndexWhere((m) => m.response != null);
+    c.apply((ir) => TimelineOps.addText(ir, 'Title', startMs: 500, durationMs: 1000));
+    c.apply((ir) => TimelineOps.addZoom(ir, startMs: 1000, durationMs: 1200));
+    c.applyProposal(idx);
+    expect(c.ir!.durationMs, 5000);
+    expect(c.ir!.captions.where((t) => t.text == 'Title'), hasLength(1));
+    expect(c.ir!.zooms, hasLength(1));
+    expect(c.messages[idx].applied, isTrue);
+    c.undo();
+    expect(c.ir!.durationMs, 10000, reason: 'one undo step takes the Director turn back');
+    expect(c.ir!.zooms, hasLength(1), reason: '... and keeps the manual work');
+  });
+
+  test('F-02 both sides changed the cuts: nothing is applied until the creator chooses', () async {
+    backend.json('POST', _direct, directorAnswer(confirm: true));
+    await c.askDirector('cut the second half');
+    final idx = c.messages.lastIndexWhere((m) => m.response != null);
+    c.apply((ir) => TimelineOps.removeRange(ir, 0, 1000));
+    final mine = c.ir;
+    c.applyProposal(idx);
+    expect(identical(c.ir, mine), isTrue);
+    expect(c.messages[idx].structuralConflict, isTrue);
+    expect(c.messages[idx].applied, isFalse);
+    c.resolveDirectorConflict(idx, useDirectors: true);
+    expect(c.ir!.durationMs, 5000);
+    c.undo();
+    expect(c.ir!.durationMs, 9000, reason: 'the creator keeps an undo back to their own cuts');
+  });
+
+  test('F-01 the request carries the timeline revision', () async {
+    backend.json('POST', _direct, directorAnswer());
+    final rev = c.revision;
+    await c.askDirector('cut the second half');
+    expect(backend.last('POST', _direct)!.json['baseRevision'], rev);
+    expect(c.revision, greaterThan(rev));
+  });
+
+  test('F-09 the phone follows the server: not autoApplied means a proposal, even without requiresConfirmation', () async {
+    backend.json('POST', _direct, directorAnswer(autoApplied: false));
+    await c.askDirector('cut the second half');
+    expect(c.ir!.durationMs, 10000);
+    expect(c.messages.last.applied, isFalse);
+  });
+
+  test('Phase 7: an applied Director turn is reported, and undoing it within 30 s is reported as regret', () async {
+    const feedback = '/api/v1/social-media/projects/p1/agent-memory/feedback';
+    backend.json('POST', feedback, {'success': true, 'item': {}});
+    final answer = directorAnswer();
+    (answer['data'] as Map)['runId'] = 'run_42';
+    backend.json('POST', _direct, answer);
+    await c.askDirector('cut the second half');
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    final applied = backend.last('POST', feedback)!.json;
+    expect(applied['accepted'], isTrue);
+    expect(applied['runId'], 'run_42');
+    c.undo();
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    final undone = backend.last('POST', feedback)!.json;
+    expect(undone['accepted'], isFalse);
+    expect(undone['summary'], contains('regret'));
+  });
+
+  test('F-21 items made by hand are marked manual and can be locked; the request carries it', () async {
+    c.apply((ir) => TimelineOps.addText(ir, 'My hook', startMs: 0, durationMs: 1000));
+    final id = c.ir!.captions.single.id;
+    expect(c.ir!.itemMeta[id]?.origin, 'manual');
+    c.toggleItemLock(id);
+    expect(c.isItemLocked(id), isTrue);
+    backend.json('POST', _direct, directorAnswer(editIR: c.ir!.toJson()));
+    await c.askDirector('make it pop');
+    final meta = (backend.last('POST', _direct)!.json['currentEditIR'] as Map)['itemMeta'] as Map;
+    expect(meta[id], {'origin': 'manual', 'locked': true});
+    c.undo(); // the lock is one undo step
+    c.undo();
+    expect(c.isItemLocked(id), isFalse);
+  });
+
+  test('F-16 history tells the Director which turns were applied, never applied, or undone', () async {
+    backend.json('POST', _direct, directorAnswer());
+    await c.askDirector('cut the second half'); // applied
+    c.undo(); // ... then undone
+    backend.json('POST', _direct, directorAnswer(confirm: true));
+    await c.askDirector('cut it again'); // a proposal left unapplied
+    backend.json('POST', _direct, directorAnswer(editIR: c.ir!.toJson()));
+    await c.askDirector('what now?');
+    final history = (backend.last('POST', _direct)!.json['history'] as List).cast<Map>();
+    final assistant = history.where((t) => t['role'] == 'assistant').toList();
+    expect(assistant.map((t) => t['status']), ['undone', 'proposed_not_applied']);
+    expect(assistant.first['appliedOps'], ['remove_range']);
+  });
+
+  test('F-16 a redone Director turn counts as applied again', () async {
+    backend.json('POST', _direct, directorAnswer());
+    await c.askDirector('cut the second half');
+    c.undo();
+    c.redo();
+    backend.json('POST', _direct, directorAnswer(editIR: c.ir!.toJson()));
+    await c.askDirector('next');
+    final history = (backend.last('POST', _direct)!.json['history'] as List).cast<Map>();
+    expect(history.firstWhere((t) => t['role'] == 'assistant')['status'], 'applied');
+  });
+
+  test('F-03 music and SFX from the phone are asset references; plain-http links are refused', () {
+    final music = c.localMediaSource('/storage/emulated/0/Music/song.m4a', label: 'song.m4a');
+    c.apply((ir) => TimelineOps.setMusic(ir, source: music, title: 'song.m4a'));
+    final src = c.ir!.toJson()['audio']['music'][0]['source'] as Map;
+    expect(src['kind'], 'asset');
+    expect(src.containsKey('path'), isFalse, reason: 'the server never sees a device path');
+    expect(c.localOverlayPath(c.ir!.audio.music.single.source), '/storage/emulated/0/Music/song.m4a');
+
+    final pop = c.localMediaSource('/storage/emulated/0/pop.wav');
+    c.apply((ir) => TimelineOps.addSfx(ir, source: pop, startMs: 1000));
+    expect(c.ir!.audio.sfx.single.durationMs, isNull, reason: 'the whole file plays (was cut to 2 s)');
+    expect(c.ir!.audio.sfx.single.source['kind'], 'asset');
+
+    expect(() => TimelineOps.setMusic(c.ir!, url: 'http://example.com/a.mp3'), throwsA(isA<Exception>()));
+    expect(() => TimelineOps.addSfx(c.ir!, url: 'http://example.com/a.mp3', startMs: 0), throwsA(isA<Exception>()));
+  });
 
   test('load builds the initial timeline and keeps on-device silences', () {
     expect(c.ir!.durationMs, 10000);
@@ -150,7 +294,7 @@ void main() {
     final req = backend.last('POST', _direct)!;
     expect(req.json['history'], [
       {'role': 'user', 'content': 'cut the second half'},
-      {'role': 'assistant', 'content': 'I cut everything after 0:05.'},
+      {'role': 'assistant', 'content': 'I cut everything after 0:05.', 'status': 'applied', 'appliedOps': ['remove_range']},
     ]);
     expect((req.json['currentEditIR'] as Map)['durationMs'], 5000);
   });

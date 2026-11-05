@@ -69,10 +69,10 @@ export class CreativePlanValidator {
       }
 
       // Check timestamps sanity
-      if ("startSec" in op && op.startSec < 0) {
+      if ("startSec" in op && typeof op.startSec === "number" && op.startSec < 0) {
         errors.push(`Operation #${i} (${op.type}) has negative startSec: ${op.startSec}`);
       }
-      if ("durationSec" in op && op.durationSec <= 0) {
+      if ("durationSec" in op && typeof op.durationSec === "number" && op.durationSec <= 0) {
         errors.push(`Operation #${i} (${op.type}) has non-positive durationSec: ${op.durationSec}`);
       }
 

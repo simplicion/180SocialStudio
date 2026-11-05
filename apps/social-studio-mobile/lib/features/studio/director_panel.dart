@@ -3,6 +3,7 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/common.dart';
+import '../director/ai_director_service.dart';
 import 'studio_controller.dart';
 
 /// Conversational AI Director: a chat with a friendly editor. It looks at the clip, recommends a direction,
@@ -124,6 +125,16 @@ class _DirectorPanelState extends State<DirectorPanel> {
                 for (var i = 0; i < msgs.length; i++)
                   ..._messageWidgets(context, i, isLatest: i == lastDirector && !waitingForDirector),
                 if (c.directorBusy) const _TypingIndicator(),
+                if (c.directorBusy)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(4, 2, 4, 0),
+                    child: Text(
+                      c.waitingForClipAnalysis
+                          ? 'Listening to your clips…'
+                          : 'Director is working: you can keep editing, your edits will be merged.',
+                      style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -142,7 +153,8 @@ class _DirectorPanelState extends State<DirectorPanel> {
     final text = r != null ? (r.message.isNotEmpty ? r.message : m.text) : (failed ? _friendlyFailure(m.text) : m.text);
     final hasPlan = r != null && r.isProposal && !m.applied;
     final hasEdits = r != null && r.appliedOperations.isNotEmpty;
-    final needsApply = hasEdits && !m.applied && !hasPlan;
+    final conflict = m.structuralConflict && !m.applied;
+    final needsApply = hasEdits && !m.applied && !hasPlan && !conflict;
     final details = <String>[
       ...?r?.appliedOperations,
       for (final x in r?.rejectedOperations ?? const <String>[]) "Couldn't do: $x",
@@ -172,6 +184,32 @@ class _DirectorPanelState extends State<DirectorPanel> {
               onAccept: () => _accept(i),
               onChange: _changeSomething,
             ),
+          ],
+          if (conflict) ...[
+            const SizedBox(height: 8),
+            Text(
+              'The Director edited an older version of your cuts.',
+              style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+            ),
+            const SizedBox(height: 6),
+            Wrap(spacing: 8, runSpacing: 6, children: [
+              FilledButton(
+                onPressed: c.directorBusy ? null : () => c.rerunDirectorOnLatest(i),
+                child: const Text('Re-run on my latest edit'),
+              ),
+              OutlinedButton(
+                onPressed: () => c.resolveDirectorConflict(i, useDirectors: true),
+                child: const Text("Use Director's version"),
+              ),
+              TextButton(
+                onPressed: () => c.resolveDirectorConflict(i, useDirectors: false),
+                child: const Text('Keep mine'),
+              ),
+            ]),
+          ],
+          if ((needsApply || conflict) && (r?.diffSummary?.text.isNotEmpty ?? false)) ...[
+            const SizedBox(height: 8),
+            _DiffSummary(summary: r!.diffSummary!),
           ],
           if (needsApply) ...[
             const SizedBox(height: 8),
@@ -377,6 +415,49 @@ class _DirectorBubble extends StatelessWidget {
             child: DefaultTextStyle.merge(style: TextStyle(color: AppTheme.textPrimary, height: 1.35), child: child),
           ),
         ),
+      ]),
+    );
+  }
+}
+
+/// What a proposal changes, before the creator applies it (Phase 3.3). Removals and cuts are highlighted.
+class _DiffSummary extends StatelessWidget {
+  const _DiffSummary({required this.summary});
+  final DirectorDiffSummary summary;
+
+  static bool _isDestructive(String change) => change.startsWith('−') || change.endsWith(' cut');
+
+  @override
+  Widget build(BuildContext context) {
+    final changes = summary.changes.isEmpty ? [summary.text] : summary.changes;
+    return Container(
+      key: const Key('director-diff-summary'),
+      width: double.infinity,
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: summary.destructive ? AppTheme.error.withValues(alpha: 0.6) : AppTheme.textMuted.withValues(alpha: 0.3)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('What changes', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppTheme.textSecondary)),
+        const SizedBox(height: 4),
+        for (final c in changes)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 2),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Icon(_isDestructive(c) ? Icons.remove_circle_outline_rounded : Icons.add_circle_outline_rounded,
+                  size: 13, color: _isDestructive(c) ? AppTheme.error : AppTheme.success),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(c,
+                    style: TextStyle(fontSize: 12, color: _isDestructive(c) ? AppTheme.error : AppTheme.textPrimary,
+                        fontWeight: _isDestructive(c) ? FontWeight.w600 : FontWeight.normal)),
+              ),
+            ]),
+          ),
+        if (!summary.destructive)
+          Text('Nothing is removed.', style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
       ]),
     );
   }

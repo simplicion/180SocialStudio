@@ -11,7 +11,9 @@ export const OVERLAY_LAYOUTS = ["fullscreen", "fit", "pip", "sticker"] as const;
 /** Entrance animation for a floating overlay (keyframes; same maths as the editor's "Animation in" chips). */
 export const LAYER_ENTRANCES = ["none", "zoom_in", "slide_left", "slide_up", "fade", "spin"] as const;
 /** Timeline items the Director can remove by id, by time, or all of a kind. */
-export const REMOVABLE_ITEM_KINDS = ["caption", "title", "zoom", "broll", "effect", "sfx"] as const;
+export const REMOVABLE_ITEM_KINDS = ["caption", "title", "zoom", "broll", "effect", "sfx", "music", "voiceover", "sticker"] as const;
+/** Timeline items the Director can re-time by id (`retimeItem`). */
+export const RETIMABLE_ITEM_KINDS = ["caption", "title", "zoom", "broll", "effect", "sfx", "voiceover"] as const;
 const hexColor = z.string().regex(/^#[0-9A-Fa-f]{6}$/);
 
 /**
@@ -114,7 +116,8 @@ export const MoveClipOpSchema = z.object({
 export const DuplicateClipOpSchema = z.object({
   type: z.literal("duplicateClip"),
   clipId: z.string(),
-  targetTimelineStartSec: z.number().nonnegative(),
+  /** Where the copy goes: the clip boundary nearest this second. Left out = right after the original. */
+  targetTimelineStartSec: z.number().nonnegative().optional(),
 });
 
 export const ReplaceClipOpSchema = z.object({
@@ -194,8 +197,12 @@ export const AddCaptionOpSchema = z.object({
 
 export const StyleCaptionOpSchema = z.object({
   type: z.literal("styleCaption"),
-  preset: z.string().describe(`Caption template id (${CAPTION_TEMPLATE_IDS.join(", ")}) for a full restyle, or a basic preset name.`),
-  highlightColor: z.string().optional(),
+  preset: z.string().optional().describe(`Caption template id (${CAPTION_TEMPLATE_IDS.join(", ")}) for a full restyle, or a basic preset name. Leave out to change only the fields given.`),
+  highlightColor: z.string().regex(/^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$/).optional(),
+  /** Partial patch (added 2026-11): only the fields given change; text, timing and positions stay. */
+  textColor: z.string().regex(/^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$/).optional(),
+  fontSize: z.number().min(16).max(200).optional(),
+  uppercase: z.boolean().optional(),
   position: z.object({ x: z.number(), y: z.number() }).optional(),
 });
 
@@ -224,6 +231,18 @@ export const ReframeSubjectOpSchema = z.object({
   targetAspect: z.enum(["9:16", "16:9", "1:1", "4:5"]),
   trackingSubjectId: z.string().optional(),
   smoothingFactor: z.number().min(0).max(1).default(0.85),
+  /** "track" = the crop follows the speaker over time (needs the face track); "static" = one crop per clip. */
+  mode: z.enum(["static", "track"]).optional().describe('"track": the crop follows the speaker as they move (best for 16:9 -> 9:16 talking heads). Default static.'),
+});
+
+/** J-cut / L-cut on a main clip (Phase 6.2): its own sound starts before / carries on after its picture. */
+export const JLCutOpSchema = z.object({
+  type: z.literal("jlCut"),
+  clipId: z.string().min(1),
+  /** J-cut: ms the clip's sound starts BEFORE its picture (over the end of the previous clip). */
+  leadMs: z.number().int().min(0).max(2000).optional(),
+  /** L-cut: ms the clip's sound carries on AFTER its picture (over the start of the next clip). */
+  lagMs: z.number().int().min(0).max(2000).optional(),
 });
 
 export const ChangeAspectRatioOpSchema = z.object({
@@ -281,6 +300,8 @@ export const AddTransitionOpSchema = z.object({
   toClipId: z.string().default("*"),
   transitionType: z.enum(TRANSITION_TYPES),
   durationSec: z.number().positive().default(0.3),
+  /** With '*': also replace transitions the cuts already have (added 2026-11). Default: only cuts without one. */
+  overwrite: z.boolean().optional(),
 });
 
 export const BeatAlignOpSchema = z.object({
@@ -319,9 +340,11 @@ export const ChangeSpeedOpSchema = z.object({
 
 export const FreezeFrameOpSchema = z.object({
   type: z.literal("freezeFrame"),
-  clipId: z.string(),
+  /** Main clip that is on screen at timestampSec ("auto" = whichever it is). */
+  clipId: z.string().default("auto"),
+  /** Timeline second of the frame to hold; the still is inserted there and later footage moves back. */
   timestampSec: z.number().nonnegative(),
-  durationSec: z.number().positive().default(1.5),
+  durationSec: z.number().positive().max(10).default(1.5),
 });
 
 export const AddImageOpSchema = z.object({
@@ -528,6 +551,11 @@ export const AutoCaptionsOpSchema = z.object({
   background: z.string().optional(),
   /** Highlight one key word per caption (a number, else its longest content word). Default on. */
   autoEmphasis: z.boolean().optional().describe("Highlight one key word per caption. On unless set to false."),
+  /**
+   * Throw away the existing captions and make new ones from the transcript (added 2026-11). Without it, autoCaptions on
+   * a timeline that already has captions only restyles them: hand-fixed text, translations and positions stay.
+   */
+  replaceExisting: z.boolean().optional().describe("true ONLY when the creator explicitly asks to redo/regenerate the captions from scratch. Otherwise existing captions are restyled, never rewritten."),
   reason: z.string().optional(),
 });
 
@@ -558,9 +586,165 @@ export const AddBackgroundMusicOpSchema = z.object({
   duckDb: z.number().min(-40).max(0).default(-12),
   fadeInSec: z.number().min(0).max(10).default(0.5),
   fadeOutSec: z.number().min(0).max(10).default(1.0),
+  /** Required to swap music that is already on the timeline (added 2026-11); without it the op is rejected. */
+  replace: z.boolean().optional().describe("true ONLY when the creator asks for different music. Never set it to change the volume (use adjustVolume with trackId 'music')."),
+  /** A bed for one part of the video only (Phase 6.6: a music change, a stinger). Up to 4 beds, never overlapping. */
+  startSec: z.number().nonnegative().optional(),
+  durationSec: z.number().positive().optional(),
   reason: z.string().optional(),
 });
 
+
+// ─── Update tools (added 2026-11, editor overhaul Phase 2): change an existing item by id, never remove + re-add ──
+
+const hexA = z.string().regex(/^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$/);
+
+export const EditTextOpSchema = z.object({
+  type: z.literal("editText"),
+  id: z.string().min(1).describe("Caption or title id from the timeline summary."),
+  text: z.string().min(1).max(500),
+});
+
+export const UpdateTextStyleOpSchema = z.object({
+  type: z.literal("updateTextStyle"),
+  target: z.string().min(1).describe('A caption / title id, or "all_captions" / "all_titles".'),
+  fontFamily: z.string().min(1).max(60).optional(),
+  fontSizePx: z.number().min(8).max(400).optional().describe("Canvas pixels (a 1080 px wide canvas: 48-90 is typical)."),
+  textColor: hexA.optional(),
+  highlightColor: hexA.optional(),
+  strokeColor: hexA.optional(),
+  strokeWidthPx: z.number().min(0).max(40).optional(),
+  backgroundColor: z.union([hexA, z.literal("none")]).optional().describe('Box behind the text, or "none" to remove it.'),
+  uppercase: z.boolean().optional(),
+  glow: z.boolean().optional(),
+  enter: TextEnterSchema.optional(),
+  exit: TextExitSchema.optional(),
+  loop: TextLoopSchema.optional(),
+  positionX: z.number().min(0).max(1).optional().describe("Centre, 0..1 of the canvas width."),
+  positionY: z.number().min(0).max(1).optional().describe("Centre, 0..1 of the canvas height (0.72 = lower third)."),
+  rotationDeg: z.number().min(-180).max(180).optional().describe("Tilt, clockwise degrees (e.g. -8 for a playful angle)."),
+  scale: z.number().min(0.2).max(4).optional().describe("Size multiplier on top of fontSizePx."),
+});
+
+export const RetimeItemOpSchema = z.object({
+  type: z.literal("retimeItem"),
+  kind: z.enum(RETIMABLE_ITEM_KINDS),
+  id: z.string().min(1),
+  startSec: z.number().nonnegative().optional(),
+  durationSec: z.number().positive().optional(),
+});
+
+export const UpdateOverlayOpSchema = z.object({
+  type: z.literal("updateOverlay"),
+  id: z.string().min(1).describe("B-roll / picture-in-picture / sticker id."),
+  x: z.number().min(-0.5).max(1.5).optional(),
+  y: z.number().min(-0.5).max(1.5).optional(),
+  scale: z.number().min(0.05).max(3).optional(),
+  rotation: z.number().min(-720).max(720).optional(),
+  opacity: z.number().min(0).max(1).optional(),
+  fit: z.enum(["cover", "contain"]).optional(),
+  muted: z.boolean().optional(),
+  mask: z.enum(["circle", "rounded", "none"]).optional(),
+  chromaKey: z.enum(["green", "blue", "none"]).optional(),
+  /** Swap the footage, same slot and look: an HTTPS file, or a stock search phrase. */
+  sourceUrl: z.string().url().refine((u) => /^https:\/\//i.test(u), "must be https").optional(),
+  stockQuery: z.string().min(1).max(120).optional(),
+});
+
+export const UpdateVoiceoverOpSchema = z.object({
+  type: z.literal("updateVoiceover"),
+  id: z.string().min(1),
+  volumeDb: z.number().min(-60).max(12).optional(),
+  fadeInSec: z.number().min(0).max(5).optional(),
+  fadeOutSec: z.number().min(0).max(5).optional(),
+});
+
+export const SetKeyframeOpSchema = z.object({
+  type: z.literal("setKeyframe"),
+  overlayId: z.string().min(1),
+  atSec: z.number().nonnegative().describe("Seconds from the overlay's own start."),
+  x: z.number().min(-0.5).max(1.5).optional(),
+  y: z.number().min(-0.5).max(1.5).optional(),
+  scale: z.number().min(0.05).max(3).optional(),
+  rotation: z.number().min(-720).max(720).optional(),
+  opacity: z.number().min(0).max(1).optional(),
+});
+
+export const RemoveKeyframeOpSchema = z.object({
+  type: z.literal("removeKeyframe"),
+  overlayId: z.string().min(1),
+  atSec: z.number().nonnegative(),
+});
+
+export const UpdateZoomOpSchema = z.object({
+  type: z.literal("updateZoom"),
+  id: z.string().min(1),
+  scale: z.number().min(1).max(4).optional(),
+  centerX: z.number().min(0).max(1).optional(),
+  centerY: z.number().min(0).max(1).optional(),
+  rampMs: z.number().int().min(0).max(3000).optional(),
+  startSec: z.number().nonnegative().optional(),
+  durationSec: z.number().positive().optional(),
+});
+
+export const UpdateEffectOpSchema = z.object({
+  type: z.literal("updateEffect"),
+  id: z.string().min(1),
+  intensity: z.number().min(0).max(1).optional(),
+  effect: z.enum(VIDEO_EFFECT_TYPES).optional(),
+});
+
+export const UpdateMusicOpSchema = z.object({
+  type: z.literal("updateMusic"),
+  /** Which bed, when there are several (from the timeline summary). Default: the first. */
+  id: z.string().min(1).optional(),
+  volumeDb: z.number().min(-60).max(12).optional(),
+  fadeInSec: z.number().min(0).max(10).optional(),
+  fadeOutSec: z.number().min(0).max(10).optional(),
+  duck: z.boolean().optional().describe("Lower the music while someone talks."),
+  duckDb: z.number().min(-40).max(0).optional(),
+});
+
+export const ChangeMusicTrackOpSchema = z.object({
+  type: z.literal("changeMusicTrack"),
+  id: z.string().min(1).optional(),
+  query: z.string().min(1).max(120).optional().describe("Mood / genre keywords for the new track."),
+  sourceUrl: z.string().url().refine((u) => /^https:\/\//i.test(u), "must be https").optional(),
+});
+
+export const SetSfxVolumeOpSchema = z.object({
+  type: z.literal("setSfxVolume"),
+  id: z.string().min(1),
+  volumeDb: z.number().min(-60).max(12),
+});
+
+export const SetClipVolumeOpSchema = z.object({
+  type: z.literal("setClipVolume"),
+  clipId: z.string().min(1).describe('Main clip id, or "all".'),
+  volumeDb: z.number().min(-60).max(12),
+});
+
+export const SetCropOpSchema = z.object({
+  type: z.literal("setCrop"),
+  clipId: z.string().min(1),
+  x: z.number().min(0).max(1),
+  y: z.number().min(0).max(1),
+  width: z.number().gt(0).max(1),
+  height: z.number().gt(0).max(1),
+});
+
+export const PanClipOpSchema = z.object({
+  type: z.literal("panClip"),
+  clipId: z.string().min(1).describe('Main clip id, or "all".'),
+  centerX: z.number().min(0).max(1).describe("Where the crop window centres in the source frame (0..1)."),
+  centerY: z.number().min(0).max(1),
+});
+
+export const MuteTrackOpSchema = z.object({
+  type: z.literal("muteTrack"),
+  track: z.enum(["original", "music", "sfx", "voiceover"]),
+  muted: z.boolean(),
+});
 
 export const RenderMotionGraphicOpSchema = z.object({
   type: z.literal("renderMotionGraphic"),
@@ -632,6 +816,23 @@ export const CreativeOperationSchema = z.discriminatedUnion("type", [
   ClearCaptionsOpSchema,
   AddBackgroundMusicOpSchema,
   RenderMotionGraphicOpSchema,
+  EditTextOpSchema,
+  UpdateTextStyleOpSchema,
+  RetimeItemOpSchema,
+  UpdateOverlayOpSchema,
+  SetKeyframeOpSchema,
+  RemoveKeyframeOpSchema,
+  UpdateZoomOpSchema,
+  UpdateEffectOpSchema,
+  UpdateMusicOpSchema,
+  ChangeMusicTrackOpSchema,
+  SetSfxVolumeOpSchema,
+  SetClipVolumeOpSchema,
+  SetCropOpSchema,
+  PanClipOpSchema,
+  MuteTrackOpSchema,
+  UpdateVoiceoverOpSchema,
+  JLCutOpSchema,
 ]);
 
 export type CreativeOperation = z.infer<typeof CreativeOperationSchema>;

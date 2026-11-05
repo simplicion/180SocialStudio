@@ -21,9 +21,24 @@ class MobileEditIr {
     this.audio = const EditIrAudio(),
     this.watermark,
     this.effects = const [],
+    this.itemMeta = const {},
   });
 
   static const schemaVersion = 'mobile-editir/1';
+
+  /// Who made each item and whether it is locked, by item id (contract `itemMeta`). Kept beside the items (not on
+  /// them) so every edit that rebuilds an item keeps it. Entries of items no longer on the timeline are not written.
+  final Map<String, EditIrItemMeta> itemMeta;
+
+  /// The item [id] is locked: the AI Director will not change or remove it.
+  bool isLocked(String id) => itemMeta[id]?.locked ?? false;
+
+  /// Copy with [id]'s provenance / lock changed (null fields keep what is there).
+  MobileEditIr withItemMeta(String id, {String? origin, bool? locked}) {
+    final cur = itemMeta[id];
+    final next = EditIrItemMeta(origin: origin ?? cur?.origin, locked: locked ?? cur?.locked ?? false);
+    return copyWith(itemMeta: {...itemMeta, id: next});
+  }
 
   final String projectId;
   final EditIrCanvas canvas;
@@ -57,6 +72,7 @@ class MobileEditIr {
         audio: audio,
         watermark: w,
         effects: effects,
+        itemMeta: itemMeta,
       );
 
   /// Copy with some parts replaced; every other field (including ones added later) is kept.
@@ -72,6 +88,7 @@ class MobileEditIr {
     EditIrWatermark? watermark,
     bool clearWatermark = false,
     List<EditIrEffect>? effects,
+    Map<String, EditIrItemMeta>? itemMeta,
   }) =>
       MobileEditIr(
         projectId: projectId,
@@ -85,6 +102,7 @@ class MobileEditIr {
         audio: audio ?? this.audio,
         watermark: clearWatermark ? null : (watermark ?? this.watermark),
         effects: effects ?? this.effects,
+        itemMeta: itemMeta ?? this.itemMeta,
       );
 
   factory MobileEditIr.fromMap(Map<String, dynamic> map) => MobileEditIr.fromJson(map);
@@ -106,8 +124,24 @@ class MobileEditIr {
       audio: json['audio'] == null ? EditIrAudio() : EditIrAudio.fromJson(_obj(json, 'audio')),
       watermark: json['watermark'] == null ? null : EditIrWatermark.fromJson(_obj(json, 'watermark')),
       effects: _list(json, 'effects', EditIrEffect.fromJson),
+      itemMeta: {
+        for (final e in ((json['itemMeta'] as Map?) ?? const {}).entries)
+          if (e.value is Map) '${e.key}': EditIrItemMeta.fromJson((e.value as Map).cast<String, dynamic>()),
+      },
     );
   }
+
+  /// Ids of every item on the timeline (clips, overlays, text, zooms, effects, audio).
+  Set<String> get itemIds => {
+        for (final c in clips) c.id,
+        for (final o in overlays) o.id,
+        for (final c in captions) c.id,
+        for (final z in zooms) z.id,
+        for (final e in effects) e.id,
+        for (final m in audio.music) m.id,
+        for (final s in audio.sfx) s.id,
+        for (final v in audio.voiceovers) v.id,
+      };
 
   Map<String, dynamic> toMap() => toJson();
 
@@ -124,7 +158,14 @@ class MobileEditIr {
         'audio': audio.toJson(),
         if (watermark != null) 'watermark': watermark!.toJson(),
         if (effects.isNotEmpty) 'effects': effects.map((e) => e.toJson()).toList(),
+        if (_liveItemMeta.isNotEmpty) 'itemMeta': {for (final e in _liveItemMeta.entries) e.key: e.value.toJson()},
       };
+
+  Map<String, EditIrItemMeta> get _liveItemMeta {
+    if (itemMeta.isEmpty) return const {};
+    final ids = itemIds;
+    return {for (final e in itemMeta.entries) if (ids.contains(e.key) && !e.value.isEmpty) e.key: e.value};
+  }
 
   /// Checks the contract invariants the renderer relies on. Throws `INVALID_EDIT_IR`.
   void validate() {
@@ -144,7 +185,11 @@ class MobileEditIr {
       if (i > 0 && c.timelineStartMs != clips[i - 1].timelineEndMs) fail('clip ${c.id}: clips are not contiguous');
     }
     if ((clips.last.timelineEndMs - durationMs).abs() > 1) fail('durationMs does not equal the last clip end');
-    if (audio.music.length > 1) fail('at most one music item is allowed');
+    if (audio.music.length > 4) fail('at most 4 music beds are allowed');
+    final beds = [...audio.music]..sort((a, b) => a.timelineStartMs.compareTo(b.timelineStartMs));
+    for (var i = 1; i < beds.length; i++) {
+      if (beds[i].timelineStartMs < beds[i - 1].timelineEndMs) fail('music ${beds[i].id} overlaps music ${beds[i - 1].id}');
+    }
     for (final e in effects) {
       if (!EditIrEffect.types.containsKey(e.type)) fail('effect ${e.id}: unknown type ${e.type}');
       if (e.endMs <= e.startMs) fail('effect ${e.id}: empty range');
@@ -153,6 +198,24 @@ class MobileEditIr {
 
   /// Every local file id the renderer will ask for, so callers can resolve downloads first.
   Set<String> get assetIds => clips.map((c) => c.assetId).toSet();
+}
+
+/// Provenance and lock of one timeline item (contract `itemMeta[id]`).
+class EditIrItemMeta {
+  const EditIrItemMeta({this.origin, this.locked = false});
+
+  /// manual | director | template; null = unknown.
+  final String? origin;
+  final bool locked;
+
+  bool get isEmpty => origin == null && !locked;
+
+  factory EditIrItemMeta.fromJson(Map<String, dynamic> j) => EditIrItemMeta(
+        origin: switch (j['origin']) { 'manual' || 'director' || 'template' => j['origin'] as String, _ => null },
+        locked: j['locked'] == true,
+      );
+
+  Map<String, dynamic> toJson() => {'origin': ?origin, if (locked) 'locked': true};
 }
 
 class EditIrWatermark {
@@ -355,7 +418,17 @@ class EditIrClip {
     this.audioFadeOutMs = 0,
     this.voiceCleanup = false,
     this.process,
+    this.cropKeyframes = const [],
+    this.audioLeadMs = 0,
+    this.audioLagMs = 0,
   });
+
+  /// Moving framing (contract `cropKeyframes`, Phase 6.1): the crop window's top-left at SOURCE ms of this clip's
+  /// file, interpolated linearly; the window keeps [crop]'s size. Empty = the static [crop].
+  final List<EditIrCropKeyframe> cropKeyframes;
+
+  /// J-cut lead / L-cut lag of the clip's own sound in ms (contract `audioLeadMs` / `audioLagMs`, Phase 6.2).
+  final int audioLeadMs, audioLagMs;
 
   /// "Reduce background noise" on this clip's own sound (applied by the export).
   final bool voiceCleanup;
@@ -397,6 +470,12 @@ class EditIrClip {
         audioFadeOutMs: (j['audioFadeOutMs'] as num?)?.toInt() ?? 0,
         voiceCleanup: j['voiceCleanup'] as bool? ?? false,
         process: j['process'] == 'reverse' || j['process'] == 'stabilize' ? j['process'] as String : null,
+        cropKeyframes: [
+          for (final k in (j['cropKeyframes'] as List?) ?? const [])
+            if (k is Map) EditIrCropKeyframe.fromJson(k.cast<String, dynamic>()),
+        ],
+        audioLeadMs: (j['audioLeadMs'] as num?)?.toInt() ?? 0,
+        audioLagMs: (j['audioLagMs'] as num?)?.toInt() ?? 0,
       );
 
   Map<String, dynamic> toJson() => {
@@ -418,7 +497,51 @@ class EditIrClip {
         if (audioFadeOutMs > 0) 'audioFadeOutMs': audioFadeOutMs,
         if (voiceCleanup) 'voiceCleanup': true,
         'process': ?process,
+        if (cropKeyframes.isNotEmpty && crop != null) 'cropKeyframes': cropKeyframes.map((k) => k.toJson()).toList(),
+        if (audioLeadMs > 0) 'audioLeadMs': audioLeadMs,
+        if (audioLagMs > 0) 'audioLagMs': audioLagMs,
       };
+
+  /// The crop window at source time [sourceMs]: [crop] moved along [cropKeyframes] (linear, held at the ends).
+  /// Shared by the preview; the renderer implements the same rule.
+  EditIrCrop? cropAt(int sourceMs) {
+    final c = crop;
+    if (c == null || cropKeyframes.isEmpty) return c;
+    final ks = cropKeyframes;
+    double x, y;
+    if (sourceMs <= ks.first.sourceMs) {
+      x = ks.first.x;
+      y = ks.first.y;
+    } else if (sourceMs >= ks.last.sourceMs) {
+      x = ks.last.x;
+      y = ks.last.y;
+    } else {
+      var i = 1;
+      while (ks[i].sourceMs < sourceMs) {
+        i++;
+      }
+      final a = ks[i - 1], b = ks[i];
+      final t = b.sourceMs == a.sourceMs ? 0.0 : (sourceMs - a.sourceMs) / (b.sourceMs - a.sourceMs);
+      x = a.x + (b.x - a.x) * t;
+      y = a.y + (b.y - a.y) * t;
+    }
+    return EditIrCrop(x: x.clamp(0, 1 - c.width), y: y.clamp(0, 1 - c.height), width: c.width, height: c.height);
+  }
+}
+
+/// One point of a clip's moving framing (contract `cropKeyframes[]`).
+class EditIrCropKeyframe {
+  const EditIrCropKeyframe({required this.sourceMs, required this.x, required this.y});
+  final int sourceMs;
+  final double x, y;
+
+  factory EditIrCropKeyframe.fromJson(Map<String, dynamic> j) => EditIrCropKeyframe(
+        sourceMs: (j['sourceMs'] as num).toInt(),
+        x: (j['x'] as num).toDouble(),
+        y: (j['y'] as num).toDouble(),
+      );
+
+  Map<String, dynamic> toJson() => {'sourceMs': sourceMs, 'x': x, 'y': y};
 }
 
 class EditIrOverlay {

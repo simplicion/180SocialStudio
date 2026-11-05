@@ -52,6 +52,8 @@ class MediaEnginePlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventC
         context = binding.applicationContext
         methodChannel = MethodChannel(binding.binaryMessenger, METHOD_CHANNEL).also { it.setMethodCallHandler(this) }
         eventChannel = EventChannel(binding.binaryMessenger, EVENT_CHANNEL).also { it.setStreamHandler(this) }
+        // Live editor preview (CompositionPlayer on a SurfaceView), behind the app's StudioPreviewMode.native flag.
+        binding.platformViewRegistry.registerViewFactory(MediaEnginePreviewFactory.VIEW_TYPE, MediaEnginePreviewFactory(binding.binaryMessenger))
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {

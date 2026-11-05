@@ -15,6 +15,18 @@ import { RationalTimeMath } from "./time";
 import { resolveCaptionTemplate } from "./caption-templates";
 import { captionFontFor } from "./caption-enhance";
 import { MediaAssetDescriptor } from "./project.schema";
+import { applyUpdateOp } from "./update-ops";
+
+/** What the compiler may need to know about the media (Phase 2 update tools). */
+export interface CompileOptions {
+  /** Source sizes / lengths (display-oriented), for panClip, replaceClip and freeze frames. */
+  sources?: Array<{ assetId: string; durationMs: number; width: number; height: number }>;
+}
+
+/** Placeholder asset of a freeze frame the phone extracts itself: `freeze:<assetId>@<sourceMs>`. */
+export const FREEZE_ASSET_PREFIX = "freeze:";
+/** Source length the phone registers for a still (TimelineOps.stillSourceMs). */
+export const STILL_SOURCE_MS = 600000;
 
 /** Shortest piece of footage two neighbouring cuts may leave between them (matches the critic's micro-clip rule). */
 const MIN_KEPT_SEC = 0.25;
@@ -37,6 +49,12 @@ function generateUUID(): string {
   });
 }
 
+/** An item a cut removed entirely, or shortened below `minSec` (an item that was already that short is kept). */
+function tooShortAfterCut(newSec: number, oldSec: number, minSec: number): boolean {
+  if (newSec < 0.001) return true;
+  return newSec < minSec && newSec < oldSec - 0.001;
+}
+
 export class EditIRCompiler {
   /**
    * Deterministically compiles high-level creative operations into concrete EditIR AST mutations.
@@ -45,9 +63,11 @@ export class EditIRCompiler {
   static compile(
     baseIR: EditIR,
     plan: CreativeEditPlan,
-    availableAssets: MediaAssetDescriptor[] = []
+    availableAssets: MediaAssetDescriptor[] = [],
+    opts: CompileOptions = {}
   ): CompilationResult {
     const updated: EditIR = JSON.parse(JSON.stringify(baseIR));
+    EditIRCompiler.reframeBaseAspect.set(updated, baseIR.meta.targetAspect);
     const appliedOperations: string[] = [];
     const rejectedOperations: string[] = [];
     const actionBadges: string[] = [];
@@ -87,6 +107,7 @@ export class EditIRCompiler {
     const speedOps: CreativeOperation[] = [];
     const transitionOps: CreativeOperation[] = [];
     const moveOps: CreativeOperation[] = [];
+    const insertOps: CreativeOperation[] = [];
     const baseDurationSec = RationalTimeMath.toSeconds(baseIR.meta.totalDuration);
 
     for (const op of plan.operations) {
@@ -172,8 +193,8 @@ export class EditIRCompiler {
             break;
           }
           case "reframeSubject": {
-            this.applyReframe(updated, op.targetAspect, op.smoothingFactor);
-            appliedOperations.push(`Re-framed subject for ${op.targetAspect}`);
+            this.applyReframe(updated, op.targetAspect, op.smoothingFactor, op.mode);
+            appliedOperations.push(`Re-framed subject for ${op.targetAspect}${op.mode === "track" ? ", following the speaker" : ""}`);
             break;
           }
           case "changeAspectRatio": {
@@ -214,8 +235,12 @@ export class EditIRCompiler {
               rejectedOperations.push("styleCaption: there are no captions to restyle");
               break;
             }
-            this.applyStyleCaption(updated, op.preset, op.highlightColor, op.position);
-            appliedOperations.push(`Styled captions with preset ${op.preset}`);
+            if (!updated.tracks.captionTrack.some((c) => c.role !== "title")) {
+              rejectedOperations.push("styleCaption: there are no captions to restyle (titles are changed separately)");
+              break;
+            }
+            this.applyStyleCaption(updated, op.preset, op.highlightColor, op.position, { textColor: op.textColor, fontSize: op.fontSize, uppercase: op.uppercase });
+            appliedOperations.push(op.preset ? `Styled captions with preset ${op.preset}` : "Restyled the captions");
             break;
           }
           case "translateCaptions": {
@@ -235,6 +260,35 @@ export class EditIRCompiler {
             break;
           }
           case "addBackgroundMusic": {
+            const beds = updated.tracks.audioTracks.filter((t) => t.type === "BGM").flatMap((t) => t.clips);
+            const hasMusic = beds.length > 0;
+            const ranged = op.startSec !== undefined || op.durationSec !== undefined;
+            if (ranged) {
+              // A bed for part of the video: allowed beside the others when it does not overlap them (max 4).
+              const total = RationalTimeMath.toSeconds(updated.meta.totalDuration);
+              const s = op.startSec ?? 0;
+              const e = Math.min(total, s + (op.durationSec ?? total - s));
+              const clash = beds.find((c) => {
+                const cs = RationalTimeMath.toSeconds(c.timelineRange.start);
+                return s < cs + RationalTimeMath.toSeconds(c.timelineRange.duration) - 0.01 && e > cs + 0.01;
+              });
+              if (clash) {
+                rejectedOperations.push(`addBackgroundMusic: ${s.toFixed(1)}s-${e.toFixed(1)}s overlaps the music already there (beds play one after another)`);
+                break;
+              }
+              if (beds.length >= 4) {
+                rejectedOperations.push("addBackgroundMusic: a video has at most 4 music beds");
+                break;
+              }
+              this.applyBackgroundMusic(updated, op);
+              appliedOperations.push(`Added music ("${op.sourceUrl || op.query}") from ${s.toFixed(1)}s to ${e.toFixed(1)}s`);
+              break;
+            }
+            if (hasMusic && !op.replace) {
+              // The creator's track, fades and ducking stay: "make the music quieter" is not a request for new music.
+              rejectedOperations.push("addBackgroundMusic: music is already on the timeline, so it was kept (change its level with adjustVolume, or set replace for different music)");
+              break;
+            }
             this.applyBackgroundMusic(updated, op);
             appliedOperations.push(`Added background music ("${op.sourceUrl || op.query}") at ${op.volumeDb}dB${op.duckUnderSpeech ? `, ducked ${op.duckDb}dB under speech` : ""}`);
             break;
@@ -286,6 +340,52 @@ export class EditIRCompiler {
               cutRanges.push(...trims);
               appliedOperations.push(`Moved ${trims.length} cut(s) onto the beat`);
             }
+            break;
+          }
+          case "renderMotionGraphic": {
+            // A motion-graphic card is drawn as styled, animated titles (the renderers draw text, pills and motion):
+            // the big line (a metric, or the title), and the detail line under it. Never reported as done otherwise.
+            const total = RationalTimeMath.toSeconds(updated.meta.totalDuration);
+            if (op.timelineStartSec >= total - 0.3) {
+              rejectedOperations.push(`renderMotionGraphic: ${op.timelineStartSec.toFixed(1)}s is past the end of the video`);
+              break;
+            }
+            const dur = Math.min(op.durationSec, total - op.timelineStartSec);
+            const accent = op.accentColor ?? (op.templateId === "hormozi-counter" ? "#FFE600" : op.templateId === "saas-callout" ? "#3B82F6" : "#111111CC");
+            // Positions are -1..1 offsets from centre (addText).
+            const at = { lower_third: { x: 0, y: 0.45 }, center: { x: 0, y: 0 }, top_right: { x: 0.45, y: -0.6 }, bottom_left: { x: -0.45, y: 0.55 } }[op.position];
+            const motion = op.templateId === "quote-reveal" ? { type: "typewriter" as const, durationMs: 700 } : op.templateId === "hormozi-counter" ? { type: "pop" as const, durationMs: 300 } : { type: "slide_up" as const, durationMs: 350 };
+            const big = op.metricValue ? `${op.metricValue}` : op.title;
+            const detail = op.metricValue ? [op.metricLabel ?? op.title, op.subtitle].filter(Boolean).join(" · ") : op.subtitle;
+            const tag = op.tag ? `${op.tag.toUpperCase()} · ` : "";
+            this.applyAddText(updated, {
+              text: op.templateId === "quote-reveal" ? `“${big}”` : `${tag}${big}`,
+              timelineStartSec: op.timelineStartSec,
+              durationSec: dur,
+              position: at,
+              fontFamily: op.templateId === "hormozi-counter" ? "Anton" : op.templateId === "vox-explainer" ? "Montserrat" : "Poppins",
+              color: op.templateId === "hormozi-counter" ? "#111111" : "#FFFFFF",
+              backgroundColor: accent,
+              uppercase: op.templateId === "hormozi-counter" || op.templateId === "vox-explainer",
+              style: { fontSize: op.metricValue ? 110 : 72 },
+              enter: motion,
+              exit: { type: "fade", durationMs: 250 },
+            });
+            if (detail) {
+              this.applyAddText(updated, {
+                text: detail,
+                timelineStartSec: op.timelineStartSec + 0.15,
+                durationSec: Math.max(0.5, dur - 0.15),
+                position: { x: at.x, y: Math.min(0.95, at.y + (op.metricValue ? 0.2 : 0.14)) },
+                fontFamily: "Inter",
+                color: "#FFFFFF",
+                backgroundColor: "#00000099",
+                style: { fontSize: 44 },
+                enter: { type: "fade", durationMs: 300 },
+                exit: { type: "fade", durationMs: 250 },
+              });
+            }
+            appliedOperations.push(`Added a ${op.templateId} motion-graphic card at ${op.timelineStartSec.toFixed(1)}s: "${big}"`);
             break;
           }
           case "addText": {
@@ -360,6 +460,34 @@ export class EditIRCompiler {
             else rejectedOperations.push(`removeItem: no ${op.kind}${which} on the timeline`);
             break;
           }
+          // ── Update tools (Phase 2): change an existing item in place ──
+          case "duplicateClip":
+          case "freezeFrame":
+            insertOps.push(op);
+            break;
+          case "replaceClip":
+          case "editText":
+          case "updateTextStyle":
+          case "retimeItem":
+          case "updateOverlay":
+          case "setKeyframe":
+          case "removeKeyframe":
+          case "updateZoom":
+          case "updateEffect":
+          case "updateMusic":
+          case "changeMusicTrack":
+          case "setSfxVolume":
+          case "setClipVolume":
+          case "setCrop":
+          case "panClip":
+          case "muteTrack":
+          case "updateVoiceover":
+          case "jlCut": {
+            const r = applyUpdateOp(updated, op, opts);
+            if (r.ok) appliedOperations.push(r.message);
+            else rejectedOperations.push(`${op.type}: ${r.message}`);
+            break;
+          }
           default:
             // Never report an operation as done when the compiler has no implementation for it.
             rejectedOperations.push(`Operation ${(op as any).type} is not supported by the timeline compiler yet`);
@@ -371,8 +499,24 @@ export class EditIRCompiler {
 
     // Phase B: cuts. Two cuts that leave a sliver between them (< MIN_KEPT_SEC, e.g. a pause cut next to a filler
     // cut) would flash a few frames on screen: the sliver is cut too.
+    // Frame-accurate cuts (Phase 6.7): each cut shrinks inwards onto frame boundaries (start up, end down), so no
+    // speech is lost and every later item moves by whole frames. Items are rippled with these same ranges.
+    const fps = baseIR.meta.fps.numerator / baseIR.meta.fps.denominator;
+    // Clip boundaries win over frames: a cut edge within a frame of one goes to it (no sliver of footage is left).
+    const bounds = [0, baseDurationSec, ...(EditIRCompiler.mainTrack(updated)?.clips ?? []).flatMap((c) => {
+      const st = RationalTimeMath.toSeconds(c.timelineRange.start);
+      return [st, st + RationalTimeMath.toSeconds(c.timelineRange.duration)];
+    })];
+    const edge = (t: number, dir: "up" | "down") => {
+      const near = bounds.find((b) => Math.abs(b - t) < 1 / fps);
+      if (near !== undefined) return near;
+      return dir === "up" ? Math.ceil(t * fps - 1e-6) / fps : Math.floor(t * fps + 1e-6) / fps;
+    };
+    const onFrames = fps > 0
+      ? cutRanges.map((r) => ({ ...r, start: edge(r.start, "up"), end: edge(r.end, "down") })).filter((r) => r.end - r.start > 1e-6)
+      : cutRanges;
     const merged: Array<{ start: number; end: number; reason: string }> = [];
-    for (const r of EditIRCompiler.mergeRanges(cutRanges)) {
+    for (const r of EditIRCompiler.mergeRanges(onFrames)) {
       const prev = merged[merged.length - 1];
       const gap = prev ? r.start - prev.end : Infinity;
       if (prev && gap < MIN_KEPT_SEC) {
@@ -429,6 +573,21 @@ export class EditIRCompiler {
       }
     }
 
+    // Phase B3: inserted footage (duplicates, freeze frames). Clip ids are stable through cuts; seconds are mapped.
+    for (const op of insertOps) {
+      try {
+        const r = op.type === "duplicateClip"
+          ? this.applyDuplicateClip(updated, op.clipId, op.targetTimelineStartSec === undefined ? undefined : cutMap(op.targetTimelineStartSec))
+          : op.type === "freezeFrame"
+            ? this.applyFreezeFrame(updated, op.clipId, cutMap(op.timestampSec), op.durationSec)
+            : { ok: false, message: "unsupported" };
+        if (r.ok) appliedOperations.push(r.message);
+        else rejectedOperations.push(`${op.type}: ${r.message}`);
+      } catch (err: any) {
+        rejectedOperations.push(`Failed to compile ${op.type}: ${err?.message}`);
+      }
+    }
+
     // Phase C: speed
     for (const op of speedOps) {
       if (op.type !== "changeSpeed") continue;
@@ -444,8 +603,10 @@ export class EditIRCompiler {
     // Phase D: transitions
     for (const op of transitionOps) {
       if (op.type !== "addTransition") continue;
-      const n = this.applyTransitions(updated, op.fromClipId, op.toClipId, op.transitionType, op.durationSec);
+      const n = this.applyTransitions(updated, op.fromClipId, op.toClipId, op.transitionType, op.durationSec, !!op.overwrite);
       if (n > 0) appliedOperations.push(`Added ${op.transitionType} transition at ${n} cut(s)`);
+      else if (this.mainTrack(updated) && (this.mainTrack(updated)!.clips.length ?? 0) > 1 && op.fromClipId === "*" && op.toClipId === "*")
+        rejectedOperations.push(`addTransition: every cut already has a transition, so they were kept (set overwrite to replace them)`);
       else rejectedOperations.push(`addTransition: the timeline has no cuts to put a ${op.transitionType} on`);
     }
 
@@ -464,6 +625,83 @@ export class EditIRCompiler {
     return editIR.tracks.videoTracks.find((t) => t.type === "MAIN_VIDEO") || editIR.tracks.videoTracks[0];
   }
 
+  /** Inserts [clip] into the main track at [index]; later footage and every item from that moment on move later. */
+  private static insertMainClip(editIR: EditIR, index: number, clip: VideoClip) {
+    const main = EditIRCompiler.mainTrack(editIR)!;
+    const sec = RationalTimeMath.toSeconds;
+    const clips = [...main.clips].sort((a, b) => sec(a.timelineRange.start) - sec(b.timelineRange.start));
+    const oldTotal = sec(editIR.meta.totalDuration);
+    const at = index < clips.length ? sec(clips[index].timelineRange.start) : oldTotal;
+    const d = sec(clip.timelineRange.duration);
+    clips.splice(index, 0, clip);
+    let cursor = 0;
+    for (const c of clips) {
+      const dur = sec(c.timelineRange.duration);
+      c.timelineRange = { start: RationalTimeMath.fromSeconds(cursor), duration: RationalTimeMath.fromSeconds(dur) };
+      cursor += dur;
+    }
+    main.clips = clips;
+    editIR.meta.totalDuration = RationalTimeMath.fromSeconds(cursor);
+    EditIRCompiler.remapSecondaryTracks(editIR, (t) => (t >= at - 1e-6 ? t + d : t), oldTotal);
+  }
+
+  private static applyDuplicateClip(editIR: EditIR, clipId: string, targetSec?: number): { ok: boolean; message: string } {
+    const main = EditIRCompiler.mainTrack(editIR);
+    const sec = RationalTimeMath.toSeconds;
+    const clips = [...(main?.clips ?? [])].sort((a, b) => sec(a.timelineRange.start) - sec(b.timelineRange.start));
+    const i = clips.findIndex((c) => c.id === clipId);
+    if (i < 0) return { ok: false, message: `clip ${clipId} not found` };
+    const copy: VideoClip = JSON.parse(JSON.stringify(clips[i]));
+    copy.id = EditIRCompiler.uniqueClipId(editIR, `${clipId}_copy`);
+    delete copy.transitionIn;
+    let index = i + 1;
+    if (targetSec !== undefined) {
+      // The clip boundary nearest the requested second.
+      const bounds = [...clips.map((c) => sec(c.timelineRange.start)), sec(editIR.meta.totalDuration)];
+      let best = 0;
+      bounds.forEach((b, k) => { if (Math.abs(b - targetSec) < Math.abs(bounds[best] - targetSec)) best = k; });
+      index = best;
+    }
+    EditIRCompiler.insertMainClip(editIR, index, copy);
+    return { ok: true, message: `Duplicated clip ${clipId} as ${copy.id}` };
+  }
+
+  private static applyFreezeFrame(editIR: EditIR, clipId: string, atSec: number, durationSec: number): { ok: boolean; message: string } {
+    const sec = RationalTimeMath.toSeconds;
+    const main = EditIRCompiler.mainTrack(editIR);
+    if (!main) return { ok: false, message: "there is no footage" };
+    const find = () => [...main.clips].find((c) => atSec >= sec(c.timelineRange.start) - 1e-6 && atSec < sec(c.timelineRange.start) + sec(c.timelineRange.duration) - 1e-6);
+    let clip = find();
+    if (!clip) return { ok: false, message: `${atSec.toFixed(2)}s is outside the video` };
+    if (clipId !== "auto" && clip.id !== clipId) return { ok: false, message: `clip ${clipId} is not on screen at ${atSec.toFixed(2)}s` };
+    if (clip.assetId.startsWith(FREEZE_ASSET_PREFIX)) return { ok: false, message: "that moment is already a still" };
+    if (durationSec < 0.3) return { ok: false, message: "a freeze frame needs at least 0.3 s" };
+    const start = sec(clip.timelineRange.start);
+    const sourceMs = Math.round((sec(clip.sourceRange.start) + (atSec - start) * (clip.speedMultiplier || 1)) * 1000);
+    const look = clip;
+    // Hold the frame where it is: split the clip there (unless that is its very start) and put the still between.
+    if (atSec - start > 0.05) {
+      const parts = this.applySplitClip(editIR, clip.id, atSec);
+      if (parts) clip = main.clips.find((c) => c.id === parts[1]) ?? clip;
+    }
+    const clips = [...main.clips].sort((a, b) => sec(a.timelineRange.start) - sec(b.timelineRange.start));
+    const index = atSec - start > 0.05 ? clips.findIndex((c) => c.id === clip!.id) : clips.findIndex((c) => c.id === look.id);
+    const assetId = `${FREEZE_ASSET_PREFIX}${look.assetId}@${sourceMs}`;
+    const still: VideoClip = {
+      id: EditIRCompiler.uniqueClipId(editIR, "freeze"),
+      assetId,
+      sourcePath: `device-asset://${assetId}`,
+      sourceRange: { start: RationalTimeMath.fromSeconds(0), duration: RationalTimeMath.fromSeconds(durationSec) },
+      timelineRange: { start: RationalTimeMath.fromSeconds(0), duration: RationalTimeMath.fromSeconds(durationSec) },
+      transform: JSON.parse(JSON.stringify(look.transform)),
+      speedMultiplier: 1,
+      volumeDb: -60,
+      effects: [],
+    };
+    EditIRCompiler.insertMainClip(editIR, Math.max(0, index), still);
+    return { ok: true, message: `Froze the frame at ${atSec.toFixed(2)}s for ${durationSec.toFixed(1)}s (the phone captures the frame)` };
+  }
+
   /**
    * Forgets main-track crops (they were computed for another canvas / orientation) so the
    * renderer projection recomputes a fill crop. `letterbox` true = fit the whole frame instead.
@@ -472,6 +710,8 @@ export class EditIRCompiler {
     for (const clip of EditIRCompiler.mainTrack(editIR)?.clips || []) {
       if (!clip.transform) continue;
       delete clip.transform.crop;
+      // A moving framing was made for the old window.
+      delete clip.cropKeyframes;
       if (letterbox) clip.transform.letterbox = true;
       else delete clip.transform.letterbox;
     }
@@ -522,14 +762,15 @@ export class EditIRCompiler {
 
     editIR.tracks.cameraTrack = editIR.tracks.cameraTrack.flatMap((c) => {
       const { s, d } = mapRange(RationalTimeMath.toSeconds(c.timeRange.start), RationalTimeMath.toSeconds(c.timeRange.duration));
-      if (d < 0.2) return [];
+      // Gone when the cut removed it, or shrank it below a usable length; a zoom that was already short stays.
+      if (tooShortAfterCut(d, RationalTimeMath.toSeconds(c.timeRange.duration), 0.2)) return [];
       return [{ ...c, timeRange: { start: RationalTimeMath.fromSeconds(s), duration: RationalTimeMath.fromSeconds(d) } }];
     });
 
     if (editIR.tracks.effectTrack) {
       editIR.tracks.effectTrack = editIR.tracks.effectTrack.flatMap((e) => {
         const { s, d } = mapRange(RationalTimeMath.toSeconds(e.timeRange.start), RationalTimeMath.toSeconds(e.timeRange.duration));
-        if (d < 0.1) return [];
+        if (tooShortAfterCut(d, RationalTimeMath.toSeconds(e.timeRange.duration), 0.1)) return [];
         return [{ ...e, timeRange: { start: RationalTimeMath.fromSeconds(s), duration: RationalTimeMath.fromSeconds(d) } }];
       });
     }
@@ -621,6 +862,8 @@ export class EditIRCompiler {
           sourceRange: { start: clip.sourceRange.start, duration: RationalTimeMath.fromSeconds(leftDur * speed) },
           timelineRange: { start: RationalTimeMath.fromSeconds(curTimelineOffset), duration: RationalTimeMath.fromSeconds(leftDur) },
           transitionOut: undefined,
+          // The cut ends this piece: an L-cut belonged to the clip's old end.
+          audioLagMs: undefined,
         });
         curTimelineOffset += leftDur;
       }
@@ -634,6 +877,7 @@ export class EditIRCompiler {
           sourceRange: { start: RationalTimeMath.fromSeconds(srcOffset), duration: RationalTimeMath.fromSeconds(rightDur * speed) },
           timelineRange: { start: RationalTimeMath.fromSeconds(curTimelineOffset), duration: RationalTimeMath.fromSeconds(rightDur) },
           transitionIn: undefined,
+          audioLeadMs: undefined,
         });
         curTimelineOffset += rightDur;
       }
@@ -685,7 +929,7 @@ export class EditIRCompiler {
     return true;
   }
 
-  private static applyTransitions(editIR: EditIR, fromClipId: string, toClipId: string, type: any, durationSec: number): number {
+  private static applyTransitions(editIR: EditIR, fromClipId: string, toClipId: string, type: any, durationSec: number, overwrite = false): number {
     const mainTrack = editIR.tracks.videoTracks[0];
     if (!mainTrack || mainTrack.clips.length < 2) return 0;
     let n = 0;
@@ -694,6 +938,9 @@ export class EditIRCompiler {
       const clip = mainTrack.clips[i];
       const matches = (fromClipId === "*" || fromClipId === prev.id) && (toClipId === "*" || toClipId === clip.id);
       if (!matches) continue;
+      // A sweep over every cut fills the cuts that have none; transitions the creator chose stay (F-07).
+      const sweep = fromClipId === "*" && toClipId === "*";
+      if (sweep && !overwrite && clip.transitionIn && clip.transitionIn.type !== "CUT") continue;
       clip.transitionIn = { type, duration: RationalTimeMath.fromSeconds(durationSec) };
       n++;
     }
@@ -702,6 +949,26 @@ export class EditIRCompiler {
 
   private static applyBackgroundMusic(editIR: EditIR, op: any) {
     const totalSec = RationalTimeMath.toSeconds(editIR.meta.totalDuration);
+    if (op.startSec !== undefined || op.durationSec !== undefined) {
+      // One more bed for part of the video (a music change or a stinger): its own track, beside the others.
+      const s = Math.max(0, Math.min(op.startSec ?? 0, totalSec - 0.5));
+      const d = Math.min(op.durationSec ?? totalSec - s, totalSec - s);
+      editIR.tracks.audioTracks.push({
+        id: generateUUID(), type: "BGM", volumeDb: op.volumeDb, duckWithSpeech: !!op.duckUnderSpeech,
+        ...(op.duckUnderSpeech ? { duckingConfig: { duckDb: op.duckDb, attackMs: 120, releaseMs: 350 } } : {}),
+        clips: [{
+          id: generateUUID(),
+          sourcePath: op.sourceUrl || `stock-music://${encodeURIComponent(op.query)}`,
+          ...(op.query ? { sourceQuery: op.query } : {}),
+          sourceRange: { start: RationalTimeMath.fromSeconds(0), duration: RationalTimeMath.fromSeconds(d) },
+          timelineRange: { start: RationalTimeMath.fromSeconds(s), duration: RationalTimeMath.fromSeconds(d) },
+          volumeDb: 0,
+          fadeInDuration: RationalTimeMath.fromSeconds(Math.min(op.fadeInSec ?? 0.5, d / 2)),
+          fadeOutDuration: RationalTimeMath.fromSeconds(Math.min(op.fadeOutSec ?? 1.0, d / 2)),
+        }],
+      });
+      return;
+    }
     // One music bed: replace any previous BGM clips.
     let bgm = editIR.tracks.audioTracks.find((t) => t.type === "BGM");
     if (!bgm) {
@@ -769,6 +1036,8 @@ export class EditIRCompiler {
       sourceRange: { start: clip.sourceRange.start, duration: RationalTimeMath.fromSeconds(srcSplit) },
       timelineRange: { start: clip.timelineRange.start, duration: RationalTimeMath.fromSeconds(part1Dur) },
       transitionOut: undefined,
+      // A split is seamless: the J-cut stays at the front, the L-cut at the back.
+      audioLagMs: undefined,
     };
     mainTrack.clips.splice(clipIndex, 1, part1);
     const id2 = EditIRCompiler.uniqueClipId(editIR, `${clip.id}_2`);
@@ -780,6 +1049,7 @@ export class EditIRCompiler {
       timelineRange: { start: RationalTimeMath.fromSeconds(splitTimeSec), duration: RationalTimeMath.fromSeconds(part2Dur) },
       // A split is invisible: no transition at the new boundary.
       transitionIn: undefined,
+      audioLeadMs: undefined,
     };
     mainTrack.clips.splice(clipIndex + 1, 0, part2);
     return [id1, id2];
@@ -972,17 +1242,40 @@ export class EditIRCompiler {
     return n;
   }
 
-  private static applyReframe(editIR: EditIR, targetAspect: "9:16" | "16:9" | "1:1" | "4:5", _smoothing = 0.85) {
+  private static applyReframe(editIR: EditIR, targetAspect: "9:16" | "16:9" | "1:1" | "4:5", smoothing = 0.85, mode?: "static" | "track") {
+    // Following the speaker: the projection builds each clip's moving crop from its face track (Phase 6.1).
+    for (const clip of EditIRCompiler.mainTrack(editIR)?.clips || []) {
+      if (!clip.transform) continue;
+      if (mode === "track") {
+        clip.transform.reframeTrack = true;
+        clip.transform.reframeSmoothing = smoothing;
+      } else if (mode === "static") {
+        delete clip.transform.reframeTrack;
+        delete clip.cropKeyframes;
+      }
+    }
+    // Same canvas: the crops, pans and caption positions on it are the creator's framing, and stay (F-08). Only
+    // clips shown whole ("fit", letterboxed) are switched to fill, which is what reframing asks for.
+    // (The plan intent may already have switched meta to this aspect; the base timeline is what counts.)
+    if (EditIRCompiler.reframeBaseAspect.get(editIR) === targetAspect) {
+      for (const clip of EditIRCompiler.mainTrack(editIR)?.clips || []) if (clip.transform?.letterbox) delete clip.transform.letterbox;
+      return;
+    }
     editIR.meta.targetAspect = targetAspect;
     editIR.meta.resolution = EditIRCompiler.resolutionFor(targetAspect);
-    // Reframing means "crop to fill the new canvas": drop old crops and any "fit" choice.
+    // A new canvas: crops made for the old one are wrong, so they are refitted.
     EditIRCompiler.resetMainCrops(editIR, false);
     const vertical = targetAspect === "9:16" || targetAspect === "4:5";
+    // Only captions sitting at a default spot move to the new canvas's safe spot; ones placed by hand stay.
+    const isDefault = (p?: { x: number; y: number }) => !p || (Math.abs(p.x - 0.5) < 0.005 && [0.72, 0.76, 0.8].some((y) => Math.abs(p.y - y) < 0.005));
     for (const cap of editIR.tracks.captionTrack) {
-      if (cap.role === "title") continue;
+      if (cap.role === "title" || !isDefault(cap.style.position)) continue;
       cap.style.position = { x: 0.5, y: vertical ? 0.72 : 0.8 };
     }
   }
+
+  /** The aspect of the timeline a compile started from (reframe compares against it). */
+  private static reframeBaseAspect = new WeakMap<EditIR, string>();
 
   private static applyAddEffect(editIR: EditIR, op: any) {
     const totalSec = RationalTimeMath.toSeconds(editIR.meta.totalDuration);
@@ -1062,15 +1355,16 @@ export class EditIRCompiler {
 
   private static applyStyleCaption(
     editIR: EditIR,
-    preset: string,
+    preset: string | undefined,
     highlightColor?: string,
-    position?: { x?: number; y?: number }
+    position?: { x?: number; y?: number },
+    patch: { textColor?: string; fontSize?: number; uppercase?: boolean } = {}
   ) {
-    const template = resolveCaptionTemplate(preset);
+    const template = preset ? resolveCaptionTemplate(preset) : null;
     for (const cap of editIR.tracks.captionTrack) {
+      // Restyling captions never touches titles: they keep their own look.
+      if (cap.role === "title") continue;
       if (template) {
-        // A template restyles speech captions only; titles keep their own look.
-        if (cap.role === "title") continue;
         const t = template.style;
         const hl = highlightColor || t.highlightColor;
         cap.style = {
@@ -1097,9 +1391,15 @@ export class EditIRCompiler {
           w.scaleMultiplier = t.animation === "word_pop" ? 1.15 : 1.0;
         }
       } else {
-        cap.style.preset = preset as any;
-        if (highlightColor) cap.style.highlightColor = highlightColor;
+        if (preset) cap.style.preset = preset as any;
+        if (highlightColor) {
+          cap.style.highlightColor = highlightColor;
+          for (const w of cap.words) if (w.highlight) w.color = highlightColor;
+        }
       }
+      if (patch.textColor) cap.style.textColor = patch.textColor;
+      if (patch.fontSize) cap.style.fontSize = patch.fontSize;
+      if (patch.uppercase !== undefined) cap.style.uppercase = patch.uppercase;
       if (position) {
         cap.style.position = {
           x: position.x ?? cap.style.position?.x ?? 0.5,
@@ -1616,9 +1916,21 @@ export class EditIRCompiler {
         }
         break;
       case "sfx":
-        for (const track of t.audioTracks.filter((a) => a.type === "SFX")) {
+      case "music":
+      case "voiceover": {
+        const type = op.kind === "sfx" ? "SFX" : op.kind === "music" ? "BGM" : "VOICEOVER";
+        for (const track of t.audioTracks.filter((a) => a.type === type)) {
           let k = 0;
           [track.clips, k] = drop(track.clips as any[], (c: any) => hit(c.id, c.timelineRange.start, c.timelineRange.duration)) as any;
+          n += k;
+        }
+        break;
+      }
+      case "sticker":
+        // Stickers are floating still layers on the overlay track.
+        for (const track of t.videoTracks.filter((v) => v.type !== "MAIN_VIDEO")) {
+          let k = 0;
+          [track.clips, k] = drop(track.clips, (c) => c.mediaType === "image" && c.layer?.mode === "overlay" && hit(c.id, c.timelineRange.start, c.timelineRange.duration));
           n += k;
         }
         break;

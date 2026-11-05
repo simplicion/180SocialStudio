@@ -20,7 +20,26 @@ import {
   PlannerSource,
   editIRFromMobileMedia,
   editIRFromMobile,
+  preserveUntouched,
+  applyItemLocks,
+  enforceItemLocks,
+  asksForAll,
+  classifyDirectorIntentOffline,
+  finalizeIntent,
+  confirmsFullEdit,
+  scopedTools,
+  scopedLockedTracks,
+  ResolvedDirectorIntent,
+  FULL_EDIT_QUESTION,
+  DIRECTOR_TOOL_SPECS,
+  summarizeTimelineDiff,
+  TimelineDiffSummary,
+  guardDestructiveVariants,
+  gateRendererFeatures,
+  FREEZE_ASSET_PREFIX,
+  STILL_SOURCE_MS,
   graphFromMobileMedia,
+  graphFromMobileMediaList,
   toMobileEditIR,
   resolveMusicFromCatalog,
   DirectorContext,
@@ -238,6 +257,16 @@ export class VideoAIDirectorService implements IUniversalBuilder<EditIR> {
         overlays: result.editIR.overlays.length,
         autoApplied: result.autoApplied,
         requiresConfirmation: result.requiresConfirmation,
+        // Turn summary for the run log (Phase 7.2): what the request was understood as, which tools ran, and how
+        // destructive the result is. The phone reports applied / undone turns through agent-memory/feedback.
+        scopeMode: result.scope?.mode ?? null,
+        scopeSource: result.scope?.source ?? null,
+        tools: [...new Set(result.operations.map((o) => o.type))].slice(0, 30),
+        plannerSource: result.plannerSource,
+        itemsRemoved: result.diffSummary.removed,
+        cutSec: result.diffSummary.cutSec,
+        violations: result.violations?.length ?? 0,
+        rejected: result.rejectedOperations.length,
       });
       await events.flush();
       return result;
@@ -305,6 +334,18 @@ export class VideoAIDirectorService implements IUniversalBuilder<EditIR> {
       : editIRFromMobileMedia(media, projectId);
     const ctx: DirectorContext = opts.context || { warnings: [] };
     const words = media.transcript?.words || [];
+    // Every source on the timeline with its own analysis (Phase 4, F-10): clips 2..N are captioned, cleaned and ducked
+    // from their own words. `media` stays the primary source; a mediaList entry for the same asset replaces it.
+    const listed = (request.mediaList || []).map((m) => ({ ...m, assetId: m.assetId || "primary" }));
+    const medias = [listed.find((m) => m.assetId === media.assetId) ?? media, ...listed.filter((m) => m.assetId !== media.assetId)]
+      .filter((m, i, all) => all.findIndex((x) => x.assetId === m.assetId) === i);
+    const wordsByAsset: Record<string, Array<{ text: string; startMs: number; endMs: number }>> = Object.fromEntries(medias.map((m) => [m.assetId, m.transcript?.words || []]));
+    const sourceWordsByAsset = Object.fromEntries(Object.entries(wordsByAsset).map(([id, ws]) => [id, ws.map((w) => ({ startSec: w.startMs / 1000, endSec: w.endMs / 1000 }))]));
+    const faceCenterByAsset = Object.fromEntries(medias.map((m) => [m.assetId, dominantFaceCenter(m.faces)]));
+    // Moving crops (Phase 6.1) follow each source's own face track and re-centre on its scene cuts.
+    const faceSamplesByAsset = Object.fromEntries(medias.map((m) => [m.assetId, m.faces]));
+    const scenesByAsset = Object.fromEntries(medias.map((m) => [m.assetId, m.scenesMs]));
+    const allWordCount = Object.values(wordsByAsset).reduce((n, ws) => n + ws.length, 0);
     const prompt = (request.prompt || "").trim();
     const intent: "edit" | "greet" = request.intent === "greet" || !prompt ? "greet" : "edit";
     const stockBudgetMs = opts.stockTimeoutMs ?? 8000;
@@ -317,10 +358,20 @@ export class VideoAIDirectorService implements IUniversalBuilder<EditIR> {
     };
 
     const warnings: string[] = [...ctx.warnings];
-    if (!words.length) {
+    // Sources on the timeline that have no words: either still being analysed, or not sent (never guessed).
+    const usedAssets = [...new Set((request.currentEditIR?.clips ?? []).map((c) => c.assetId).filter((id) => !id.startsWith("freeze:")))];
+    const pending = new Set(request.analysisPending || []);
+    if (!allWordCount) {
       warnings.push("no transcript supplied: captions, filler removal and transcript-aware edits are unavailable");
+    } else {
+      for (const id of usedAssets) {
+        if (wordsByAsset[id]?.length) continue;
+        warnings.push(pending.has(id)
+          ? `clip source ${id} is still being transcribed: captions and cuts there will follow once it is ready`
+          : `clip source ${id} has no transcript: no captions, filler or pause cuts are made in its clips`);
+      }
     }
-    if (words.length && looksLikePromptInjection(words.map((w) => w.text).join(" "))) {
+    if (allWordCount && looksLikePromptInjection(Object.values(wordsByAsset).flat().map((w) => w.text).join(" "))) {
       warnings.push("the transcript contains instruction-like text; it was treated as data only");
     }
     events.emit("ContextLoaded", {
@@ -328,7 +379,7 @@ export class VideoAIDirectorService implements IUniversalBuilder<EditIR> {
       autonomy: normalizeAutonomy(opts.autonomy || ctx.brand?.autonomy).editing,
     });
     events.emit("MediaAnalyzed", {
-      durationMs: media.durationMs, words: words.length, silences: media.silences?.length || 0, faces: media.faces?.length || 0,
+      durationMs: media.durationMs, words: allWordCount, sources: medias.length, pending: pending.size, silences: media.silences?.length || 0, faces: media.faces?.length || 0,
       beats: media.beatsMs?.length || 0, scenes: media.scenesMs?.length || 0, ocr: media.ocr?.length || 0,
       loudnessLufs: media.loudness?.integratedLufs ?? null, lastExportQa: !!request.lastExportQa,
     });
@@ -348,7 +399,7 @@ export class VideoAIDirectorService implements IUniversalBuilder<EditIR> {
     const alignment: ScriptAlignment | null =
       ctx.piece?.sections.length && words.length ? alignScriptToTranscript(ctx.piece.sections, words) : null;
 
-    const graph = graphFromMobileMedia(media, baseIR);
+    const graph = graphFromMobileMediaList(medias, baseIR);
     const timelineContext = ContextResolver.resolveTimelineContext({ editIR: baseIR, userConstraints: toUserConstraints(constraints) });
 
     // LLM budget: every planner call (first plan, validation repair, critic repairs) goes through this counter.
@@ -372,17 +423,21 @@ export class VideoAIDirectorService implements IUniversalBuilder<EditIR> {
     let plannerPrompt = prompt;
     let plannerContextSections: string[] = [];
     let proposal: ReturnType<typeof buildGreetingProposal> | null = null;
+    // Phase 3: the request's scope, decided before planning (null = the opening greeting, which has its own flow).
+    let scope: ResolvedDirectorIntent | null = null;
+    let scopeTools: Set<string> | null = null;
+    let scopeLocks: string[] = [];
     let sfx: SfxSuggestion[] = [];
     let brandApplied: string[] = [];
 
     if (intent === "greet") {
       // Opening turn: the sub-agents build a proposal. No LLM call (fast, predictable, labelled).
-      const broll = words.length ? brollResearchAgent({ words, baseIR, assetId: media.assetId }) : [];
+      const broll = medias.flatMap((m) => (m.transcript?.words?.length ? brollResearchAgent({ words: m.transcript.words, baseIR, assetId: m.assetId }) : [])).slice(0, 2);
       const sound = await soundAgent({ ctx, resolveSfx: opts.resolveSfx, timeoutMs: Math.min(3000, remaining()), warnings });
       sfx = sound.sfx;
       proposal = buildGreetingProposal({
         ctx, style, alignment, baseIR, assetId: media.assetId, words,
-        hasSilences: !!media.silences?.length, broll, music: sound.music,
+        hasSilences: medias.some((m) => !!m.silences?.length), broll, music: sound.music,
       });
       outcome = {
         plan: {
@@ -405,42 +460,134 @@ export class VideoAIDirectorService implements IUniversalBuilder<EditIR> {
     } else {
       const contextSections = describeDirectorContext(ctx, style, alignment);
       if (contextSections.length) contextSections.push(`(SOURCE times equal timeline times until cuts are made; map them through the main clips above.)`, ``);
-      contextSections.push(...mediaContextSections(media));
+      for (const m of medias) contextSections.push(...mediaContextSections(m, medias.length > 1 ? m.assetId : undefined));
+      const waiting = usedAssets.filter((id) => pending.has(id) && !wordsByAsset[id]?.length);
+      if (waiting.length) contextSections.push(`## Still being analysed`, `The phone is still transcribing clip source(s) ${waiting.join(", ")}: you do not know what is said in those clips yet. Do not invent it; say so if the request depends on it.`, ``);
       if (opts.memoryContext?.length) contextSections.push(`## Project memory (this project only)`, ...opts.memoryContext, ``);
       // "yes" / "do it" to the plan the director proposed last turn: the planner gets the plan itself.
       const lastPlan = planFromHistory(request.history);
       agreedToPlan = lastPlan.length > 0 && (isAffirmative(prompt) || startsWithAgreement(prompt));
       plannerPrompt = agreedToPlan ? agreedPlanPrompt(prompt, lastPlan) : prompt;
-      const planned = await CreativePlanner.planWithSource({
-        prompt: plannerPrompt,
-        timelineContext,
-        mediaGraph: graph,
-        companyId: opts.companyId,
-        history: request.history,
-        currentEditIR: baseIR,
-        llmClient: countedClient(opts.llmClient),
-        llmModel: opts.llmModel,
-        llmTimeoutMs: opts.llmTimeoutMs,
-        contextSections: contextSections.length ? contextSections : undefined,
-      });
-      outcome = planned;
-      plannerContextSections = contextSections;
-      if (planned.plannerSource === "deterministic" && !agreedToPlan) {
-        // No LLM (or it failed): keep the recommend -> confirm -> execute flow with rule-based replies.
-        const talk = deterministicConversation(prompt, lastPlan, gistOf(media), planned.plan.operations.length > 0);
-        if (talk) outcome = { ...planned, plan: { ...planned.plan, operations: [], explanation: talk.reply }, conversation: talk };
+      // Understand first (Phase 3.1). The offline classifier settles clear requests at once ("make the music quieter");
+      // only when it is unsure does a small LLM intent call decide. "Yes" to the Director's own plan runs that plan.
+      const lastAssistant = [...(request.history || [])].reverse().find((t) => t.role === "assistant")?.content;
+      if (agreedToPlan || confirmsFullEdit(prompt, lastAssistant)) {
+        scope = { mode: "full_edit", targets: [], allowedTools: [], mustNotTouch: [], clarifyingQuestion: null, source: "offline", note: agreedToPlan ? "the creator agreed to the proposed plan" : "the creator confirmed a full pass" };
+      } else {
+        const offline = classifyDirectorIntentOffline(prompt);
+        let raw = offline;
+        let source: "llm" | "offline" = "offline";
+        if (offline.unknown && opts.llmClient !== null) {
+          const llm = await CreativePlanner.classifyIntent({
+            prompt, history: request.history, currentEditIR: baseIR, itemMeta: request.currentEditIR?.itemMeta,
+            llmClient: countedClient(opts.llmClient), llmModel: opts.llmModel, companyId: opts.companyId, llmTimeoutMs: opts.llmTimeoutMs,
+          });
+          if (llm) {
+            raw = llm.intent;
+            source = "llm";
+          }
+        }
+        scope = finalizeIntent(raw, { prompt, timeline: request.currentEditIR, source });
       }
-      if (planned.preserve) {
-        const extra = {
-          lockedRanges: (planned.preserve.lockedRanges || []).map((r) => [Math.round(r.startSec * 1000), Math.round(r.endSec * 1000)] as [number, number]),
-          lockedTracks: (planned.preserve.lockedTracks || []) as any,
+      const scoped = scopedTools(scope, DIRECTOR_TOOL_SPECS.map((sp) => sp.name as string));
+      scopeTools = scoped ? new Set(scoped) : null;
+      scopeLocks = scopedLockedTracks(scope);
+      events.emit("ToolCalled", { tool: "intent", mode: scope.mode, source: scope.source, targets: scope.targets.map((t) => t.kind) });
+
+      if (scope.mode === "ambiguous") {
+        // Not sure what to change: ask, change nothing (F-22).
+        const question = scope.clarifyingQuestion || "What should I change?";
+        const quickReplies = question === FULL_EDIT_QUESTION ? ["Full pass", "Only the cuts", "Only the captions"] : ["The cuts and pauses", "The captions", "The music"];
+        outcome = {
+          plan: {
+            version: "1.0.0",
+            intent: {
+              platform: "general", aspectRatio: baseIR.meta.targetAspect, resolution: baseIR.meta.resolution, stylePreset: "CUSTOM",
+              energy: "medium", pacing: "dynamic", captionStyle: "HORMOZI_BOUNCE", audioStyle: "VOICE_PRIORITY_DUCKED", visualStyle: "CLEAN_ATTENTION",
+            },
+            constraints: timelineContext.userConstraints,
+            selectedSegments: [], removedSegments: [], reorderedSegments: [], brollPlan: [], captionPlan: [],
+            operations: [], confidence: 0.5, explanation: question, requiresConfirmation: true,
+          },
+          plannerSource: scope.source === "llm" ? "llm" : "deterministic",
+          plannerReason: `clarifying question before editing (${scope.note || "the request is ambiguous"})`,
+          conversation: { reply: question, phase: "gather", quickReplies, proposedPlan: [] },
         };
-        constraints = mergeDirectorConstraints(baseDurationMs, constraints, extra);
+        plannerContextSections = contextSections;
+      } else {
+        const planned = await CreativePlanner.planWithSource({
+          prompt: plannerPrompt,
+          timelineContext,
+          mediaGraph: graph,
+          companyId: opts.companyId,
+          history: request.history,
+          currentEditIR: baseIR,
+          llmClient: countedClient(opts.llmClient),
+          llmModel: opts.llmModel,
+          llmTimeoutMs: opts.llmTimeoutMs,
+          contextSections: contextSections.length ? contextSections : undefined,
+          itemMeta: request.currentEditIR?.itemMeta,
+          scope: scope ? { mode: scope.unscoped ? "open" : scope.mode, targets: scope.targets, mustNotTouch: scope.mustNotTouch, tools: scopeTools ? [...scopeTools] : null } : undefined,
+        });
+        outcome = planned;
+        plannerContextSections = contextSections;
+        if (planned.plannerSource === "deterministic" && !agreedToPlan) {
+          // No LLM (or it failed): keep the recommend -> confirm -> execute flow with rule-based replies.
+          const talk = deterministicConversation(prompt, lastPlan, gistOf(media), planned.plan.operations.length > 0);
+          if (talk) outcome = { ...planned, plan: { ...planned.plan, operations: [], explanation: talk.reply }, conversation: talk };
+        }
+        if (planned.preserve) {
+          const extra = {
+            lockedRanges: (planned.preserve.lockedRanges || []).map((r) => [Math.round(r.startSec * 1000), Math.round(r.endSec * 1000)] as [number, number]),
+            lockedTracks: (planned.preserve.lockedTracks || []) as any,
+          };
+          constraints = mergeDirectorConstraints(baseDurationMs, constraints, extra);
+        }
+        if (planned.plannerReason.startsWith("LLM_TIMEOUT")) {
+          warnings.push("the AI planner timed out: this edit was made by the offline rule-based director");
+        }
+        if (ctx.brand) brandApplied = applyBrandDefaults(planned.plan.operations, prompt, style);
+
+        // Whole edits put new zooms, B-roll, effects and stickers on the music's beat (Phase 6.4).
+        if (scope?.mode === "full_edit" && request.musicBeatsMs?.length) {
+          const snapped = snapToBeats(outcome.plan.operations as any[], request.musicBeatsMs);
+          if (snapped.moved) {
+            warnings.push(`placed ${snapped.moved} edit(s) on the music's beat`);
+            outcome = { ...outcome, plan: { ...outcome.plan, operations: snapped.ops as any } };
+          }
+        }
+        // Only what this phone can render (Phase 6): newer features are downgraded or refused for older apps.
+        {
+          const gated = gateRendererFeatures(outcome.plan.operations as any[], request.rendererCapabilities);
+          if (gated.notes.length) {
+            warnings.push(...gated.notes);
+            outcome = { ...outcome, plan: { ...outcome.plan, operations: gated.ops as any } };
+          }
+        }
+        // Replacing music, regenerating captions and overwriting transitions need the request to ask for it.
+        if (!agreedToPlan) {
+          const guarded = guardDestructiveVariants(outcome.plan.operations as any[], prompt);
+          if (guarded.notes.length) {
+            warnings.push(...guarded.notes);
+            outcome = { ...outcome, plan: { ...outcome.plan, operations: guarded.ops as any } };
+          }
+        }
+        // Defence in depth: whatever the planner returned (an offline guess, an over-eager model), only the request's
+        // scope reaches the timeline.
+        if (scopeTools) {
+          const out = outcome.plan.operations.filter((o: any) => !scopeTools!.has(o.type));
+          if (out.length) {
+            warnings.push(`left out ${[...new Set(out.map((o: any) => o.type))].join(", ")}: not part of what you asked`);
+            const kept = outcome.plan.operations.filter((o: any) => scopeTools!.has(o.type));
+            // The plan's canvas follows the operations that remain (a dropped reframe must not change the aspect).
+            const reframe = [...kept].reverse().find((o: any) => o.type === "reframeSubject" || o.type === "changeAspectRatio") as any;
+            outcome = {
+              ...outcome,
+              plan: { ...outcome.plan, operations: kept, intent: { ...outcome.plan.intent, aspectRatio: reframe?.targetAspect ?? baseIR.meta.targetAspect } },
+            };
+          }
+        }
       }
-      if (planned.plannerReason.startsWith("LLM_TIMEOUT")) {
-        warnings.push("the AI planner timed out: this edit was made by the offline rule-based director");
-      }
-      if (ctx.brand) brandApplied = applyBrandDefaults(planned.plan.operations, prompt, style);
     }
 
     // FACE zooms centre on the on-device face track, in the canvas the plan renders at.
@@ -450,8 +597,11 @@ export class VideoAIDirectorService implements IUniversalBuilder<EditIR> {
       : baseIR.meta.resolution;
     events.emit("PlanCreated", { plannerSource: outcome.plannerSource, plannerReason: outcome.plannerReason, operations: outcome.plan.operations.map((o: any) => o.type) });
     for (const op of outcome.plan.operations.slice(0, 25)) events.emit("ToolCalled", { tool: op.type });
-    const expandedRaw = PlanExpander.expand(outcome.plan, graph, warnings, { canvas });
-    const expanded = { ...expandedRaw, constraints: { ...expandedRaw.constraints, ...toUserConstraints(constraints) } };
+    const speechCaptions = (ir: EditIR) => ir.tracks.captionTrack.filter((c) => c.role !== "title").length;
+    const expandedRaw = PlanExpander.expand(outcome.plan, graph, warnings, { canvas, existingCaptions: speechCaptions(baseIR) });
+    // Tracks outside the request's scope are locked for this turn only (not echoed as the creator's constraints).
+    const turnConstraints = scopeLocks.length ? mergeDirectorConstraints(baseDurationMs, constraints, { lockedRanges: [], lockedTracks: scopeLocks as any }) : constraints;
+    const expanded = { ...expandedRaw, constraints: { ...expandedRaw.constraints, ...toUserConstraints(turnConstraints) } };
     const violations: string[] = [];
     const dropInvalid = (plan: any, base: EditIR) => {
       const v = CreativePlanValidator.validate(plan, base, []);
@@ -466,7 +616,15 @@ export class VideoAIDirectorService implements IUniversalBuilder<EditIR> {
       violations.push(...v.violations);
       return { ...plan, operations: plan.operations.filter((_: any, i: number) => !bad.has(i)) };
     };
-    const planToCompile = dropInvalid(expanded, baseIR);
+    // Per-item locks and the creator's own items (Phase 2.2): refused before anything is compiled.
+    const itemCtx = { meta: request.currentEditIR?.itemMeta ?? {}, allowManualSweep: asksForAll(prompt) };
+    const withItemLocks = (plan: any) => {
+      if (!request.currentEditIR) return plan;
+      const r = applyItemLocks(plan.operations, request.currentEditIR, itemCtx);
+      violations.push(...r.violations);
+      return { ...plan, operations: r.ops };
+    };
+    const planToCompile = dropInvalid(withItemLocks(expanded), baseIR);
     events.emit("PlanValidated", { operations: expanded.operations.length, kept: planToCompile.operations.length, violations: violations.length, constraints: { lockedRanges: constraints.lockedRanges, lockedTracks: constraints.lockedTracks } });
     if (fromWords.notes.length) warnings.push(`constraints from your request: ${fromWords.notes.join("; ")}`);
 
@@ -475,31 +633,32 @@ export class VideoAIDirectorService implements IUniversalBuilder<EditIR> {
     const compilePlan = translateOps.length
       ? { ...planToCompile, operations: planToCompile.operations.filter((o: CreativeOperation) => o.type !== "translateCaptions") }
       : planToCompile;
-    const compilation = EditIRCompiler.compile(baseIR, compilePlan, []);
-    let finalIR = compilation.updatedEditIR;
-    const appliedOperations = [...compilation.appliedOperations];
-    const rejectedOperations = [...compilation.rejectedOperations];
-    const allOperations: CreativeOperation[] = [...outcome.plan.operations];
-    events.emit("ToolCompleted", { tool: "compile", applied: compilation.appliedOperations.length, rejected: compilation.rejectedOperations.length });
-
     // Keep every source the client already knows about (manual editor), refreshed by `media`.
     const sources = [
       ...(request.currentEditIR?.sources || []).filter((s) => s.assetId !== media.assetId),
       { assetId: media.assetId, durationMs: media.durationMs, width: media.width, height: media.height },
     ];
+    const compilation = EditIRCompiler.compile(baseIR, compilePlan, [], { sources });
+    let finalIR = compilation.updatedEditIR;
+    const appliedOperations = [...compilation.appliedOperations];
+    const rejectedOperations = [...compilation.rejectedOperations];
+    const allOperations: CreativeOperation[] = [...outcome.plan.operations];
+    events.emit("ToolCompleted", { tool: "compile", applied: compilation.appliedOperations.length, rejected: compilation.rejectedOperations.length });
     const sourceWords = words.map((w) => ({ startSec: w.startMs / 1000, endSec: w.endMs / 1000 }));
     const faceCenter = dominantFaceCenter(media.faces);
     const critiqueOf = (ir: EditIR) => {
-      const mobile = toMobileEditIR({ editIR: ir, sources, sourceWords, primaryAssetId: media.assetId, faceCenter, sfxCredits: {} }).editIR;
+      const mobile = toMobileEditIR({ editIR: ir, sources, sourceWords, primaryAssetId: media.assetId, faceCenter, sfxCredits: {}, sourceWordsByAsset, faceCenterByAsset, faceSamplesByAsset, scenesByAsset }).editIR;
       const locked = constraints.lockedRanges.length ? verifyLockedRangesPreserved(baseIR, ir, constraints.lockedRanges) : { ok: true, problems: [] };
       return critiqueDirectorEdit({
-        editIR: mobile, sourceWords: words, primaryAssetId: media.assetId, loudness: media.loudness,
+        editIR: mobile, sourceWords: words, sourceWordsByAsset: wordsByAsset, primaryAssetId: media.assetId, loudness: media.loudness,
         lastExportQa: request.lastExportQa, exportedEditIR: request.currentEditIR || null, lockedRangeProblems: locked.problems,
       });
     };
 
     // Observe -> critique -> bounded repair (max 3 rounds). Only CRITICAL issues with a known fix are repaired.
-    const maxRounds = Math.max(0, Math.min(3, opts.maxRepairRounds ?? 3));
+    // A precise change to existing items is not "repaired" into something else ("stop ducking the music" must not be
+    // re-ducked): the critic reports, it does not undo the request.
+    const maxRounds = scope?.mode === "modify_existing" ? 0 : Math.max(0, Math.min(3, opts.maxRepairRounds ?? 3));
     events.emit("CriticStarted", { round: 0 });
     let crit = critiqueOf(finalIR);
     events.emit("CriticCompleted", { round: 0, score: crit.score, issues: crit.issues.length, critical: crit.issues.filter((i) => i.severity === "CRITICAL").length });
@@ -519,13 +678,14 @@ export class VideoAIDirectorService implements IUniversalBuilder<EditIR> {
           prompt: buildRepairInstruction(plannerPrompt, issues),
           checkCoverage: false,
           timelineContext: ContextResolver.resolveTimelineContext({ editIR: finalIR, userConstraints: toUserConstraints(constraints, lockedNow) }),
-          mediaGraph: graphFromMobileMedia(media, finalIR),
+          mediaGraph: graphFromMobileMediaList(medias, finalIR),
           companyId: opts.companyId,
           currentEditIR: finalIR,
           llmClient: countedClient(opts.llmClient),
           llmModel: opts.llmModel,
           llmTimeoutMs: opts.llmTimeoutMs,
           contextSections: plannerContextSections.length ? plannerContextSections : undefined,
+          itemMeta: request.currentEditIR?.itemMeta,
         });
         // A deterministic fallback of a repair prompt is not a repair: only real model output is used here.
         if (repair.plannerSource === "llm") {
@@ -534,16 +694,18 @@ export class VideoAIDirectorService implements IUniversalBuilder<EditIR> {
         }
       }
       if (!repairOps.length) repairOps = deterministicRepairOps(issues);
+      // A repair stays inside the request's scope too.
+      if (scopeTools) repairOps = repairOps.filter((o) => scopeTools!.has(o.type));
       if (!repairOps.length) break;
       repairRounds++;
       events.emit("RepairCreated", { round: repairRounds, source: repairSource, issues: issues.map((i) => i.id), operations: repairOps.map((o) => o.type) });
       const lockedNow = mapLockedRanges(baseIR, finalIR, constraints.lockedRanges);
-      const repairGraph = graphFromMobileMedia(media, finalIR);
-      const repairPlanRaw = PlanExpander.expand({ ...outcome.plan, operations: repairOps }, repairGraph, warnings, { canvas: finalIR.meta.resolution });
-      const repairPlan = dropInvalid({ ...repairPlanRaw, constraints: { ...repairPlanRaw.constraints, ...toUserConstraints(constraints, lockedNow) } }, finalIR);
-      const repaired = EditIRCompiler.compile(finalIR, repairPlan, []);
+      const repairGraph = graphFromMobileMediaList(medias, finalIR);
+      const repairPlanRaw = PlanExpander.expand({ ...outcome.plan, operations: repairOps }, repairGraph, warnings, { canvas: finalIR.meta.resolution, existingCaptions: speechCaptions(finalIR) });
+      const repairPlan = dropInvalid(withItemLocks({ ...repairPlanRaw, constraints: { ...repairPlanRaw.constraints, ...toUserConstraints(constraints, lockedNow) } }), finalIR);
+      const repaired = EditIRCompiler.compile(finalIR, repairPlan, [], { sources });
       // A repair must not take away what the creator asked for (a real run deleted the requested title).
-      const lost = requestedFeatures(plannerPrompt, words.length > 0).filter((f) => featureCount(finalIR, f) > 0 && featureCount(repaired.updatedEditIR, f) === 0);
+      const lost = requestedFeatures(plannerPrompt, allWordCount > 0).filter((f) => featureCount(finalIR, f) > 0 && featureCount(repaired.updatedEditIR, f) === 0);
       if (lost.length) {
         repairRounds++;
         warnings.push(`critic repair round ${repairRounds} would have removed the requested ${lost.join(", ")} and was discarded`);
@@ -669,7 +831,19 @@ export class VideoAIDirectorService implements IUniversalBuilder<EditIR> {
       if (placed.placed && proposal) proposal.steps.push(`add ${placed.placed} sound effect${placed.placed === 1 ? "" : "s"} on the transitions`);
     }
 
-    const projected = toMobileEditIR({ editIR: finalIR, sources, sourceWords, primaryAssetId: media.assetId, faceCenter, sfxCredits });
+    // Items the creator already had are never trimmed or dropped by the projection (audit F-05).
+    const preexistingIds = new Set<string>();
+    if (request.currentEditIR) {
+      const c = request.currentEditIR;
+      for (const x of [...c.overlays, ...c.captions, ...c.zooms, ...(c.effects ?? []), ...c.audio.music, ...(c.audio.sfx ?? []), ...(c.audio.voiceovers ?? [])]) preexistingIds.add(x.id);
+    }
+    // Freeze frames are stills the phone captures: each needs a source entry (the size of the footage it holds).
+    for (const c of finalIR.tracks.videoTracks.find((t) => t.type === "MAIN_VIDEO")?.clips ?? []) {
+      if (!c.assetId.startsWith(FREEZE_ASSET_PREFIX) || sources.some((s) => s.assetId === c.assetId)) continue;
+      const of = sources.find((s) => s.assetId === c.assetId.slice(FREEZE_ASSET_PREFIX.length).replace(/@\d+$/, ""));
+      sources.push({ assetId: c.assetId, durationMs: STILL_SOURCE_MS, width: of?.width ?? media.width, height: of?.height ?? media.height });
+    }
+    const projected = toMobileEditIR({ editIR: finalIR, sources, sourceWords, primaryAssetId: media.assetId, faceCenter, sfxCredits, preexistingIds, sourceWordsByAsset, faceCenterByAsset, faceSamplesByAsset, scenesByAsset });
     warnings.push(...projected.warnings);
 
     // Brand font on captions created this turn (the client's own font choices and a caption template's font are kept).
@@ -696,7 +870,16 @@ export class VideoAIDirectorService implements IUniversalBuilder<EditIR> {
     } else if (wantWm === "remove") {
       watermark = undefined;
     }
-    const editIR: MobileEditIR = { ...projected.editIR };
+    // What this turn did not touch comes back exactly as the phone sent it (compared on a fresh, unedited canonical copy).
+    let editIR: MobileEditIR = request.currentEditIR
+      ? preserveUntouched(request.currentEditIR, editIRFromMobile({ ...request.currentEditIR, projectId }), finalIR, projected.editIR)
+      : { ...projected.editIR };
+    if (request.currentEditIR) {
+      // Backstop: a locked item a sweep still changed comes back as the creator's version.
+      const locked = enforceItemLocks(request.currentEditIR, editIR);
+      editIR = locked.editIR;
+      if (locked.restored.length) violations.push(`kept ${locked.restored.length} locked item(s) exactly as you left them`);
+    }
     delete (editIR as any).watermark;
     if (watermark) editIR.watermark = watermark;
 
@@ -743,7 +926,7 @@ export class VideoAIDirectorService implements IUniversalBuilder<EditIR> {
       summary = "I tried, but couldn't make that change work on this video. Want to try it a different way?";
       quickReplies = ["Show me options", "Never mind"];
     } else {
-      const fallback = didNotUnderstandReply(words.length > 0);
+      const fallback = didNotUnderstandReply(allWordCount > 0);
       phase = fallback.phase;
       summary = outcome.plannerSource === "llm" ? tidyReply(outcome.plan.explanation || "") || fallback.reply : fallback.reply;
       quickReplies = fallback.quickReplies;
@@ -762,6 +945,9 @@ export class VideoAIDirectorService implements IUniversalBuilder<EditIR> {
     const decision = decideAutoApply({
       editing: autonomy.editing,
       operationTypes: outcome.plan.operations.map((o: any) => o.type),
+      operations: outcome.plan.operations as any,
+      plannerSource: outcome.plannerSource,
+      confirmedByCreator: agreedToPlan,
       // The creator already said yes to this plan in the chat: that is the confirmation.
       plannerRequiresConfirmation: outcome.plannerSource === "llm" && !agreedToPlan ? !!outcome.plan.requiresConfirmation : false,
       violations: violations.length,
@@ -795,6 +981,12 @@ export class VideoAIDirectorService implements IUniversalBuilder<EditIR> {
       ...(sfx.length ? { sfxSuggestions: sfx } : {}),
       ...(credits.length ? { credits } : {}),
       ...(ctx.brand || ctx.piece ? { context: summarizeContext(ctx, style) } : {}),
+      ...(request.baseRevision !== undefined ? { baseRevision: request.baseRevision } : {}),
+      ...(scope ? { scope: { mode: scope.mode, targets: scope.targets, source: scope.source, ...(scope.note ? { note: scope.note } : {}) } } : {}),
+      diffSummary: summarizeTimelineDiff(
+        request.currentEditIR ?? toMobileEditIR({ editIR: baseIR, sources, sourceWords, primaryAssetId: media.assetId, faceCenter, sfxCredits, sourceWordsByAsset, faceCenterByAsset, faceSamplesByAsset, scenesByAsset }).editIR,
+        editIR
+      ),
     };
   }
 
@@ -1019,6 +1211,12 @@ export interface MobileDirectResult {
   violations?: string[];
   /** The constraints that were enforced this turn (ms on the timeline before this turn). */
   constraints?: { lockedRanges: Array<[number, number]>; lockedTracks: string[] };
+  /** The request's `baseRevision`, echoed: the phone merges a response computed on an older timeline. */
+  baseRevision?: number;
+  /** What the request was understood to be about (Phase 3): mode, targets, and whether an LLM or the rules decided. */
+  scope?: { mode: string; targets: Array<{ kind: string; ids?: string[]; timeSec?: number }>; source: "llm" | "offline"; note?: string };
+  /** What this turn changes, in plain words, for the proposal card (Phase 3.3). */
+  diffSummary: TimelineDiffSummary;
 }
 
 export interface MobileDirectOptions {
@@ -1071,8 +1269,38 @@ function webContextSections(sections: unknown, telemetry: any): string[] | undef
 }
 
 /** Scene cuts and on-screen text (OCR, fenced as untrusted data) for the planner prompt. */
-function mediaContextSections(media: MobileAIDirectRequest["media"]): string[] {
+/** Start times of new zooms, B-roll, effects and stickers moved onto the nearest music beat within 150 ms. */
+export function snapToBeats<T extends { type: string; [k: string]: any }>(ops: T[], beatsMs: number[], toleranceMs = 150): { ops: T[]; moved: number } {
+  const beats = [...beatsMs].sort((a, b) => a - b);
+  const nearest = (ms: number) => {
+    let lo = 0;
+    let hi = beats.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (beats[mid] < ms) lo = mid + 1;
+      else hi = mid;
+    }
+    const cands = [beats[lo], beats[lo - 1]].filter((b) => b !== undefined) as number[];
+    return cands.reduce((best, b) => (Math.abs(b - ms) < Math.abs(best - ms) ? b : best), cands[0]);
+  };
+  const KEY: Record<string, string> = { addZoom: "startSec", addEffect: "startSec", insertBroll: "timelineStartSec", addSticker: "timelineStartSec" };
+  let moved = 0;
+  const out = ops.map((op) => {
+    const key = KEY[op.type];
+    if (!key || typeof op[key] !== "number" || !beats.length) return op;
+    const ms = op[key] * 1000;
+    const b = nearest(ms);
+    if (b === undefined || Math.abs(b - ms) > toleranceMs || Math.abs(b - ms) < 1) return op;
+    moved++;
+    return { ...op, [key]: Math.round(b) / 1000 };
+  });
+  return { ops: out, moved };
+}
+
+function mediaContextSections(media: MobileAIDirectRequest["media"], label?: string): string[] {
   const out: string[] = [];
+  // Several sources: each one's analysis is in its own SOURCE seconds.
+  if (label) out.push(`### Clip source ${label} (SOURCE s of this file; map through the clips that use it)`);
   if (media.scenesMs?.length) out.push(`Scene cuts in the source (SOURCE s): ${media.scenesMs.slice(0, 100).map((t) => (t / 1000).toFixed(2)).join(", ")}`);
   if (media.ocr?.length) {
     out.push(`On-screen text detected in the source (SOURCE s):`);
@@ -1091,6 +1319,7 @@ function mediaContextSections(media: MobileAIDirectRequest["media"]): string[] {
     }
   }
   if (media.loudness) out.push(`Source loudness: ${media.loudness.integratedLufs} LUFS${media.loudness.clippingPct != null ? `, ${media.loudness.clippingPct}% clipped samples` : ""}`);
+  if (label && out.length === 1) return [];
   if (out.length) out.push(``);
   return out;
 }

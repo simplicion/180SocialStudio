@@ -20,6 +20,18 @@ data class IrCanvas(val aspect: String, val width: Int, val height: Int, val fps
 
 data class IrCrop(val x: Double, val y: Double, val width: Double, val height: Double)
 
+/** One point of a clip's moving framing (contract `cropKeyframes[]`): the crop window's top-left at SOURCE ms. */
+data class IrCropKeyframe(val sourceMs: Long, val x: Double, val y: Double)
+
+/** One point of a text's animated transform (contract `style.transformKeyframes[]`); null = the style's value. */
+data class IrTextTransformKeyframe(
+    val atMs: Long,
+    val rotationDeg: Double? = null,
+    val scale: Double? = null,
+    val positionX: Double? = null,
+    val positionY: Double? = null,
+)
+
 /** Colour grade (contract MobileFilterSchema); exposure in stops, temperature / tint -1..1, vignette 0..1. */
 data class IrFilter(
     val preset: String,
@@ -55,6 +67,11 @@ data class IrClip(
     val audioFadeOutMs: Long = 0,
     /** "Reduce background noise" on the clip's own sound. */
     val voiceCleanup: Boolean = false,
+    /** Moving framing (Phase 6.1): [crop]'s top-left along SOURCE time; see [CropPath]. Empty = static [crop]. */
+    val cropKeyframes: List<IrCropKeyframe> = emptyList(),
+    /** J-cut lead / L-cut lag of the clip's own sound, timeline ms (Phase 6.2); see [clipAudioPlanMs]. */
+    val audioLeadMs: Long = 0,
+    val audioLagMs: Long = 0,
 )
 
 data class IrOverlay(
@@ -122,6 +139,10 @@ data class IrCaptionStyle(
     val enter: IrTextMotionSpec? = null,
     val exit: IrTextMotionSpec? = null,
     val loop: IrTextMotionSpec? = null,
+    /** Text transform (Phase 6.5): clockwise degrees and size multiplier around the text centre; see [TextTransform]. */
+    val rotationDeg: Double = 0.0,
+    val scale: Double = 1.0,
+    val transformKeyframes: List<IrTextTransformKeyframe> = emptyList(),
 )
 
 data class IrCaption(
@@ -222,6 +243,8 @@ data class MobileEditIr(
 ) {
     companion object {
         const val SCHEMA_VERSION = "mobile-editir/1"
+        /** Music beds per timeline (contract Phase 6.6); they must not overlap. */
+        const val MAX_MUSIC_BEDS = 4
         private val ASPECTS = setOf("16:9", "9:16", "1:1", "4:5")
         val WATERMARK_POSITIONS = setOf("top_left", "top_right", "bottom_left", "bottom_right")
 
@@ -289,6 +312,11 @@ data class MobileEditIr(
                     audioFadeInMs = j.optLong("audioFadeInMs", 0L).coerceAtLeast(0L),
                     audioFadeOutMs = j.optLong("audioFadeOutMs", 0L).coerceAtLeast(0L),
                     voiceCleanup = j.optBoolean("voiceCleanup", false),
+                    cropKeyframes = (j.optJSONArray("cropKeyframes") ?: JSONArray()).objects().take(240).map {
+                        IrCropKeyframe(it.getLong("sourceMs"), it.getDouble("x"), it.getDouble("y"))
+                    },
+                    audioLeadMs = j.optLong("audioLeadMs", 0L).coerceIn(0L, 2000L),
+                    audioLagMs = j.optLong("audioLagMs", 0L).coerceIn(0L, 2000L),
                 )
             }
             val overlays = (o.optJSONArray("overlays") ?: JSONArray()).objects().map { j ->
@@ -370,6 +398,17 @@ data class MobileEditIr(
                         enter = s.optNullableObject("enter")?.motion("durationMs", TextMotion.ENTER_TYPES) ?: legacyEnter,
                         exit = s.optNullableObject("exit")?.motion("durationMs", TextMotion.EXIT_TYPES),
                         loop = s.optNullableObject("loop")?.motion("periodMs", TextMotion.LOOP_TYPES) ?: legacyLoop,
+                        rotationDeg = s.optDouble("rotationDeg", 0.0).takeIf { !it.isNaN() }?.coerceIn(-180.0, 180.0) ?: 0.0,
+                        scale = s.optDouble("scale", 1.0).takeIf { !it.isNaN() }?.coerceIn(0.2, 4.0) ?: 1.0,
+                        transformKeyframes = (s.optJSONArray("transformKeyframes") ?: JSONArray()).objects().take(60).map { k ->
+                            IrTextTransformKeyframe(
+                                atMs = k.optLong("atMs", 0L).coerceAtLeast(0L),
+                                rotationDeg = k.optNullableDouble("rotationDeg")?.coerceIn(-720.0, 720.0),
+                                scale = k.optNullableDouble("scale")?.coerceIn(0.2, 4.0),
+                                positionX = k.optNullableDouble("positionX")?.coerceIn(0.0, 1.0),
+                                positionY = k.optNullableDouble("positionY")?.coerceIn(0.0, 1.0),
+                            )
+                        }.sortedBy { it.atMs },
                     ),
                 )
             }
@@ -485,6 +524,9 @@ data class MobileEditIr(
         private fun JSONObject.optNullableString(key: String): String? =
             if (!has(key) || isNull(key)) null else optString(key)
 
+        private fun JSONObject.optNullableDouble(key: String): Double? =
+            if (!has(key) || isNull(key)) null else optDouble(key).takeIf { !it.isNaN() }
+
         /** A motion block, or null when its type is unknown or the time is missing (unknown motion is ignored). */
         private fun JSONObject.motion(msKey: String, allowed: Set<String>): IrTextMotionSpec? {
             val type = optNullableString("type") ?: return null
@@ -521,6 +563,10 @@ data class MobileEditIr(
                     notes.add("clip ${c.id}: crop extended past the frame and was clamped")
                     out = out.copy(crop = fixed)
                 }
+            }
+            if (out.crop == null && out.cropKeyframes.isNotEmpty()) {
+                notes.add("clip ${c.id}: cropKeyframes need a crop and were ignored")
+                out = out.copy(cropKeyframes = emptyList())
             }
             out
         }
@@ -604,7 +650,10 @@ data class MobileEditIr(
             if (cap.style.animation !in setOf("none", "word_pop", "karaoke", "word_box", "word_reveal")) fail("caption ${cap.id}: animation '${cap.style.animation}' unsupported")
         }
         zooms.forEach { if (it.scale < 1.0 || it.endMs <= it.startMs) fail("zoom ${it.id}: invalid") }
-        if (audio.music.size > 1) fail("mobile-editir/1 allows at most one music item")
+        if (audio.music.size > MAX_MUSIC_BEDS) fail("mobile-editir/1 allows at most $MAX_MUSIC_BEDS music beds")
+        audio.music.sortedBy { it.timelineStartMs }.zipWithNext().forEach { (a, b) ->
+            if (b.timelineStartMs < a.timelineEndMs) fail("music ${b.id} overlaps music ${a.id}")
+        }
         audio.music.forEach { if (it.timelineEndMs <= it.timelineStartMs) fail("music ${it.id}: empty range") }
         watermark?.let { w ->
             if (w.position !in WATERMARK_POSITIONS) fail("watermark.position '${w.position}' must be one of $WATERMARK_POSITIONS")

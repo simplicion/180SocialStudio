@@ -114,14 +114,15 @@ test("locked ranges survive a cut elsewhere, are mapped through it, and a cut in
   assert.match(check.problems[0].detail, /2\.00s of the locked range/);
 });
 
-test("autonomy: AUTO applies only safe ops; ASSISTED keeps the planner's choice; MANUAL always proposes", () => {
+test("autonomy (F-09): additive ops apply under ASSISTED, structural ones are proposals; AUTO adds SAFE_OPS; MANUAL always proposes", () => {
   assert.deepEqual([...SAFE_OPS].sort(), ["adjustVolume", "autoCaptions", "changeAspectRatio", "cleanFillers", "duckAudio", "reframeSubject", "removeSilences", "styleCaption"]);
   assert.deepEqual(normalizeAutonomy(undefined), { editing: "ASSISTED", publishing: "MANUAL" });
   assert.deepEqual(normalizeAutonomy({ editing: "AUTO", publishing: "AUTO" as any }), { editing: "AUTO", publishing: "MANUAL" });
   const auto = (types: string[], violations = 0) => decideAutoApply({ editing: "AUTO", operationTypes: types, plannerRequiresConfirmation: false, violations });
   assert.equal(auto(["removeSilences", "autoCaptions"]).autoApplied, true);
-  assert.equal(auto(["removeSilences", "insertBroll"]).autoApplied, false);
-  assert.equal(auto(["removeSilences", "insertBroll"]).requiresConfirmation, true);
+  assert.equal(auto(["removeSilences", "insertBroll"]).autoApplied, true, "insertBroll only adds");
+  assert.equal(auto(["removeSilences", "changeSpeed"]).autoApplied, false);
+  assert.equal(auto(["removeSilences", "changeSpeed"]).requiresConfirmation, true);
   assert.equal(auto(["removeSilences"], 1).autoApplied, false);
   assert.equal(auto([]).autoApplied, false);
   assert.equal(decideAutoApply({ editing: "ASSISTED", operationTypes: ["removeSilences"], plannerRequiresConfirmation: false, violations: 0 }).autoApplied, false);

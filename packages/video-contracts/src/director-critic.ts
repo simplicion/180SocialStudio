@@ -40,6 +40,8 @@ export interface DirectorCritiqueInput {
   /** Source-time transcript words of the primary asset. */
   sourceWords?: Array<{ text: string; startMs: number; endMs: number }>;
   primaryAssetId?: string;
+  /** Source-time words of every source, by assetId (Phase 4). Wins over `sourceWords` for those sources. */
+  sourceWordsByAsset?: Record<string, Array<{ text: string; startMs: number; endMs: number }>>;
   loudness?: MobileMediaDescriptor["loudness"];
   /** QA of the last export and the timeline that was exported (normally the request's currentEditIR). */
   lastExportQa?: LastExportQa;
@@ -75,11 +77,16 @@ const tokens = (s: string) => s.split(/\s+/).map(stem).filter((t) => t.length > 
 const sec = (ms: number) => `${(ms / 1000).toFixed(1)}s`;
 
 /** Transcript words mapped onto the edited timeline (through clips of the primary asset). */
-export function timelineWordsOf(ir: MobileEditIR, words: Array<{ text: string; startMs: number; endMs: number }>, primaryAssetId = "primary") {
+export function timelineWordsOf(
+  ir: MobileEditIR,
+  words: Array<{ text: string; startMs: number; endMs: number }>,
+  primaryAssetId = "primary",
+  wordsByAsset?: Record<string, Array<{ text: string; startMs: number; endMs: number }>>
+) {
   const out: Array<{ text: string; startMs: number; endMs: number }> = [];
   for (const c of ir.clips) {
-    if (c.assetId !== primaryAssetId) continue;
-    for (const w of words) {
+    const own = wordsByAsset?.[c.assetId] ?? (c.assetId === primaryAssetId ? words : []);
+    for (const w of own) {
       if (w.endMs <= c.sourceStartMs || w.startMs >= c.sourceEndMs) continue;
       const s = Math.max(w.startMs, c.sourceStartMs);
       const e = Math.min(w.endMs, c.sourceEndMs);
@@ -111,7 +118,8 @@ export function critiqueDirectorEdit(input: DirectorCritiqueInput): DirectorCrit
 
   // 2. Dead air left (speech ranges are recomputed on the edited timeline).
   const speech = [...(ir.audio?.speechRangesMs || [])].sort((a, b) => a[0] - b[0]);
-  if (speech.length && (input.sourceWords?.length ?? 1) > 0) {
+  const anyWords = (input.sourceWords?.length ?? 0) > 0 || Object.values(input.sourceWordsByAsset ?? {}).some((w) => w.length > 0);
+  if (speech.length && (anyWords || input.sourceWords === undefined)) {
     if (speech[0][0] > T.deadAirEdgeMs) add({ id: `dead_air:0`, severity: "WARNING", category: "PACING", title: `${sec(speech[0][0])} of silence before the first word`, timeRangeMs: [0, speech[0][0]] });
     for (let i = 1; i < speech.length; i++) {
       const gap = speech[i][0] - speech[i - 1][1];
@@ -142,7 +150,7 @@ export function critiqueDirectorEdit(input: DirectorCritiqueInput): DirectorCrit
   }
 
   // 5. B-roll relevance vs what is said around it.
-  const tlWords = input.sourceWords?.length ? timelineWordsOf(ir, input.sourceWords, input.primaryAssetId) : [];
+  const tlWords = anyWords ? timelineWordsOf(ir, input.sourceWords ?? [], input.primaryAssetId, input.sourceWordsByAsset) : [];
   if (tlWords.length) {
     const allTokens = new Set(tlWords.flatMap((w) => tokens(w.text)));
     for (const o of ir.overlays || []) {

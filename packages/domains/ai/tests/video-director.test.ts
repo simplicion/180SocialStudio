@@ -153,9 +153,13 @@ test("LLM path: tool calls become validated operations and the result is labelle
   assert.ok(calls[0].prompt.includes('"remove the pauses"'), "user request in prompt");
   assert.ok(calls[0].prompt.includes(`${(PUNCH.startMs / 1000).toFixed(2)}-`), "word timings in prompt");
   assert.ok(calls[0].prompt.includes("Silences (start+duration)"), "silences in prompt");
+  // "remove the pauses" is about the cuts: the planner only gets the cutting tools (Phase 3 scope).
   const toolNames = calls[0].tools.map((t: any) => t.function.name);
-  for (const n of ["removeRange", "removeSilences", "autoCaptions", "addZoom", "reframeSubject", "insertBroll", "addBackgroundMusic", "changeSpeed", "finish_edit"]) {
+  for (const n of ["removeRange", "removeSilences", "cleanFillers", "changeSpeed", "finish_edit", "reply_to_creator"]) {
     assert.ok(toolNames.includes(n), `tool ${n} offered`);
+  }
+  for (const n of ["autoCaptions", "addZoom", "reframeSubject", "insertBroll", "addBackgroundMusic"]) {
+    assert.ok(!toolNames.includes(n), `tool ${n} is outside the request's scope`);
   }
   assert.equal(res.operations[0].type, "removeSilences");
   assert.equal(res.summary, "Removed 6 pauses.");
@@ -209,7 +213,7 @@ test("unknown tool names are rejected by validation (not executed)", async () =>
     { text: "", toolCalls: [tc("deleteEverything", {})] },
     { text: "", toolCalls: [tc("deleteEverything", {})] },
   ]);
-  const res = await director.directMobile(mobileRequest("do something"), { llmClient: client });
+  const res = await director.directMobile(mobileRequest("cut the pauses"), { llmClient: client });
   assert.equal(res.plannerSource, "deterministic");
   assert.match(res.plannerReason, /unknown tool "deleteEverything"/);
 });
@@ -265,7 +269,10 @@ test('cmd: "remove the pauses" -> ripple cuts at every pause, no word lost', asy
   // 7 silences (lead, 5 pauses, tail). Lead/tail are cut to the clip edge but keep 0.1s of air next
   // to the first/last word; inner pauses keep 0.1s padding on each side.
   const inner = [1100, 800, 1400, 900, 1000].reduce((a, b) => a + b - 200, 0);
-  assert.ok(Math.abs(FIX.durationMs - ir.durationMs - (1100 + 1200 + inner)) <= 5, `removed ${FIX.durationMs - ir.durationMs}ms`);
+  // Each cut shrinks inwards onto frame boundaries (Phase 6.7): up to one frame per edge, never into a word.
+  const removed = FIX.durationMs - ir.durationMs;
+  const expected = 1100 + 1200 + inner;
+  assert.ok(removed <= expected + 5 && removed >= expected - 7 * 2 * (1000 / 30) - 5, `removed ${removed}ms (expected about ${expected})`);
   assert.equal(ir.clips.length, 6, "six spoken segments remain");
   assert.equal(ir.clips[0].sourceStartMs, 1100);
   for (const w of FIX.words) assert.notEqual(srcToTimeline(ir, (w.startMs + w.endMs) / 2), null, `word "${w.text}" kept`);
@@ -389,7 +396,7 @@ test('cmd: "reframe to vertical" -> 1080x1920 canvas with a centred crop', async
 });
 
 test('cmd: "speed it up to 1.5x" -> speed 1.5 and timeline shortened by 1/1.5', async () => {
-  const { res } = await runLLM("speed it up to 1.5x", [tc("autoCaptions", {}), tc("changeSpeed", { clipId: "all", speedMultiplier: 1.5 })]);
+  const { res } = await runLLM("add captions and speed it up to 1.5x", [tc("autoCaptions", {}), tc("changeSpeed", { clipId: "all", speedMultiplier: 1.5 })]);
   const ir = res.editIR;
   assertInvariants(ir);
   assert.equal(ir.clips[0].speed, 1.5);
@@ -472,7 +479,8 @@ test("captions: a failed translation is rejected and the captions stay as spoken
 });
 
 test("honesty: ops that cannot apply are rejected, not reported as done", async () => {
-  const { res } = await runLLM("duck the music", [tc("duckAudio", {}), tc("styleCaption", { preset: "BOLD_CENTER" })]);
+  // Both ops are in the request's scope (music) and neither can apply: there is no music.
+  const { res } = await runLLM("duck the music", [tc("duckAudio", {}), tc("updateMusic", { volumeDb: -20 })]);
   assert.equal(res.appliedOperations.length, 0);
   assert.equal(res.rejectedOperations.length, 2);
   assert.match(res.summary, /couldn't make that change work/);
@@ -559,7 +567,7 @@ async function turn(prompt: string, toolCalls: any[] | string, extra: Partial<Mo
 
 async function manuallyEditedTimeline(): Promise<MobileEditIR> {
   const t1 = await turn(
-    "tighten, captions, zoom, b-roll",
+    "tighten, captions, zoom, b-roll, music",
     [
       tc("removeSilences", {}),
       tc("autoCaptions", {}),
@@ -789,7 +797,7 @@ test("tool: moveClip reorders whole clips; captions travel with their footage", 
       assert.ok(ok, `caption word "${w.text}" at ${w.startMs}ms is on the footage that speaks it`);
     }
   }
-  const noop = await turn("move", [tc("moveClip", { clipId: ir.clips[0].id, targetTimelineStartSec: 0 })], { currentEditIR: ir });
+  const noop = await turn("move the first clip to the start", [tc("moveClip", { clipId: ir.clips[0].id, targetTimelineStartSec: 0 })], { currentEditIR: ir });
   assert.equal(noop.res.rejectedOperations.length, 1, "moving to where it already is is reported, not faked");
 });
 
@@ -819,10 +827,12 @@ test("tool: adjustVolume targets audio.originalTrack on mobile and rejects unkno
 
   const bad = await turn("louder narrator", [tc("adjustVolume", { trackId: "narrator", volumeDb: 3 }), tc("adjustVolume", { trackId: "music", volumeDb: -20 })]);
   assert.equal(bad.res.appliedOperations.length, 0);
-  assert.equal(bad.res.rejectedOperations.length, 2, "unknown track and missing music are rejected, not reported as done");
+  // The unknown track is rejected; the music change is refused (music was not part of the request), never faked.
+  assert.equal(bad.res.rejectedOperations.length, 1, "unknown track is rejected, not reported as done");
+  assert.ok((bad.res.violations ?? []).some((v) => /music/.test(v)), JSON.stringify(bad.res.violations));
   assert.equal(bad.res.editIR.audio.originalTrack.volumeDb, 0);
 
-  const music = await turn("music quieter", [tc("addBackgroundMusic", { query: "calm" }), tc("adjustVolume", { trackId: "music", volumeDb: -24 })]);
+  const music = await turn("add calm music, and keep it quiet", [tc("addBackgroundMusic", { query: "calm" }), tc("adjustVolume", { trackId: "music", volumeDb: -24 })]);
   assert.equal(music.res.editIR.audio.music[0].volumeDb, -24);
 });
 
@@ -848,10 +858,15 @@ test("unicode: filler words are matched in non-Latin transcripts", async () => {
     { text: "всем", startMs: 850, endMs: 1100 },
   ];
   const req = MobileAIDirectRequestSchema.parse({ prompt: "убери эээ", media: { durationMs: 2000, width: 1080, height: 1920, transcript: { words } } });
-  const { client } = mockClient([{ text: "", toolCalls: [tc("cleanFillers", { fillerTypes: ["эээ"] })] }]);
+  // The rules do not read Russian: the LLM intent call scopes the request (cuts), then the planner runs.
+  const { client } = mockClient([
+    { text: "", toolCalls: [tc("classify_request", { mode: "modify_existing", targets: [{ kind: "clip" }], allowedTools: ["cleanFillers"] })] },
+    { text: "", toolCalls: [tc("cleanFillers", { fillerTypes: ["эээ"] })] },
+  ]);
   const res = await director.directMobile(req, { llmClient: client });
   assert.equal(res.rejectedOperations.length, 0);
-  assert.equal(res.editIR.clips[0].sourceStartMs, 450, "the Cyrillic filler was cut");
+  const start = res.editIR.clips[0].sourceStartMs;
+  assert.ok(start <= 450 && start >= 450 - 1000 / 30 && start >= 400, `the Cyrillic filler was cut (to the frame): ${start}`);
 });
 
 // ---------------------------------------------------------------------------------------------

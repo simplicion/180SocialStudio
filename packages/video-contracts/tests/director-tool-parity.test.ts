@@ -151,7 +151,8 @@ test("beatAlign trims cuts back onto real beats, and refuses to guess without be
   const r = EditIRCompiler.compile(split, CreativeEditPlanSchema.parse({ intent, operations: withBeats, explanation: "t" }));
   assert.match(r.appliedOperations.join("\n"), /Moved 1 cut\(s\) onto the beat/);
   const clips = r.updatedEditIR.tracks.videoTracks[0].clips;
-  assert.ok(Math.abs(clips[0].timelineRange.duration.value / clips[0].timelineRange.duration.timescale - 7.85) < 0.01);
+  // On the beat, to the frame (cuts land on frame boundaries, Phase 6.7).
+  assert.ok(Math.abs(clips[0].timelineRange.duration.value / clips[0].timelineRange.duration.timescale - 7.85) <= 1 / 30 + 1e-6);
   const none = EditIRCompiler.compile(split, CreativeEditPlanSchema.parse({ intent, operations: ops, explanation: "t" }));
   assert.match(none.rejectedOperations.join(), /no beat analysis/);
   assert.equal(none.appliedOperations.some((a) => /beat|bpm/i.test(a)), false);

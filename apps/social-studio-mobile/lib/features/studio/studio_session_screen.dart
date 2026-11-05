@@ -19,9 +19,11 @@ import '../../core/widgets/common.dart';
 import '../../data/models/vault_item.dart';
 import '../library/vault_provider.dart';
 import 'caption_fonts.dart';
+import 'clip_audio_fades.dart';
 import 'clip_vignette.dart';
 import 'director_panel.dart';
 import 'export_sheet.dart';
+import 'native_preview.dart';
 import 'studio_controller.dart';
 import 'studio_drafts_service.dart';
 import 'studio_timeline.dart';
@@ -104,6 +106,15 @@ class _StudioSessionScreenState extends ConsumerState<StudioSessionScreen> {
   final Map<String, VideoPlayerController> _voPlayers = {};
   int _voFrame = 0;
 
+  /// J-cut / L-cut in the Dart preview: an audio-only player for the neighbouring clip whose sound is heard outside
+  /// its own picture (`jlNeighbourAt`), at the export's gain.
+  VideoPlayerController? _jlPlayer;
+  String? _jlPath;
+  bool _jlBusy = false;
+
+  /// Native preview: muted while a voiceover records (the microphone must not pick the playback up).
+  bool _nativeMuted = false;
+
   /// Second player for true crossfades: the other side of the cut, faded over the main picture (as in the export).
   VideoPlayerController? _xfPlayer;
   String? _xfPath;
@@ -112,10 +123,19 @@ class _StudioSessionScreenState extends ConsumerState<StudioSessionScreen> {
   final Stopwatch _playbackStopwatch = Stopwatch();
   bool _dismissedProposal = false;
 
+  /// Native composition preview (StudioPreviewMode.native, Android): null = the Dart preview (default).
+  final NativePreviewController? _native = useNativeStudioPreview ? NativePreviewController() : null;
+  Map<String, String> _nativeFonts = const {};
+  String? _nativeFontKey;
+
   @override
   void initState() {
     super.initState();
     c.addListener(_onChange);
+    _native?.onPosition = _onNativePosition;
+    _native?.addListener(() {
+      if (mounted) setState(() {});
+    });
     c.onPreviewPlayback = (play) {
       if (mounted && play != _playing) _togglePlay();
     };
@@ -233,7 +253,62 @@ class _StudioSessionScreenState extends ConsumerState<StudioSessionScreen> {
       p.dispose();
     }
     _xfPlayer?.dispose();
+    _jlPlayer?.dispose();
+    _native?.dispose();
     super.dispose();
+  }
+
+  /// Native preview: sends the current timeline (only local files; the native side debounces) and, while paused,
+  /// moves the native playhead to the editor's.
+  void _syncNative() {
+    final n = _native;
+    final ir = c.ir;
+    if (n == null || ir == null) return;
+    final t = nativePreviewTimeline(
+      ir,
+      assetPath: c.pathForAsset,
+      localPath: c.localOverlayPath,
+      proxyPaths: c.proxyPaths,
+      fontPaths: _nativeFonts,
+      exists: (p) => File(p).existsSync(),
+    );
+    n.setTimeline(t.json, t.media);
+    if (!_playing && (n.positionMs - c.playheadMs).abs() > 20) unawaited(n.seek(c.playheadMs));
+    // Caption fonts: the same files the export uses, fetched once per set of families.
+    final fontKey = {for (final cap in ir.captions) '${cap.style['fontFamily']}:${cap.style['fontWeight']}'}.join('|');
+    if (fontKey != _nativeFontKey) {
+      _nativeFontKey = fontKey;
+      CaptionFonts.resolveForExport(ir).then((r) {
+        if (!mounted || _nativeFontKey != fontKey) return;
+        _nativeFonts = r.$1;
+        _syncNative();
+      }, onError: (_) {});
+    }
+  }
+
+  /// Native player's last reported play state: only its own playing -> paused change (the end of the timeline)
+  /// stops the transport, not the paused reports that come back from the seek before play starts.
+  bool _nativeWasPlaying = false;
+
+  void _onNativePosition(int ms, bool playing) {
+    if (!mounted) return;
+    if (_playing || playing) c.playheadMs = ms;
+    if (_playing && _nativeWasPlaying && !playing) _playing = false;
+    _nativeWasPlaying = playing;
+    setState(() {});
+  }
+
+  void _toggleNativePlay() {
+    final n = _native!;
+    if (c.ir == null) return;
+    if (_playing) {
+      unawaited(n.pause());
+      setState(() => _playing = false);
+      return;
+    }
+    if (c.playheadMs >= c.ir!.durationMs - 50) c.seek(0);
+    setState(() => _playing = true);
+    unawaited(n.seek(c.playheadMs).then((_) => n.play()));
   }
 
   /// Loads the crossfade player for [path] ahead of time (muted).
@@ -283,6 +358,47 @@ class _StudioSessionScreenState extends ConsumerState<StudioSessionScreen> {
       _xf = xf;
     } finally {
       _xfBusy = false;
+    }
+  }
+
+  /// Plays the neighbouring clip's sound over a J-cut lead / L-cut lag, like the export (Dart preview only).
+  Future<void> _syncJl({bool stop = false}) async {
+    if (_jlBusy) return;
+    _jlBusy = true;
+    try {
+      final ir = c.ir;
+      final n = stop || ir == null || !_playing || c.recordingVoiceover ? null : jlNeighbourAt(ir, c.playheadMs, isStill: c.isStillAsset);
+      if (n == null) {
+        if (_jlPlayer?.value.isPlaying ?? false) await _jlPlayer!.pause();
+        return;
+      }
+      final clip = ir!.clips[n.clipIndex];
+      final path = c.pathForAsset(clip.assetId);
+      if (path == null || kIsWeb) return;
+      if (_jlPath != path) {
+        final old = _jlPlayer;
+        _jlPlayer = null;
+        _jlPath = path;
+        await old?.dispose();
+        final p = VideoPlayerController.file(File(path));
+        await p.initialize();
+        if (!mounted || _jlPath != path) {
+          await p.dispose();
+          return;
+        }
+        _jlPlayer = p;
+      }
+      final p = _jlPlayer!;
+      if (p.value.playbackSpeed != clip.speed) await p.setPlaybackSpeed(clip.speed);
+      await p.setVolume(n.gain);
+      if (!p.value.isPlaying || (p.value.position.inMilliseconds - n.sourceMs).abs() > 150) {
+        await p.seekTo(Duration(milliseconds: math.max(0, n.sourceMs)));
+        await p.play();
+      }
+    } catch (e) {
+      debugPrint('J/L preview: $e');
+    } finally {
+      _jlBusy = false;
     }
   }
 
@@ -454,6 +570,16 @@ class _StudioSessionScreenState extends ConsumerState<StudioSessionScreen> {
 
   void _onChange() {
     if (!mounted) return;
+    if (_native != null) {
+      // The native preview plays the composition itself: no Dart players to keep in step.
+      if (c.recordingVoiceover != _nativeMuted) {
+        _nativeMuted = c.recordingVoiceover;
+        unawaited(_native.setVolume(_nativeMuted ? 0 : 1));
+      }
+      setState(() {});
+      _syncNative();
+      return;
+    }
     _checkProxyHotSwap();
     setState(() {});
     if (_playing) return;
@@ -547,6 +673,7 @@ class _StudioSessionScreenState extends ConsumerState<StudioSessionScreen> {
 
   /// Plays the edited timeline clip by clip; a clip from another file switches the preview to that file's player.
   void _togglePlay() {
+    if (_native != null) return _toggleNativePlay();
     final ir = c.ir;
     if (_player == null || ir == null) return;
     if (_playing) {
@@ -556,6 +683,7 @@ class _StudioSessionScreenState extends ConsumerState<StudioSessionScreen> {
       _slotB?.pause();
       setState(() => _playing = false);
       unawaited(_syncVoiceovers(stop: true));
+      unawaited(_syncJl(stop: true));
       unawaited(_syncCrossfade());
       return;
     }
@@ -573,6 +701,7 @@ class _StudioSessionScreenState extends ConsumerState<StudioSessionScreen> {
       _slotA?.pause();
       _slotB?.pause();
       unawaited(_syncVoiceovers(stop: true));
+      unawaited(_syncJl(stop: true));
       c.seek(ir.durationMs);
       setState(() => _playing = false);
       return;
@@ -618,7 +747,7 @@ class _StudioSessionScreenState extends ConsumerState<StudioSessionScreen> {
     await p.seekTo(Duration(milliseconds: startMs));
     await p.setPlaybackSpeed(clip.speed);
     final rel0 = (((startMs) - clip.sourceStartMs) / clip.speed).round();
-    await p.setVolume(c.recordingVoiceover ? 0 : TimelineOps.clipPreviewGain(ir, clipIndex, rel0));
+    await p.setVolume(c.recordingVoiceover ? 0 : clipPreviewGainJl(ir, clipIndex, clip.timelineStartMs + rel0, isStill: c.isStillAsset));
     await p.play();
 
     _playbackStopwatch.reset();
@@ -670,7 +799,7 @@ class _StudioSessionScreenState extends ConsumerState<StudioSessionScreen> {
             _isSlotAPrimary = !_isSlotAPrimary;
             prevSlot?.pause();
             nextSlot.setPlaybackSpeed(nextCl.speed);
-            nextSlot.setVolume(c.recordingVoiceover ? 0 : TimelineOps.clipPreviewGain(cur, nextIdx, 0));
+            nextSlot.setVolume(c.recordingVoiceover ? 0 : clipPreviewGainJl(cur, nextIdx, nextCl.timelineStartMs, isStill: c.isStillAsset));
             nextSlot.play();
             _activeAsset = nextCl.assetId;
             _playbackStopwatch.reset();
@@ -687,7 +816,9 @@ class _StudioSessionScreenState extends ConsumerState<StudioSessionScreen> {
       c.playheadMs = cl.timelineStartMs + ((effectiveSourceMs - cl.sourceStartMs).clamp(0, cl.sourceEndMs) / cl.speed).round();
       // Volume, clip fades and transition fades, as in the export.
       // Footage sound is muted while a voiceover records, so the microphone does not pick it up.
-      p.setVolume(c.recordingVoiceover ? 0 : TimelineOps.clipPreviewGain(cur, clipIndex, c.playheadMs - cl.timelineStartMs));
+      // J/L cuts: this clip fades under the neighbour's sound, which the J/L player plays (as in the export).
+      p.setVolume(c.recordingVoiceover ? 0 : clipPreviewGainJl(cur, clipIndex, c.playheadMs, isStill: c.isStillAsset));
+      if (_voFrame % 2 == 0 && cur.clips.any((x) => x.audioLeadMs > 0 || x.audioLagMs > 0)) unawaited(_syncJl());
       if (_voFrame++ % 6 == 0 && cur.audio.voiceovers.isNotEmpty) unawaited(_syncVoiceovers());
       unawaited(_syncCrossfade());
       setState(() {});
@@ -926,6 +1057,7 @@ class _StudioSessionScreenState extends ConsumerState<StudioSessionScreen> {
                     Expanded(
                       child: _Preview(
                         controller: c,
+                        native: _native,
                         player: _player,
                         crossfade: _xf == null ? null : (player: _xfPlayer, clipIndex: _xf!.clipIndex, opacity: _xf!.opacity),
                         playing: _playing,
@@ -995,6 +1127,7 @@ class _Empty extends StatelessWidget {
 class _Preview extends StatelessWidget {
   const _Preview({
     required this.controller,
+    this.native,
     required this.player,
     this.crossfade,
     required this.playing,
@@ -1004,6 +1137,10 @@ class _Preview extends StatelessWidget {
 
   final StudioController controller;
   final VideoPlayerController? player;
+
+  /// Native composition preview (StudioPreviewMode.native): it draws the whole picture; this widget then only adds
+  /// the Dart handles (text hit areas / selection, the B-roll chip) above it.
+  final NativePreviewController? native;
 
   /// The other side of a crossfade, drawn over the picture at [opacity] (same look as its clip).
   final ({VideoPlayerController? player, int clipIndex, double opacity})? crossfade;
@@ -1043,8 +1180,22 @@ class _Preview extends StatelessWidget {
             child: Container(
               color: _hex(ir.canvas.background),
               child: Stack(fit: StackFit.expand, children: [
+                if (native case final n?) ...[
+                  Positioned.fill(child: NativeCompositionPreview(controller: n)),
+                  if (n.error case final err?)
+                    Positioned(
+                      left: 8,
+                      right: 8,
+                      bottom: 8,
+                      child: Container(
+                        padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        color: Colors.black.withValues(alpha: 0.75),
+                        child: Text('Preview: $err', style: TextStyle(fontSize: 11, color: AppTheme.warning), maxLines: 2),
+                      ),
+                    ),
+                ],
                 // Base primary video
-                if (stillPath != null || (p != null && p.value.isInitialized))
+                if (native == null && (stillPath != null || (p != null && p.value.isInitialized)))
                   Transform.scale(
                     scale: zoom?.scale ?? 1,
                     alignment: Alignment(((zoom?.centerX ?? 0.5) * 2) - 1, ((zoom?.centerY ?? 0.5) * 2) - 1),
@@ -1074,8 +1225,19 @@ class _Preview extends StatelessWidget {
                     ]),
                   ),
 
-                // B-roll Video or Image Overlay
-                for (final o in brolls)
+                // Native preview: the picture is native, so picture-in-picture / sticker layers only get invisible
+                // handles here (tap, drag to move, pinch to resize and rotate), placed with the export's maths.
+                if (native != null)
+                  for (final o in brolls.where((o) => o.isLayer))
+                    GhostLayerHandle(
+                      key: ValueKey('ghost_${o.id}'),
+                      overlay: o,
+                      playheadMs: t,
+                      controller: controller,
+                      onTap: () => onOpenTool(StudioTool.broll),
+                    ),
+                // B-roll Video or Image Overlay (the native preview composites them itself)
+                for (final o in native == null ? brolls : const <EditIrOverlay>[])
                   if (o.isImage)
                     _BrollOverlayImage(
                       key: ValueKey('ov_${o.id}'),
@@ -1145,6 +1307,7 @@ class _Preview extends StatelessWidget {
                     t: t,
                     canvasWidth: ir.canvas.width,
                     controller: controller,
+                    ghost: native != null,
                     // Tapping a title or a caption edits that one (text, style, timing, position).
                     onTap: () => onOpenTool(StudioTool.text),
                   ),
@@ -1421,7 +1584,9 @@ class _CroppedVideo extends StatelessWidget {
     final sideways = clip.rotationDeg == 90 || clip.rotationDeg == 270;
     final srcW = sideways ? size.height : size.width;
     final srcH = sideways ? size.width : size.height;
-    final crop = clip.crop ?? EditIrCrop(x: 0, y: 0, width: 1, height: 1);
+    // Moving framing (cropKeyframes) follows the frame on screen: the player's source position, like the export.
+    final sourceMs = stillPath != null || player?.value.isInitialized != true ? clip.sourceStartMs : player!.value.position.inMilliseconds;
+    final crop = clip.cropAt(sourceMs) ?? EditIrCrop(x: 0, y: 0, width: 1, height: 1);
     Widget video = Transform(
       alignment: Alignment.center,
       transform: Matrix4.identity()
@@ -1481,10 +1646,15 @@ class _DraggableCaption extends StatefulWidget {
     required this.canvasWidth,
     required this.controller,
     required this.onTap,
+    this.ghost = false,
   });
 
   final EditIrCaption caption;
   final int t;
+
+  /// Native preview: the picture (text included) is drawn by the platform view, so this only lays the text out
+  /// invisibly for the hit area and the selection box.
+  final bool ghost;
 
   /// Width of the edit canvas in canvas pixels (the unit of fontSizePx, strokeWidthPx and the background box).
   final int canvasWidth;
@@ -1522,6 +1692,8 @@ class _DraggableCaptionState extends State<_DraggableCaption> {
     final st = widget.caption.style;
     final posX = (st['positionX'] as num?)?.toDouble() ?? 0.5;
     final posY = (st['positionY'] as num?)?.toDouble() ?? 0.72;
+    // Drawn where the transform puts it (keyframed position); a drag still moves the style's position.
+    final tr = textTransformAt(st, widget.caption.startMs, widget.caption.endMs, widget.t);
     final maxWidthFraction = ((st['maxWidthFraction'] as num?)?.toDouble() ?? 0.86).clamp(0.1, 1.0);
 
     return LayoutBuilder(builder: (context, box) {
@@ -1531,8 +1703,8 @@ class _DraggableCaptionState extends State<_DraggableCaption> {
       final scale = EditIrCaption.canvasPxScale(w, widget.canvasWidth);
       return Stack(clipBehavior: Clip.none, children: [
         Positioned(
-          left: posX * w,
-          top: posY * h,
+          left: tr.positionX * w,
+          top: tr.positionY * h,
           child: FractionalTranslation(
             translation: const Offset(-0.5, -0.5),
             child: GestureDetector(
@@ -1569,7 +1741,13 @@ class _DraggableCaptionState extends State<_DraggableCaption> {
                 ),
                 child: _withMotion(
                   Size(w, h),
-                  _CaptionPreview(caption: widget.caption, t: widget.t, scale: scale, maxTextWidth: maxWidthFraction * w),
+                  tr,
+                  widget.ghost
+                      ? Opacity(
+                          opacity: 0,
+                          child: _CaptionPreview(caption: widget.caption, t: widget.t, scale: scale, maxTextWidth: maxWidthFraction * w),
+                        )
+                      : _CaptionPreview(caption: widget.caption, t: widget.t, scale: scale, maxTextWidth: maxWidthFraction * w),
                 ),
               ),
             ),
@@ -1579,16 +1757,16 @@ class _DraggableCaptionState extends State<_DraggableCaption> {
     });
   }
 
-  /// In / out / loop motion, identical to the Android renderer (text_motion.dart): moved, then rotated and scaled
-  /// about the block's centre.
-  Widget _withMotion(Size canvas, Widget child) {
+  /// In / out / loop motion and the text transform, identical to the Android renderer (text_motion.dart): moved,
+  /// then rotated (transform + motion) and scaled (transform x motion) about the block's centre.
+  Widget _withMotion(Size canvas, TextTransform tr, Widget child) {
     final m = textMotionAt(widget.caption.style, widget.caption.startMs, widget.caption.endMs, widget.t);
-    if (identical(m, TextMotion.none)) return child;
+    if (identical(m, TextMotion.none) && tr.rotationDeg == 0 && tr.scale == 1) return child;
     return Transform.translate(
       offset: Offset(m.dx * canvas.width, m.dy * canvas.height),
       child: Transform.rotate(
-        angle: m.rotationDeg * math.pi / 180,
-        child: Transform.scale(scale: m.scale, child: Opacity(opacity: m.opacity, child: child)),
+        angle: (tr.rotationDeg + m.rotationDeg) * math.pi / 180,
+        child: Transform.scale(scale: tr.scale * m.scale, child: Opacity(opacity: m.opacity, child: child)),
       ),
     );
   }

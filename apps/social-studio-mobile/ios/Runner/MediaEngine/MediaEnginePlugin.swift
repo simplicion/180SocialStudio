@@ -135,12 +135,24 @@ public class MediaEnginePlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
         case "cancelVoiceRecording":
             cancelVoiceRecording(result: result)
 
+        case "extractAudio":
+            // The clip's sound for transcription (audit F-13: without it iPhone has no captions, no filler or pause
+            // removal and no ducking). AAC in an M4A container, which the transcription upload accepts.
+            guard let sourcePath = args["sourcePath"] as? String,
+                  let destPath = args["destPath"] as? String else {
+                result(FlutterError(code: "INVALID_ARGS", message: "sourcePath and destPath required", details: nil))
+                return
+            }
+            extractAudio(sourcePath: sourcePath, destPath: destPath, format: args["format"] as? String, result: result)
+
         case "detectSilences":
-            result([]) // Fallback to speech transcript timing on iOS
+            // Not measured on iOS yet. An empty list would read as "no pauses": say it is unavailable instead, and the
+            // app falls back to transcript gaps.
+            result(FlutterError(code: "NOT_AVAILABLE", message: "Silence detection is not available on iOS yet", details: nil))
 
         case "detectBeats":
-            // Not analysed on iOS yet: no beats (the shape MediaEngineService.detectBeats expects).
-            result(["beatsMs": [Int](), "bpm": NSNull()])
+            // Not measured on iOS yet. An empty list would read as "no beats": unavailable instead.
+            result(FlutterError(code: "NOT_AVAILABLE", message: "Beat detection is not available on iOS yet", details: nil))
 
         default:
             result(FlutterMethodNotImplemented)
@@ -219,6 +231,54 @@ public class MediaEnginePlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
                     let err = exportSession.error?.localizedDescription ?? "Proxy generation failed"
                     result(FlutterError(code: "PROXY_FAILED", message: err, details: nil))
                 }
+            }
+        }
+    }
+
+    private func extractAudio(sourcePath: String, destPath: String, format: String?, result: @escaping FlutterResult) {
+        if format == "wav" {
+            result(FlutterError(code: "NOT_AVAILABLE", message: "WAV extraction is not available on iOS; use m4a", details: nil))
+            return
+        }
+        let asset = AVURLAsset(url: URL(fileURLWithPath: sourcePath))
+        guard let audioTrack = asset.tracks(withMediaType: .audio).first else {
+            result(FlutterError(code: "NO_AUDIO_TRACK", message: "This video has no sound", details: nil))
+            return
+        }
+        let destUrl = URL(fileURLWithPath: destPath)
+        try? FileManager.default.removeItem(at: destUrl)
+        guard let session = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetAppleM4A) else {
+            result(FlutterError(code: "EXTRACT_FAILED", message: "Could not create an audio export session", details: nil))
+            return
+        }
+        session.outputURL = destUrl
+        session.outputFileType = .m4a
+        // Sample rate and channels of the source track (the M4A preset keeps them).
+        var sampleRate = 44100
+        var channels = 1
+        if let desc = audioTrack.formatDescriptions.first,
+           let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(desc as! CMAudioFormatDescription)?.pointee {
+            if asbd.mSampleRate > 0 { sampleRate = Int(asbd.mSampleRate) }
+            if asbd.mChannelsPerFrame > 0 { channels = Int(asbd.mChannelsPerFrame) }
+        }
+        session.exportAsynchronously {
+            DispatchQueue.main.async {
+                guard session.status == .completed else {
+                    let err = session.error?.localizedDescription ?? "Audio extraction failed"
+                    result(FlutterError(code: "EXTRACT_FAILED", message: err, details: nil))
+                    return
+                }
+                let out = AVURLAsset(url: destUrl)
+                let size = ((try? FileManager.default.attributesOfItem(atPath: destPath))?[.size] as? NSNumber)?.int64Value ?? 0
+                // The keys ExtractedAudio.fromMap reads (Android returns the same).
+                result([
+                    "path": destPath,
+                    "format": "m4a",
+                    "sampleRate": sampleRate,
+                    "channels": channels,
+                    "durationMs": max(0, Int((CMTimeGetSeconds(out.duration) * 1000).rounded())),
+                    "fileSizeBytes": size,
+                ])
             }
         }
     }

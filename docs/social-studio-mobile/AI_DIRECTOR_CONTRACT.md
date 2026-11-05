@@ -607,3 +607,352 @@ permissions or the constraints. When the transcript contains such text, `warning
 - `packages/domains/ai/tests/director-os.test.ts`: 12
 - `video-director.test.ts`: still 58
 - `apps/backend/.../projects/brand-bleed.test.ts`: 2 (brand bleed, and the routes over HTTP)
+
+## Addendum 2026-11-05: the Director never destroys manual work (editor overhaul, Phase 1)
+
+### Request additions
+- `baseRevision` (int, optional): the phone's timeline revision `currentEditIR` was taken at. It is echoed back as
+  `baseRevision` on the response. A response that arrives after newer manual edits is merged onto them
+  (`timeline_merge.dart`, three-way, item lanes keyed by id), never swapped in. When both sides changed the cuts,
+  nothing is merged and the chat offers: Re-run on my latest edit / Use Director's version / Keep mine.
+
+### MobileEditIR additions (all optional, backward compatible)
+- `audio.music[].source` and `audio.sfx[].source` also accept `{kind: "asset", assetId, query?, title?}` (preferred)
+  and the legacy `{kind: "file", path, query?, title?}`. The server round-trips both verbatim and never resolves or
+  replaces them. A timeline with local music used to be rejected with 400 INVALID_REQUEST. The phone registers device
+  files through `StudioController.localMediaSource` and migrates old drafts.
+- `audio.music[].source` (kind `url`) accepts `title`.
+- An SFX without `durationMs` ("play the whole file") stays without it. It used to come back as 1000 ms.
+- `http://` music stays that URL. It used to be turned into a stock search for its own address. The phone now
+  refuses plain-http music / SFX links.
+
+### Round trip (replaces the caveats in 3.8)
+- Every item whose canonical form a turn did not change comes back exactly as the client sent it
+  (`preserveUntouched`, `packages/video-contracts/src/mobile-preserve.ts`): clips, overlays, captions, zooms, effects,
+  music, SFX, voiceovers, sources, canvas and original-track level. A turn with no operations returns
+  `currentEditIR` unchanged (except `speechRangesMs`, which the server recomputes). This is checked by a property test
+  over 200 generated timelines.
+- Items the client already had are never trimmed against neighbours or dropped for being short, even when a cut moves
+  them. A cut only drops an item it removed or shrank below a usable length.
+- Titles keep their styled words (per-word colours / highlights).
+
+### Operation changes
+- `autoCaptions` on a timeline that already has captions restyles them (only the fields given: textColor,
+  highlightColor, fontSize, uppercase, position, template). It no longer regenerates them, so hand-fixed text,
+  translations and positions stay. `replaceExisting: true` regenerates them from the transcript.
+- `styleCaption`: `preset` is optional, and the op also takes `textColor`, `fontSize` and `uppercase` as a partial
+  patch. It never touches titles.
+- `addBackgroundMusic` when music exists is rejected unless `replace: true`. Use `adjustVolume` (trackId `music`) to
+  change the level.
+- `addTransition` with `*` fills only cuts without a transition unless `overwrite: true`.
+- `reframeSubject` to the aspect the canvas already has keeps crops, pans and caption positions (letterboxed clips
+  switch to fill). To a new aspect, crops are refitted, and only captions at a default spot move.
+- Coverage retry: only requests to ADD a feature count ("add music", "with captions", "yellow captions please"), not
+  edits of existing items ("make the music quieter", "the zoom at 5s is too strong"). The retry's operations are merged
+  with the first plan, never replace it.
+
+### Autonomy (replaces the ASSISTED rule in the 2026-09-27 addendum)
+- The phone follows `autoApplied`. It no longer derives its own rule from `requiresConfirmation`.
+- MANUAL, greeting, the offline rule-based planner, a planner that asked, or an op dropped for constraints: proposal.
+- ASSISTED (default): applied only when every operation is additive (`ADDITIVE_OPS`: add/restyle text, zooms,
+  effects, stickers, B-roll, SFX, narration, volume/duck, filter, fades, voice cleanup, transitions on empty cuts,
+  captions when there are none, music when there is none). Cuts, reorders, speed, reframe, removals, music
+  replacement and caption regeneration are proposals.
+- AUTO: `ADDITIVE_OPS` plus `SAFE_OPS`.
+- "Yes" to the Director's own plan in the chat is the confirmation: applied.
+
+### Tests
+- `packages/video-contracts/tests/roundtrip-identity.test.ts`: 10 (two 200-seed property tests)
+- `packages/domains/ai/tests/director-phase1.test.ts`: 8 (200-seed no-op property test through `directMobile`)
+- `apps/social-studio-mobile/test/timeline_merge_test.dart`: 20
+- `apps/social-studio-mobile/test/studio_controller_test.dart`: +6 (F-01, F-02, F-03, F-09)
+
+## Addendum 2026-11-05 (b): the full editor toolbox, provenance and locks (editor overhaul, Phase 2)
+
+### New operations (all change ONE existing item in place, by the id shown in the timeline summary)
+| Tool | What it changes | Mirrors (TimelineOps) |
+|---|---|---|
+| `editText {id, text}` | the words of a caption or title; timing and look stay | `editText`, `retextCaptions` |
+| `updateTextStyle {target: id \| all_captions \| all_titles, fontFamily?, fontSizePx?, textColor?, highlightColor?, strokeColor?, strokeWidthPx?, backgroundColor? (#hex \| none), uppercase?, glow?, enter?, exit?, loop?, positionX?, positionY?}` | partial style patch | `styleCaptions`, `updateCaptionPosition` |
+| `retimeItem {kind, id, startSec?, durationSec?}` | caption, title, zoom, B-roll, effect, SFX, voiceover | `moveItem`, `setItemRange` |
+| `updateOverlay {id, x?, y?, scale?, rotation?, opacity?, fit?, muted?, mask?, chromaKey?, sourceUrl? \| stockQuery?}` | a B-roll / PiP / sticker | `updateOverlay`, `replaceOverlaySource` |
+| `setKeyframe / removeKeyframe {overlayId, atSec, ...}` | layer animation | `setLayerKeyframe`, `removeLayerKeyframe` |
+| `updateZoom {id, scale?, centerX?, centerY?, rampMs?, startSec?, durationSec?}` | one zoom | (new) |
+| `updateEffect {id, intensity?, effect?}` | one effect | `setEffectIntensity` |
+| `updateMusic {volumeDb?, fadeInSec?, fadeOutSec?, duck?, duckDb?}` | the music bed; keeps the track | `updateMusic` |
+| `changeMusicTrack {query? \| sourceUrl?}` | another track with the same level, fades, ducking | `setMusicSource` |
+| `setSfxVolume {id, volumeDb}`, `setClipVolume {clipId \| all, volumeDb}`, `updateVoiceover {id, volumeDb?, fadeInSec?, fadeOutSec?}` | levels | same names |
+| `setCrop {clipId, x, y, width, height}`, `panClip {clipId \| all, centerX, centerY}` | manual framing | `setCrop` |
+| `muteTrack {track: original \| music \| sfx \| voiceover, muted}` | a whole track | `setTrackMuted` |
+| `duplicateClip {clipId, targetTimelineStartSec?}` | inserts a copy (after it, or at the nearest boundary) | `duplicateClip` |
+| `freezeFrame {clipId? = auto, timestampSec, durationSec}` | holds a frame; the clip's `assetId` is `freeze:<assetId>@<sourceMs>` and the phone captures that frame (`StudioController.materializeFreezeFrames`); the source entry has `durationMs` 600000 | `insertStill` |
+| `replaceClip {clipId, replacementAssetId}` | other footage, same timing | `replaceClipSource` |
+| `addCaption`, `emphasizeWord` | now exposed to the model | — |
+| `removeItem` kinds | also `music`, `voiceover`, `sticker` | `remove*` |
+
+`packages/video-contracts/src/director-tool-parity.json` maps every public `TimelineOps` operation to a tool, or to
+`ui-only: <reason>`. A contract test and a Flutter test both fail when an operation is added without a mapping.
+Under ASSISTED the update tools apply straight away. `changeMusicTrack`, `duplicateClip`, `freezeFrame` and
+`replaceClip` are proposals.
+
+### Provenance and locks: `MobileEditIR.itemMeta` (optional)
+`itemMeta: { [itemId]: { origin?: "manual" | "director" | "template", locked?: boolean } }`. It sits beside the items
+rather than on them, so every edit that rebuilds an item keeps it. Entries of items no longer on the timeline are
+dropped.
+- The phone marks every item a manual edit creates as `origin: "manual"`. "Lock from the AI Director" in the item
+  sheet sets `locked`, and a lock badge shows on the timeline.
+- The server marks items a turn creates as `origin: "director"` and keeps the creator's entries.
+- Enforcement (`applyItemLocks`, before compiling):
+  - an op naming a locked item is refused;
+  - cuts, splits, speed changes, freezes, reorders and reframes over a locked clip are refused;
+  - `clipId: "all"` sweeps skip locked clips;
+  - locked music refuses every music op;
+  - "remove the zooms" without an id keeps the creator's own and locked items unless the request says
+    all / every.
+- Backstop (`enforceItemLocks`, after projecting): a locked item a sweep still changed comes back as the creator's
+  version. Only its timing follows cuts.
+- Every refusal is listed in `violations`, which also makes the turn a proposal.
+
+### Timeline description and history
+- The model sees each item as one JSON line: id, `by` (origin), `locked`, time range, style, source label, levels,
+  fades and ducking. Each lane shows at most 60 items, and the whole description is capped at about 24k characters.
+- History turns may carry `status` (`applied` | `proposed_not_applied` | `undone`) and `appliedOps`. The phone
+  tracks undo and redo of Director turns. The prompt labels each turn, e.g. "You (proposal, NOT applied)".
+
+### Tests
+- `packages/video-contracts/tests/phase2-update-tools.test.ts`: 17
+- `packages/domains/ai/tests/director-phase2.test.ts`: 8
+- `apps/social-studio-mobile/test/director_tool_parity_test.dart`: 4
+- `apps/social-studio-mobile/test/studio_controller_test.dart`: +3 (F-16, F-21)
+- The property tests now also generate `itemMeta` (provenance and locks).
+
+## Addendum 2026-11-05 (c): understand first, then edit (editor overhaul, Phase 3); audio de-click (Phase 5.4)
+
+### Scope step (before planning)
+Every edit turn is classified first (`packages/video-contracts/src/director-intent.ts`). The mode is one of
+`modify_existing`, `add_new`, `full_edit`, `question` or `ambiguous`. The classification also gives `targets`
+(kind, ids?, timeSec?, `action`: add | change), `allowedTools` and `mustNotTouch`.
+- **Offline rules first.** Clear requests ("make the music quieter", "add b-roll when I talk about the gym") are
+  classified instantly, with no extra LLM call. Add vs change is decided per target, from its own clause.
+- **LLM intent call** (`classify_request` tool, about 600 tokens) only when the rules recognise nothing (another
+  language, a bare "yes"). Without it, the request is planned unscoped under "change only what was asked".
+- **Whole edits over the creator's own work ask first.** A full edit of a timeline with `origin: manual` items
+  becomes a clarifying question, unless the creator said "from scratch" / "everything", or answered yes to that
+  question.
+- **Vague requests ask** ("do something"). Small talk is a chat reply.
+- **What a scoped turn gets:**
+  - only the tools of its targets; creation tools only for targets being added;
+  - every lockable track it does not target is locked for this turn only (not echoed in `constraints`);
+  - out-of-scope operations are dropped and reported ("left out …: not part of what you asked");
+  - critic repair rounds are off for `modify_existing`.
+- **Destructive variants need the words in the request, in every mode:**
+  - replacing music needs "different / another / new … music";
+  - regenerating captions needs "redo the captions";
+  - overwriting transitions needs "change all transitions".
+
+  Otherwise the op is downgraded or dropped, with a note.
+- **Response additions:**
+  - `scope {mode, targets, source: llm | offline, note?}`;
+  - `diffSummary {text, changes[], removed, cutSec, destructive}`, shown as "What changes" on the proposal card,
+    with removals and cuts highlighted.
+
+### Prompt (Phase 3.2)
+- The prompt leads with "Change only what the creator asked…".
+- The viral-craft block appears only for `full_edit`.
+- The timed word list is left out when every target is untimed (music, sound level, colour, canvas, watermark,
+  voiceover, transitions). Spoken lines with times stay.
+
+### Eval (Phase 3.4)
+`packages/domains/ai/tests/director-scope-eval.test.ts` has 48 cases across hand-edited and raw timelines.
+- **Mocked mode** (CI) adds an over-eager "viral pass" to every model answer and checks two things: mode accuracy,
+  and that nothing outside the request's lanes changes. Current result: 100% mode accuracy, 0 forbidden changes.
+- **Live mode** (`AI_DIRECTOR_LIVE=1` plus provider keys) runs the same cases on a real model. Target: ≥ 95%
+  accuracy and 0 forbidden changes. It has not been run yet.
+
+### Audio de-click (Phase 5.4, F-17)
+- **Android export:** every clip-to-clip boundary gets at least a 10 ms fade-out / fade-in.
+  - The rule lives in `clipAudioFadesMs` in `AudioEnvelope.kt`, which `EditIrRenderer.clipAudioProcessors` uses.
+  - A longer transition or manual fade always wins.
+  - Clips under 40 ms and muted clips are skipped.
+- **Preview:** `clipPreviewGainWithDeclick` in `clip_audio_fades.dart` mirrors the rule.
+- **Not done:** the ±15 ms low-energy cut-point snap.
+- **Not verified:** listening on a device.
+
+### Tests
+- `director-scope-eval.test.ts`: 3 mocked tests (48 cases) + 1 live test (skipped by default).
+- `ClipAudioFadesTest.kt`: 4.
+- `clip_audio_declick_test.dart`: 5.
+- `director_diff_summary_test.dart`: 2.
+
+## Addendum 2026-11-05 (d): every clip is analysed (editor overhaul, Phase 4)
+
+### Request additions
+- `mediaList` (optional, up to 20): the analysis of every other source on the timeline, with the same shape as
+  `media` (transcript, silences, faces, beats, scenes, OCR, labels, loudness, in that file's SOURCE ms).
+  - `media` stays the primary source, which is all older clients send.
+  - An entry for the same `assetId` replaces it.
+- `analysisPending` (optional): sources whose on-device analysis is still running.
+  - The server says so in `warnings`.
+  - It tells the planner not to invent what is said in those clips.
+
+### Server
+- `graphFromMobileMediaList` maps each source's analysis onto the timeline through the clips that play it, and
+  merges them in timeline order. Captions, filler and pause cuts, face zooms and beats then cover clips 2..N.
+- Speech ranges (music ducking) are computed per source: `speechRangesForClips(..., wordsByAsset)`.
+- Fill crops centre on each source's own speaker (`faceCenterByAsset`).
+- The critic's B-roll relevance check uses the words of every clip.
+- A source on the timeline with no words is reported: "has no transcript", or "is still being transcribed" when
+  pending.
+- Fixed a Phase 1 issue: when the canvas changes, clips are re-projected. Before, a clip with an automatic crop was
+  restored verbatim, so after a 16:9 → 9:16 reframe it was not cropped to fill.
+
+### Phone
+- `StudioController` analyses every added clip source (`ClipAnalysis`):
+  - silences, faces, scenes, labels, OCR, loudness, beats, then the transcript;
+  - at most 2 at a time;
+  - a file added twice (same path, size and modified time) is analysed once;
+  - restored drafts re-analyse their sources (the analysis is not stored in the draft).
+- Speech ranges are recomputed from every clip's words when a transcript arrives.
+- Before a Director turn, the phone waits up to 10 s for clips still being analysed ("Listening to your clips…").
+  It then sends `mediaList` and `analysisPending`.
+- F-11:
+  - added clips are registered at their display size (rotation applied);
+  - they get the same fill crop as the first clip;
+  - that crop is re-centred on the speaker once faces are known, unless the creator changed it.
+
+### Not done
+Storing the analysis in the draft. The plan's "cached by file hash in the draft" is an in-session cache keyed by
+path, size and modified time, so a reopened draft analyses again.
+
+### Tests
+- `packages/domains/ai/tests/director-phase4.test.ts`: 6 tests on a 3-clip, 3-file fixture:
+  - the "um" in clip 2 is cut;
+  - captions in all 3 clips;
+  - ducking over all 3;
+  - framing per speaker;
+  - an older client is told the other clips have no transcript;
+  - a pending clip is reported.
+- `packages/video-contracts/tests/roundtrip-identity.test.ts`: +1 (canvas change re-projects clips).
+- `apps/social-studio-mobile/test/clip_analysis_test.dart`: 5.
+
+## Addendum 2026-11-05 (e): short-form craft, contract and Director side (editor overhaul, Phase 6)
+
+### Renderer capabilities (read this first)
+The request gains `rendererCapabilities` (`cropKeyframes`, `jlCut`, `textTransform`, `multiMusic`).
+- The Director only uses a feature the phone lists (`gateRendererFeatures`):
+  - a tracking reframe becomes a static one;
+  - J/L cuts and part-of-video music beds are refused, with the reason;
+  - text keeps no rotation or scale.
+- This app version lists none: the Android renderer and the preview do not draw these features yet. That work is in
+  progress, as Phase 5.1 plus the Phase 6 renderer pass. When it lands and is checked on a device, add the
+  capability to `AiDirectorService.rendererCapabilities`.
+- The current Kotlin `MobileEditIr.validate()` still fails an export with more than one music bed.
+
+### MobileEditIR additions (all optional)
+- `clips[].cropKeyframes: [{sourceMs, x, y}]` (max 240): a moving framing.
+  - Each point is the crop window's top-left at SOURCE ms. Cuts, splits and speed changes never move them.
+  - It keeps `crop`'s size. Interpolation is linear, held at the ends.
+  - Reference implementation: `EditIrClip.cropAt` in Dart.
+  - Setting a crop by hand (setCrop / panClip / TimelineOps.setCrop) clears it. A canvas change clears it.
+- `clips[].audioLeadMs` / `audioLagMs` (0..2000): J-cut / L-cut.
+  - A split or a cut keeps the lead on the front piece and the lag on the back piece.
+- Caption / title `style.rotationDeg` (-180..180), `style.scale` (0.2..4), and
+  `style.transformKeyframes [{atMs, rotationDeg?, scale?, positionX?, positionY?}]`.
+- `audio.music` holds up to 4 beds that must not overlap (validated by the contract and the Dart `validate()`).
+- `media.transcript.words[].speaker` (optional): a diarization label. When present, the planner splits the spoken
+  lines by speaker.
+
+### Director
+- `reframeSubject.mode: "track"`: each clip's crop follows the speaker (`computeCropPath` in `reframe-path.ts`).
+  - The subject is the largest face per sample.
+  - A 6% dead zone; pans of at most 0.35 frame widths per second; exponential easing (the `smoothingFactor`).
+  - A hard re-centre on each scene cut.
+  - A still subject gives one static crop.
+- `jlCut {clipId, leadMs?, lagMs?}`: clamped to the footage before / after the clip and to half the neighbouring
+  clip. Classed as structural, so it is a proposal under ASSISTED.
+- `addBackgroundMusic {startSec, durationSec}` adds a bed for part of the video beside the others (no overlap, max 4).
+  `updateMusic` / `changeMusicTrack` take `id`.
+- `updateTextStyle` takes `rotationDeg` and `scale`.
+- `musicBeatsMs` (request; timeline ms, measured on the phone from the downloaded track): on a whole edit, new zooms,
+  B-roll, effects and stickers within 150 ms of a beat move onto it.
+- Frame-accurate cuts: every cut shrinks inwards onto frame boundaries (start up, end down), so no speech is lost.
+  An edge within a frame of a clip boundary goes to that boundary, so no sliver is left. The phone's
+  `TimelineOps._relayout` snaps clip ends the same way and is idempotent.
+
+### Phone (TimelineOps)
+- New: `setJLCut`, `addMusicBed`.
+- `updateMusic` and `removeMusic` take `id` and leave the other beds alone. Before, editing one bed dropped the
+  others, and a failed download removed all music from the export.
+- Parity manifest entries added.
+
+### Not done
+- Speaker diarization needs a speech-to-text provider that labels speakers. Whisper (Groq / OpenAI) does not. It is a
+  provider and key decision; the contract and the planner are ready.
+- Pinch / rotate handles for text in the preview are part of the preview work.
+
+### Tests
+- `packages/video-contracts/tests/phase6-craft.test.ts`: 13.
+- `packages/domains/ai/tests/director-phase6.test.ts`: 3.
+- `apps/social-studio-mobile/test/phase6_craft_test.dart`: 5.
+
+## Addendum 2026-11-06: one composition for preview and export (5.1), renderer support (Phase 6), telemetry (7), iOS first fixes (5.2)
+
+### Android: preview = export (behind a flag)
+- `CompositionFactory.build(ctx, ir, media, PREVIEW | EXPORT)` builds the Media3 composition for both.
+  - EXPORT behaves as before when the new fields are absent.
+  - PREVIEW uses proxies, a 720 px short side, no loudness pass and no frame-rate cap.
+  - `EditIrRenderer` only runs the export.
+- `MediaEnginePreviewView`: a `CompositionPlayer` on a SurfaceView.
+  - One channel per view: `com.workspace180.socialmanager/media_engine_preview_<id>`.
+  - Methods: `setTimeline` (debounced 150 ms), `seek`, `play`, `pause`.
+  - Events: `position`, `timeline`, `error`.
+- Dart: `lib/features/studio/native_preview.dart`.
+  - The flag: `StudioPreviewMode`, default `dart`. Switch it with `--dart-define=STUDIO_PREVIEW=native`.
+  - In native mode the frame is native; text hit boxes and selection stay in Dart.
+- Not verified on a device: CompositionPlayer playback and performance, SurfaceView lifecycle, alignment of the
+  handles with the native frame.
+- Missing in native mode: layer (PiP / sticker) drag handles, and muting the footage while a voiceover records.
+
+### Renderer support for the Phase 6 fields
+
+| Field | Export | Native preview | Dart preview (default) |
+|---|---|---|---|
+| `cropKeyframes` | yes | yes | yes (`EditIrClip.cropAt`) |
+| `audioLeadMs` / `audioLagMs` | yes | yes | no |
+| text `rotationDeg` / `scale` / `transformKeyframes` | yes | yes | yes |
+| up to 4 music beds | yes | yes | no music in the Dart preview (as before) |
+
+`AiDirectorService.rendererCapabilities` is still empty: turn each feature on after a device check.
+- The moving crop's timing at speeds other than 1x rests on Media3 applying speed before effects. If a 2x clip pans
+  at the wrong rate, drop `* speed` in `CropPanTransformation`.
+- A transform keyframe that leaves a field out uses the style's value at that keyframe.
+
+### Telemetry (Phase 7.2)
+- The final `TimelineChanged` event of each Director run carries a turn summary: `scopeMode`, `scopeSource`,
+  `tools`, `plannerSource`, `itemsRemoved`, `cutSec`, `violations`, `rejected`.
+- The phone posts `agent-memory/feedback` for each applied turn and each undo.
+  - An undo within 30 s is reported as regret.
+  - Merge conflicts go in the summary.
+  - Telemetry failures are logged and never shown to the creator.
+
+### iOS (Phase 5.2, first fixes; not compiled: needs a Mac)
+- `extractAudio` (AVAssetExportSession, Apple M4A) returns the same keys as Android, so iPhone can transcribe.
+- `detectSilences` / `detectBeats` return `NOT_AVAILABLE` instead of an empty list, which read as "no pauses / no
+  beats".
+- The full iOS renderer rewrite and the golden-frame tests (5.3) are not done.
+
+### Tests
+- Kotlin: `Phase6MathTest` 14, `ClipAudioFadesTest` 4 (30 JVM tests in total).
+- Dart: `text_transform_test.dart` 5; a controller test for the feedback reports.
+
+### Follow-up 2026-11-06: preview gaps closed
+- **Layers:** picture-in-picture and stickers take one finger to move and two fingers to resize and rotate, in both
+  previews. An animated layer is changed through its keyframe at the playhead, and each gesture is one undo step.
+  - In the native preview, layers get invisible handles (`GhostLayerHandle`), placed with the export's maths from
+    the media's own aspect.
+- **Voiceover recording:** the native preview mutes playback while a voiceover records (new `setVolume` method on the
+  preview channel; the level survives timeline rebuilds).
+- **J/L cuts in the default (Dart) preview:** `clipJlMs`, `clipPreviewGainJl` and `jlNeighbourAt` mirror the export's
+  `clipJlMs` / `clipAudioPlanMs`. An audio-only player plays the neighbour's sound over the lead or lag, while the
+  on-screen clip fades under it. Without J/L cuts the gain equals the earlier de-click gain.
+- Tests: `apps/social-studio-mobile/test/preview_gaps_test.dart` (7).

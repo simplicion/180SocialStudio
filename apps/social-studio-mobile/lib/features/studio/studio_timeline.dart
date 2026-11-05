@@ -430,6 +430,7 @@ class _StudioTimelineState extends State<StudioTimeline> {
           color: _colors[k]!,
           selected: selected,
           muted: muted,
+          locked: widget.controller.isItemLocked(it.id),
           onTap: () => _onItem(original, index),
           onLongPressStart: _movable(k) ? () => _begin(original, _DragMode.move) : null,
           onLongPressMove: _movable(k) ? (dx) => _moveTo(dx, msPerPx, total) : null,
@@ -552,6 +553,7 @@ class _Block extends StatelessWidget {
     required this.selected,
     required this.onTap,
     this.muted = false,
+    this.locked = false,
     this.onLongPressStart,
     this.onLongPressMove,
     this.onLongPressEnd,
@@ -560,6 +562,9 @@ class _Block extends StatelessWidget {
   final Color color;
   final bool selected;
   final bool muted;
+
+  /// Locked from the AI Director (a lock badge on the block).
+  final bool locked;
   final VoidCallback onTap;
   final VoidCallback? onLongPressStart;
   final ValueChanged<double>? onLongPressMove;
@@ -574,7 +579,7 @@ class _Block extends StatelessWidget {
     return Semantics(
       button: true,
       label: '${item.kind.label}: ${item.label}, ${timecode(item.startMs)} to ${timecode(item.endMs)}'
-          '${muted ? ', muted' : ''}',
+          '${muted ? ', muted' : ''}${locked ? ', locked' : ''}',
       child: GestureDetector(
         onTap: onTap,
         onLongPressStart: onLongPressStart == null ? null : (_) => onLongPressStart!(),
@@ -683,6 +688,18 @@ class _Block extends StatelessWidget {
                               padding: EdgeInsets.all(1),
                               decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(2)),
                               child: Icon(Icons.volume_off_rounded, size: 9, color: AppTheme.error),
+                            ),
+                          ),
+                        ),
+                      if (locked)
+                        Flexible(
+                          child: Padding(
+                            padding: EdgeInsets.only(left: 2),
+                            child: Container(
+                              key: Key('lock-${item.id}'),
+                              padding: EdgeInsets.all(1),
+                              decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(2)),
+                              child: Icon(Icons.lock_rounded, size: 9, color: Colors.white),
                             ),
                           ),
                         ),
@@ -799,7 +816,21 @@ class _TimelineItemInspectorState extends State<TimelineItemInspector> {
           Text(it.kind.label, style: Theme.of(context).textTheme.labelSmall),
           Text(it.label, maxLines: 2, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.titleMedium),
           Text('${timecode(it.startMs)} – ${timecode(it.endMs)}', style: Theme.of(context).textTheme.bodySmall),
-          SizedBox(height: 12),
+          // Locked items are never changed or removed by the AI Director (manual editing still works).
+          SwitchListTile(
+            key: const Key('item-lock'),
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+            secondary: Icon(widget.c.isItemLocked(it.id) ? Icons.lock_rounded : Icons.lock_open_rounded, size: 18),
+            title: const Text('Lock from the AI Director'),
+            subtitle: const Text('The Director will not change or remove it'),
+            value: widget.c.isItemLocked(it.id),
+            onChanged: (_) {
+              widget.c.toggleItemLock(it.id);
+              setState(() {});
+            },
+          ),
+          SizedBox(height: 4),
           if (movable) ...[
             Row(children: [
               Expanded(child: OutlinedButton(onPressed: () => _nudge(-500), child: Text('← 0.5 s'))),
@@ -842,7 +873,7 @@ class _TimelineItemInspectorState extends State<TimelineItemInspector> {
                 (ir) => switch (it.kind) {
                   TrackKind.sfx => TimelineOps.setSfxVolume(ir, it.id, _volume),
                   TrackKind.voiceover => TimelineOps.updateVoiceover(ir, it.id, volumeDb: _volume),
-                  _ => TimelineOps.updateMusic(ir, volumeDb: _volume),
+                  _ => TimelineOps.updateMusic(ir, id: it.id, volumeDb: _volume),
                 },
                 'Volume updated',
               ),

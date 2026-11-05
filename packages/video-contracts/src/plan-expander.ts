@@ -49,7 +49,11 @@ export class PlanExpander {
     plan: CreativeEditPlan,
     graph: MediaIntelligenceGraph,
     warnings: string[] = [],
-    opts: { canvas?: { width: number; height: number } } = {}
+    opts: {
+      canvas?: { width: number; height: number };
+      /** Speech captions already on the timeline: autoCaptions then restyles them instead of regenerating (F-06). */
+      existingCaptions?: number;
+    } = {}
   ): CreativeEditPlan {
     const out: CreativeOperation[] = [];
     for (const op of plan.operations) {
@@ -89,6 +93,22 @@ export class PlanExpander {
           break;
         }
         case "autoCaptions": {
+          if ((opts.existingCaptions ?? 0) > 0 && !op.replaceExisting) {
+            // Captions exist: their text (typo fixes, translations), timing and positions are the creator's. Only the
+            // look changes, and only what the op names.
+            const restyle: CreativeOperation = {
+              type: "styleCaption",
+              ...(op.template ? { preset: op.template } : {}),
+              ...(op.highlightColor ? { highlightColor: op.highlightColor } : {}),
+              ...(op.textColor ? { textColor: op.textColor } : {}),
+              ...(op.fontSize ? { fontSize: op.fontSize } : {}),
+              ...(op.uppercase !== undefined ? { uppercase: op.uppercase } : {}),
+              ...(op.position ? { position: op.position } : {}),
+            };
+            if (Object.keys(restyle).length > 1) out.push(restyle);
+            warnings.push("autoCaptions: captions already exist, so they were restyled and their text was kept (regenerating them needs replaceExisting)");
+            break;
+          }
           if (graph.transcript.length === 0) {
             warnings.push("autoCaptions: no transcript supplied, so captions were skipped");
             break;
@@ -310,6 +330,7 @@ export function graphFromMobileMedia(media: MobileMediaDescriptor, editIR: EditI
       isEmphasis,
       emphasisScore: isEmphasis ? 0.8 : 0.2,
       energyScore: 0.5,
+      ...((w as { speaker?: string }).speaker ? { speakerId: (w as { speaker?: string }).speaker } : {}),
     });
   });
 
@@ -364,6 +385,40 @@ export function graphFromMobileMedia(media: MobileMediaDescriptor, editIR: EditI
     transcript: words,
     silences,
     ...(faces ? { faces: [faces] } : {}),
+    ...(beats ? { beats } : {}),
+  });
+}
+
+/**
+ * One graph for a timeline cut from several sources (Phase 4, audit F-10): each source's analysis is mapped onto the
+ * timeline through the clips that play it, and the results are merged in timeline order. Clips from the second take
+ * get captions, filler / pause cuts and ducking like the first. `list[0]` is the primary source (canvas metadata).
+ */
+export function graphFromMobileMediaList(list: MobileMediaDescriptor[], editIR: EditIR): MediaIntelligenceGraph {
+  if (list.length <= 1) return graphFromMobileMedia(list[0], editIR);
+  const parts = list.map((m) => graphFromMobileMedia(m, editIR));
+  const primary = parts[0];
+  const transcript = parts
+    .flatMap((g, i) => g.transcript.map((w) => ({ ...w, id: `a${i}_${w.id}` })))
+    .sort((a, b) => a.startSeconds - b.startSeconds);
+  const silences = parts
+    .flatMap((g, i) => g.silences.map((s) => ({ ...s, id: `a${i}_${s.id}` })))
+    .sort((a, b) => a.startSeconds - b.startSeconds);
+  // One speaker track over the whole timeline: each moment's sample comes from the source on screen then.
+  const faceParts = parts.map((g) => g.faces?.[0]).filter((f): f is FaceTrack => !!f);
+  const faces: FaceTrack[] = faceParts.length
+    ? [{ ...faceParts[0], samples: faceParts.flatMap((f) => f.samples).sort((a, b) => a.timeSeconds - b.timeSeconds) }]
+    : [];
+  const beatParts = parts.map((g) => g.beats).filter((b): b is MusicBeatTrack => !!b && (b.beatTimestamps?.length ?? 0) > 0);
+  const beats = beatParts.length
+    ? { ...beatParts[0], beatTimestamps: beatParts.flatMap((b) => b.beatTimestamps).sort((a, b) => a - b) }
+    : null;
+  return MediaGraphBuilder.build({
+    assetId: list[0].assetId || "primary",
+    technicalMetadata: primary.technicalMetadata,
+    transcript,
+    silences,
+    ...(faces.length ? { faces } : {}),
     ...(beats ? { beats } : {}),
   });
 }

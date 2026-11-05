@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 
 import '../../core/config/app_config.dart';
 import '../../core/native_engine/media_engine_service.dart';
@@ -9,11 +10,23 @@ import '../../core/network/device_registration.dart';
 import '../../core/util/json.dart';
 
 class DirectorTurn {
-  DirectorTurn({required this.role, required this.content});
+  DirectorTurn({required this.role, required this.content, this.status, this.appliedOps = const []});
   final String role; // user | assistant
   final String content;
 
-  Json toJson() => {'role': role, 'content': content};
+  /// Assistant turns: applied | proposed_not_applied | undone (what really became of it on this phone, F-16).
+  final String? status;
+
+  /// The changes the turn made (the server's `appliedOperations`).
+  final List<String> appliedOps;
+
+  Json toJson() => {
+        'role': role,
+        'content': content,
+        'status': ?status,
+        if (appliedOps.isNotEmpty)
+          'appliedOps': [for (final o in appliedOps.take(30)) o.length > 300 ? o.substring(0, 300) : o],
+      };
 }
 
 class SilenceRange {
@@ -89,7 +102,21 @@ class DirectorResponse {
     this.phase = 'chat',
     this.quickReplies = const [],
     this.proposedPlan = const [],
+    this.autoApplied = false,
+    this.baseRevision,
+    this.diffSummary,
+    this.scopeMode,
+    this.runId,
   });
+
+  /// Id of this turn in the server's agent run log (for Apply / Undo feedback).
+  final String? runId;
+
+  /// What the turn changes, in plain words, for the proposal card (Phase 3.3); null for older servers.
+  final DirectorDiffSummary? diffSummary;
+
+  /// What the request was understood to be: modify_existing | add_new | full_edit | question | ambiguous.
+  final String? scopeMode;
 
   final String plannerSource;
   final String? plannerReason;
@@ -117,6 +144,13 @@ class DirectorResponse {
   final List<String> rejectedOperations;
   final List<String> warnings;
   final bool requiresConfirmation;
+
+  /// The server's decision to apply this turn without asking (editing autonomy + operation kinds). The phone follows
+  /// it instead of deriving its own rule (audit F-09).
+  final bool autoApplied;
+
+  /// The timeline revision the request was made from (echoed by the server), or null for older servers.
+  final int? baseRevision;
 
   /// Raw `editIR`, sent back unchanged as `currentEditIR` on the next turn.
   final Json editIrJson;
@@ -155,6 +189,11 @@ class DirectorResponse {
       rejectedOperations: jStrList(d['rejectedOperations']),
       warnings: jStrList(d['warnings']),
       requiresConfirmation: jBool(d['requiresConfirmation']),
+      autoApplied: jBool(d['autoApplied']),
+      baseRevision: (d['baseRevision'] as num?)?.toInt(),
+      diffSummary: d['diffSummary'] is Map ? DirectorDiffSummary.fromJson(jMap(d['diffSummary'])) : null,
+      scopeMode: jStr(jMap(d['scope'])['mode']),
+      runId: jStr(d['runId']),
       editIrJson: ir,
       editIr: parsed,
       credits: {
@@ -163,6 +202,26 @@ class DirectorResponse {
       },
     );
   }
+}
+
+/// "+2 zooms · 12 captions restyled · music −16 → −22 dB · nothing removed" (server `diffSummary`).
+class DirectorDiffSummary {
+  DirectorDiffSummary({required this.text, this.changes = const [], this.removed = 0, this.cutSec = 0, this.destructive = false});
+  final String text;
+  final List<String> changes;
+
+  /// Items the turn removes, and seconds of footage it cuts: highlighted on the card.
+  final int removed;
+  final double cutSec;
+  final bool destructive;
+
+  factory DirectorDiffSummary.fromJson(Json j) => DirectorDiffSummary(
+        text: jStr(j['text']) ?? '',
+        changes: jStrList(j['changes']),
+        removed: (j['removed'] as num?)?.toInt() ?? 0,
+        cutSec: (j['cutSec'] as num?)?.toDouble() ?? 0,
+        destructive: jBool(j['destructive']),
+      );
 }
 
 /// An assistant turn as history: the message plus the plan it proposed (the server reads the plan back
@@ -243,7 +302,35 @@ class AiDirectorService {
   final DeviceRegistration _device;
 
   static const path = '/api/v1/media-editor/ai-direct';
+
+  /// Renderer features this app version draws (contract `rendererCapabilities`); the Director uses nothing else.
+  /// Switched on 2026-11-06 at the owner's request: the Android export and the native preview draw all four, the
+  /// default Dart preview draws the moving crop, text transform and J/L cuts (it plays no music, as before). Not yet
+  /// checked on a device: remove one here to switch it off again.
+  static const rendererCapabilities = <String>['cropKeyframes', 'jlCut', 'textTransform', 'multiMusic'];
   static const maxHistory = 20;
+
+  /// Tells the project's agent memory that a Director turn was applied or undone (`POST
+  /// /social-media/projects/:id/agent-memory/feedback`). Telemetry: a failure is logged, never shown or retried.
+  Future<void> sendFeedback({
+    required String projectId,
+    required bool accepted,
+    String? runId,
+    required String summary,
+    List<String> operations = const [],
+  }) async {
+    try {
+      await _api.post('/api/v1/social-media/projects/${Uri.encodeComponent(projectId)}/agent-memory/feedback', body: {
+        'accepted': accepted,
+        'agent': 'director',
+        'runId': ?runId,
+        'summary': summary.length > 300 ? summary.substring(0, 300) : summary,
+        'operations': operations.take(30).map((o) => o.length > 40 ? o.substring(0, 40) : o).toList(),
+      });
+    } catch (e) {
+      debugPrint('AI Director feedback not recorded: $e');
+    }
+  }
 
   static Json buildRequest({
     required String prompt,
@@ -254,6 +341,10 @@ class AiDirectorService {
     String? calendarPieceId,
     String? postId,
     String? intent,
+    int? baseRevision,
+    List<MediaAnalysis> mediaList = const [],
+    List<String> analysisPending = const [],
+    List<int> musicBeatsMs = const [],
   }) {
     final trimmed = history.length > maxHistory ? history.sublist(history.length - maxHistory) : history;
     return {
@@ -265,6 +356,14 @@ class AiDirectorService {
       'postId': ?postId,
       'media': media.toJson(),
       'currentEditIR': currentEditIR,
+      'baseRevision': ?baseRevision,
+      // Every other source on the timeline, with its own analysis (Phase 4); the server caps the list at 20.
+      if (mediaList.isNotEmpty) 'mediaList': mediaList.take(20).map((m) => m.toJson()).toList(),
+      if (analysisPending.isNotEmpty) 'analysisPending': analysisPending.take(20).toList(),
+      // Beats of the music bed(s) on the timeline (Phase 6.4): a whole edit places zooms and cuts on them.
+      if (musicBeatsMs.isNotEmpty) 'musicBeatsMs': musicBeatsMs.take(5000).toList(),
+      // What this phone's renderer draws; the Director uses nothing else (Phase 6).
+      if (rendererCapabilities.isNotEmpty) 'rendererCapabilities': rendererCapabilities,
     };
   }
 
@@ -277,6 +376,10 @@ class AiDirectorService {
     String? postId,
     String? intent,
     Json? currentEditIR,
+    int? baseRevision,
+    List<MediaAnalysis> mediaList = const [],
+    List<String> analysisPending = const [],
+    List<int> musicBeatsMs = const [],
     CancelToken? cancelToken,
   }) async {
     if (prompt.trim().isEmpty && intent != 'greet') {
@@ -292,6 +395,10 @@ class AiDirectorService {
       postId: postId,
       intent: intent,
       currentEditIR: currentEditIR,
+      baseRevision: baseRevision,
+      mediaList: mediaList,
+      analysisPending: analysisPending,
+      musicBeatsMs: musicBeatsMs,
     );
     Future<Json> call() => _api.post(path,
         body: body, device: true, timeout: AppConfig.aiReceiveTimeout, cancelToken: cancelToken);
