@@ -55,5 +55,25 @@ module.exports = {
           'SEARXNG_URL', 'TREND_WORKER_SEARCH', 'TREND_WORKER_BROWSER', 'PLAYWRIGHT_BROWSERS_PATH'),
       },
     },
+    // Speaker diarization sidecar (pyannote speaker-diarization-community-1): who speaks when, for the Director.
+    // One-time setup: services/diarize-worker/setup.sh. Listed only once its venv exists, so a server without it
+    // keeps starting cleanly (the backend then returns transcripts without speakers, diarization: "off").
+    ...(fs.existsSync(path.join(__dirname, 'services/diarize-worker/.venv/bin/uvicorn'))
+      ? [{
+          name: '180socialstudio-diarize-worker',
+          script: '.venv/bin/uvicorn',
+          args: 'app.main:app --host 127.0.0.1 --port 4020',
+          cwd: `${__dirname}/services/diarize-worker`,
+          interpreter: 'none',
+          exec_mode: 'fork',
+          instances: 1,
+          autorestart: true,
+          watch: false,
+          max_memory_restart: '3000M',
+          env: {
+            ...pick('DIARIZE_WORKER_SECRET', 'TREND_WORKER_SECRET', 'HF_TOKEN', 'DIARIZE_MODEL', 'DIARIZE_THREADS', 'DIARIZE_MAX_AUDIO_SEC'),
+          },
+        }]
+      : []),
   ],
 };

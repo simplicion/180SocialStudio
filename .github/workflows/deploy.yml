@@ -82,9 +82,15 @@ jobs:
               bash services/trend-worker/setup.sh || true
             fi
 
+            # Speaker diarization worker (needs ffmpeg; the model downloads with HF_TOKEN from the backend .env).
+            if [ -d "services/diarize-worker" ] && [ ! -f "services/diarize-worker/.venv/bin/uvicorn" ] && command -v ffmpeg >/dev/null; then
+              echo "Setting up diarize-worker Python environment..."
+              bash services/diarize-worker/setup.sh || true
+            fi
+
             echo "=== [5/6] Starting / Reloading PM2 Service ==="
             if [ -f "services/trend-worker/.venv/bin/uvicorn" ]; then
-              pm2 reload ecosystem.config.cjs || pm2 start ecosystem.config.cjs
+              pm2 startOrReload ecosystem.config.cjs || pm2 start ecosystem.config.cjs
             else
               pm2 reload 180socialstudio-backend || pm2 start ecosystem.config.cjs --only 180socialstudio-backend
             fi

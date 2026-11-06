@@ -956,3 +956,24 @@ The request gains `rendererCapabilities` (`cropKeyframes`, `jlCut`, `textTransfo
   `clipJlMs` / `clipAudioPlanMs`. An audio-only player plays the neighbour's sound over the lead or lag, while the
   on-screen clip fades under it. Without J/L cuts the gain equals the earlier de-click gain.
 - Tests: `apps/social-studio-mobile/test/preview_gaps_test.dart` (7).
+
+## Addendum 2026-11-06 (f): speaker diarization (who speaks when)
+
+`POST /transcribe` now also says who says each word, when the server runs the diarize worker
+(`services/diarize-worker`, model `pyannote/speaker-diarization-community-1`: pyannote.audio 4, weights CC-BY-4.0,
+code MIT; attribution: pyannote.audio, Hervé Bredin and pyannoteAI).
+
+- Each word may carry `speaker` (`"S1"`, `"S2"`... in order of first appearance). The response adds `speakers` (the
+  number found) and `diarization`: `labelled` | `off` (not configured) | `unavailable` (worker down / model loading) |
+  `failed`. Speech-to-text and diarization run at the same time; a diarization problem never fails the transcript,
+  and words are never given a guessed speaker (a word more than 500 ms from every turn stays unlabelled).
+- The app keeps `speaker` on its transcript words and sends it in `media.transcript.words[].speaker`; the Director
+  maps it to `speakerId`, starts a new spoken line at each change of speaker and is told the speakers are labelled.
+- Server: `DIARIZE_WORKER_URL=http://127.0.0.1:4020`, `HF_TOKEN` (a Hugging Face read token whose account accepted
+  the model's terms; used once to download), secret `DIARIZE_WORKER_SECRET` or, by default, `TREND_WORKER_SECRET`.
+  Optional: `DIARIZE_TIMEOUT_MS` (backend, default 120000), `DIARIZE_THREADS`, `DIARIZE_MAX_AUDIO_SEC`.
+  Needs ffmpeg. Setup: `services/diarize-worker/setup.sh` (CPU PyTorch), then
+  `pm2 start ecosystem.config.cjs --only 180socialstudio-diarize-worker`. `GET :4020/health` shows `ready`.
+- Tests: `services/diarize-worker/tests` (fake model), `speaker-diarization.test.ts` (backend),
+  `transcript_speaker_test.dart`, `packages/video-contracts/tests/speaker-labels.test.ts`. Not yet run against the
+  real model (needs the server and HF_TOKEN).
