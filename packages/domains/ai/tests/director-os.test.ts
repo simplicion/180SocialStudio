@@ -29,13 +29,13 @@ function req(prompt: string, extra: Partial<MobileAIDirectRequest> = {}, fx = fi
 }
 
 function mockClient(responses: ToolCallResponse[]) {
-  const calls: Array<{ prompt: string; tools: any[] }> = [];
+  const calls: Array<{ prompt: string; tools: any[]; options?: any }> = [];
   const client: AIClient = {
     provider: "claude",
     generate: async () => { throw new Error("unused"); },
     generateStream: async () => { throw new Error("unused"); },
-    generateWithTools: async (prompt, tools) => {
-      calls.push({ prompt, tools });
+    generateWithTools: async (prompt, tools, options) => {
+      calls.push({ prompt, tools, options });
       const next = responses.shift();
       if (!next) throw new Error("mock LLM: no more scripted responses");
       return next;
@@ -183,7 +183,8 @@ test("fencing: an injection spoken in the video is fenced as data; tools and con
   const res = await director.directMobile(req("add captions", {}, fx), { llmClient: client });
   const prompt = calls[0].prompt;
   assert.match(prompt, /<<<UNTRUSTED_DATA source="transcript"/);
-  assert.match(prompt, /SECURITY RULE/);
+  // The security rule is part of the system prompt (operator authority), the fenced data in the user message.
+  assert.match(calls[0].options.system, /SECURITY RULE/);
   assert.ok(prompt.includes(NEUTRALISED_MARKER));
   assert.ok(!/Ignore all previous instructions/i.test(prompt.replace(/## Creator's latest message[\s\S]*$/, "")));
   // The tools are exactly those of the request's scope ("add captions"): the spoken injection changes nothing.

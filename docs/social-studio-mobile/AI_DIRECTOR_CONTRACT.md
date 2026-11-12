@@ -977,3 +977,23 @@ code MIT; attribution: pyannote.audio, Hervé Bredin and pyannoteAI).
 - Tests: `services/diarize-worker/tests` (fake model), `speaker-diarization.test.ts` (backend),
   `transcript_speaker_test.dart`, `packages/video-contracts/tests/speaker-labels.test.ts`. Not yet run against the
   real model (needs the server and HF_TOKEN).
+
+## Addendum 2026-11-13: turn log and fallback visibility (quality-fix plan, Phase 0)
+
+See `AI_DIRECTOR_QUALITY_FIX_PLAN.md`. Additive response fields of `POST /media-editor/ai-direct` (mobile form):
+
+- `plannerFallback?: { code, reason }`: present only when an edit turn was planned by the offline rules because the
+  model could not be used. `code` is one of `no_key | llm_disabled | no_tool_calling | timeout | budget |
+  llm_error | empty_response | invalid_output | unknown`; `reason` is the server's technical reason (provider,
+  model, error). Absent for LLM turns, the rule-based greeting and an offline clarifying question. The phone shows
+  a banner on such turns (`FallbackBanner`); older servers are recognised by the
+  `planned by the offline rule-based director` warning.
+- `turnLog`: `{ runId, intent, scopeMode, provider, model, plannerSource, plannerReason, fallback, llmCalls,
+  ops: { planned, afterFilters, applied, rejected, dropped }, drops: [{ filter, op, count, reason? }], repairRounds,
+  criticScore, latencyMs }` (`afterFilters` counts after PlanExpander expansion, so it can exceed `planned`).
+  `filter` is one of `renderer_gate | destructive_guard | scope | item_locks | validator |
+  compiler`. Also written as one `[AI Director][turn] {json}` server log line and stored on the run's final
+  `TimelineChanged` event.
+
+New route: `GET /media-editor/director-report?days=7` (1..90, workspace admins, own company only): fallback % of
+edit turns, by code, top reasons, provider/model mix, drops by filter, average latency and ops.

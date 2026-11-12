@@ -2,12 +2,37 @@
 import { prisma } from '@workspace/db';
 import { aiProviderService, AISettings } from './ai-provider.service';
 import { PlatformAiVaultService } from './platform-ai-vault.service';
+import { ModelPurpose, modelDisplay, normalizeProvider, resolveModel } from './model-config';
+
+/**
+ * Which provider runs (pure, for tests).
+ * - Director: AI_DIRECTOR_PROVIDER if it has a key, else the configured default (AI_PROVIDER / DEFAULT_AI_PROVIDER /
+ *   vault default) if it has a key, else the first provider with a key in quality order: Claude, OpenAI, Gemini,
+ *   Groq, custom. A director provider without a key is logged.
+ * - Everything else (unchanged): the configured default if it has a key, else Gemini, OpenAI, Claude, Groq, custom.
+ */
+export function chooseAiProvider(p: { purpose?: ModelPurpose; configured: string; director?: string; hasKeyFor: (prov: string) => boolean }): string {
+    const configured = normalizeProvider(p.configured);
+    if (p.purpose === 'director') {
+        const director = normalizeProvider(p.director);
+        let chosen = '';
+        if (director && p.hasKeyFor(director)) chosen = director;
+        else if (configured && p.hasKeyFor(configured)) chosen = configured;
+        else chosen = ['claude', 'openai', 'gemini', 'groq', 'custom'].find(p.hasKeyFor) || configured || 'claude';
+        if (director && director !== chosen) console.warn(`[AI config] AI_DIRECTOR_PROVIDER="${director}" has no key; the Director uses "${chosen}"`);
+        return chosen;
+    }
+    if (configured && p.hasKeyFor(configured)) return configured;
+    return ['gemini', 'openai', 'claude', 'groq', 'custom'].find(p.hasKeyFor) || configured || 'openai';
+}
 
 export interface CompanyAIStatus {
     isConfigured: boolean;
     provider: string;
     model: string;
     status: 'connected' | 'ready' | 'unconfigured' | 'error';
+    /** The model the AI Director plans edits with (provider · model id). */
+    directorModel?: string;
     lastTested: string | null;
     companyName?: string;
 }
@@ -18,7 +43,7 @@ export class AICompanyConfigService {
      * All AI keys are sourced natively and exclusively from server environment variables (.env)
      * or the secure platform vault. Tenant metadata BYOK overrides are removed.
      */
-    static async getCompanyAISettings(companyId?: string): Promise<{ settings: AISettings; companyName: string; metadata: any }> {
+    static async getCompanyAISettings(companyId?: string, opts: { purpose?: ModelPurpose } = {}): Promise<{ settings: AISettings; companyName: string; metadata: any }> {
         let metadata: any = {};
         let companyRecord: any = null;
 
@@ -76,14 +101,7 @@ export class AICompanyConfigService {
             return false;
         };
 
-        if (!hasKeyFor(aiProvider)) {
-            if (geminiKey) aiProvider = 'gemini';
-            else if (openaiKey) aiProvider = 'openai';
-            else if (claudeKey) aiProvider = 'claude';
-            else if (groqKey) aiProvider = 'groq';
-            else if (customAiKey && customAiUrl) aiProvider = 'custom';
-            else aiProvider = configuredProvider || 'openai';
-        }
+        aiProvider = chooseAiProvider({ purpose: opts.purpose, configured: configuredProvider, director: process.env.AI_DIRECTOR_PROVIDER, hasKeyFor });
 
         const settings: AISettings = {
             aiProvider,
@@ -94,7 +112,8 @@ export class AICompanyConfigService {
             cartesiaKey,
             customAiKey,
             customAiUrl,
-            customAiModel
+            customAiModel,
+            models: platformVault.models || {}
         };
 
         return { settings, companyName, metadata };
@@ -117,17 +136,16 @@ export class AICompanyConfigService {
 
         const isConfigured = hasKey;
 
-        let modelDisplay = 'OpenAI GPT-4o / GPT-4o-mini (Platform Native)';
-        if (provider === 'gemini') modelDisplay = 'Google Gemini 1.5 Flash (Platform Native)';
-        else if (provider === 'openai') modelDisplay = 'OpenAI GPT-4o / GPT-4o-mini (Platform Native)';
-        else if (provider === 'claude') modelDisplay = 'Claude 3.5 Sonnet (Platform Native)';
-        else if (provider === 'groq') modelDisplay = 'Groq Cloud Llama 3.3 (Platform Native)';
-        else if (provider === 'custom') modelDisplay = settings.customAiModel || 'Custom Enterprise LLM';
+        // The models that actually run (env → saved choice → default), not a hardcoded label.
+        const model = provider === 'custom' && settings.customAiModel ? settings.customAiModel : resolveModel(provider, 'general', { vaultModels: settings.models });
+        const director = (await this.getCompanyAISettings(companyId, { purpose: 'director' })).settings;
+        const directorModel = modelDisplay(director.aiProvider, resolveModel(director.aiProvider, 'director', { vaultModels: director.models }));
 
         return {
             isConfigured,
             provider,
-            model: modelDisplay,
+            model: modelDisplay(provider, model),
+            directorModel,
             status: isConfigured ? 'ready' : 'unconfigured',
             lastTested: metadata?.lastAiTestDate ? new Date(metadata.lastAiTestDate).toISOString() : new Date().toISOString(),
             companyName
@@ -145,6 +163,7 @@ export class AICompanyConfigService {
         };
 
         const activeProvider = settings.aiProvider || 'openai';
+        const label = (prov: string, name: string) => `${name} (${resolveModel(prov, 'general', { vaultModels: settings.models })})`;
         const hasActiveKey = (
             (activeProvider === 'builtin') ||
             (activeProvider === 'gemini' && !!settings.geminiKey) ||
@@ -166,25 +185,25 @@ export class AICompanyConfigService {
                     isDefault: activeProvider === 'builtin',
                 },
                 gemini: {
-                    displayName: 'Google Gemini (1.5 Flash / Pro)',
+                    displayName: label('gemini', 'Google Gemini'),
                     isConfigured: !!settings.geminiKey,
                     keyPreview: mask(settings.geminiKey),
                     isDefault: activeProvider === 'gemini',
                 },
                 openai: {
-                    displayName: 'OpenAI (GPT-4o / GPT-4o-mini)',
+                    displayName: label('openai', 'OpenAI'),
                     isConfigured: !!settings.openaiKey,
                     keyPreview: mask(settings.openaiKey),
                     isDefault: activeProvider === 'openai',
                 },
                 claude: {
-                    displayName: 'Anthropic Claude (3.5 Sonnet)',
+                    displayName: label('claude', 'Anthropic Claude'),
                     isConfigured: !!settings.claudeKey,
                     keyPreview: mask(settings.claudeKey),
                     isDefault: activeProvider === 'claude',
                 },
                 groq: {
-                    displayName: 'Groq Cloud (Llama 3.3)',
+                    displayName: label('groq', 'Groq Cloud'),
                     isConfigured: !!settings.groqKey,
                     keyPreview: mask(settings.groqKey),
                     isDefault: activeProvider === 'groq',

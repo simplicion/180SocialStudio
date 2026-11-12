@@ -102,6 +102,14 @@ import {
   tidyReply,
 } from "./director-conversation";
 import crypto from "crypto";
+import {
+  DirectorDropRecorder,
+  classifyPlannerFallback,
+  formatTurnLogLine,
+  providerModelFromReason,
+  type DirectorFallbackCode,
+  type DirectorTurnLog,
+} from "./director-turn-log";
 
 export class VideoAIDirectorService implements IUniversalBuilder<EditIR> {
   public readonly builderType = "video" as any;
@@ -267,7 +275,9 @@ export class VideoAIDirectorService implements IUniversalBuilder<EditIR> {
         cutSec: result.diffSummary.cutSec,
         violations: result.violations?.length ?? 0,
         rejected: result.rejectedOperations.length,
+        turnLog: result.turnLog,
       });
+      console.info(formatTurnLogLine(result.turnLog));
       await events.flush();
       return result;
     } catch (err: any) {
@@ -327,6 +337,10 @@ export class VideoAIDirectorService implements IUniversalBuilder<EditIR> {
     } & MobileDirectOptions,
     events: AgentRunEmitter
   ): Promise<MobileDirectResult> {
+    const startedAt = Date.now();
+    // Phase 0 turn log: which filter dropped which planned operation.
+    const drops = new DirectorDropRecorder();
+    let plannedCount: number | null = null;
     const media = { ...request.media, assetId: request.media.assetId || "primary" };
     const projectId = request.currentEditIR?.projectId || request.projectId || crypto.randomUUID();
     const baseIR = request.currentEditIR
@@ -530,6 +544,7 @@ export class VideoAIDirectorService implements IUniversalBuilder<EditIR> {
           scope: scope ? { mode: scope.unscoped ? "open" : scope.mode, targets: scope.targets, mustNotTouch: scope.mustNotTouch, tools: scopeTools ? [...scopeTools] : null } : undefined,
         });
         outcome = planned;
+        plannedCount = planned.plan.operations.length;
         plannerContextSections = contextSections;
         if (planned.plannerSource === "deterministic" && !agreedToPlan) {
           // No LLM (or it failed): keep the recommend -> confirm -> execute flow with rule-based replies.
@@ -559,6 +574,7 @@ export class VideoAIDirectorService implements IUniversalBuilder<EditIR> {
         // Only what this phone can render (Phase 6): newer features are downgraded or refused for older apps.
         {
           const gated = gateRendererFeatures(outcome.plan.operations as any[], request.rendererCapabilities);
+          drops.record("renderer_gate", outcome.plan.operations as any[], gated.ops as any[], gated.notes);
           if (gated.notes.length) {
             warnings.push(...gated.notes);
             outcome = { ...outcome, plan: { ...outcome.plan, operations: gated.ops as any } };
@@ -567,6 +583,7 @@ export class VideoAIDirectorService implements IUniversalBuilder<EditIR> {
         // Replacing music, regenerating captions and overwriting transitions need the request to ask for it.
         if (!agreedToPlan) {
           const guarded = guardDestructiveVariants(outcome.plan.operations as any[], prompt);
+          drops.record("destructive_guard", outcome.plan.operations as any[], guarded.ops as any[], guarded.notes);
           if (guarded.notes.length) {
             warnings.push(...guarded.notes);
             outcome = { ...outcome, plan: { ...outcome.plan, operations: guarded.ops as any } };
@@ -579,6 +596,7 @@ export class VideoAIDirectorService implements IUniversalBuilder<EditIR> {
           if (out.length) {
             warnings.push(`left out ${[...new Set(out.map((o: any) => o.type))].join(", ")}: not part of what you asked`);
             const kept = outcome.plan.operations.filter((o: any) => scopeTools!.has(o.type));
+            drops.record("scope", outcome.plan.operations as any[], kept as any[], `not part of the request's scope (${scope?.mode ?? "unknown"})`);
             // The plan's canvas follows the operations that remain (a dropped reframe must not change the aspect).
             const reframe = [...kept].reverse().find((o: any) => o.type === "reframeSubject" || o.type === "changeAspectRatio") as any;
             outcome = {
@@ -590,6 +608,7 @@ export class VideoAIDirectorService implements IUniversalBuilder<EditIR> {
       }
     }
 
+    if (plannedCount === null) plannedCount = outcome.plan.operations.length;
     // FACE zooms centre on the on-device face track, in the canvas the plan renders at.
     const aspectOp = [...outcome.plan.operations].reverse().find((o: any) => o.type === "reframeSubject" || o.type === "changeAspectRatio") as any;
     const canvas = aspectOp
@@ -614,13 +633,16 @@ export class VideoAIDirectorService implements IUniversalBuilder<EditIR> {
         if (!/ violates constraint: /.test(e)) warnings.push(e);
       }
       violations.push(...v.violations);
-      return { ...plan, operations: plan.operations.filter((_: any, i: number) => !bad.has(i)) };
+      const kept = plan.operations.filter((_: any, i: number) => !bad.has(i));
+      drops.record("validator", plan.operations, kept, [...v.errors, ...v.violations]);
+      return { ...plan, operations: kept };
     };
     // Per-item locks and the creator's own items (Phase 2.2): refused before anything is compiled.
     const itemCtx = { meta: request.currentEditIR?.itemMeta ?? {}, allowManualSweep: asksForAll(prompt) };
     const withItemLocks = (plan: any) => {
       if (!request.currentEditIR) return plan;
       const r = applyItemLocks(plan.operations, request.currentEditIR, itemCtx);
+      drops.record("item_locks", plan.operations, r.ops as any[], r.violations);
       violations.push(...r.violations);
       return { ...plan, operations: r.ops };
     };
@@ -954,10 +976,32 @@ export class VideoAIDirectorService implements IUniversalBuilder<EditIR> {
       isGreeting: intent === "greet",
     });
 
+    drops.recordRejected(rejectedOperations);
+    const fallback = classifyPlannerFallback(outcome.plannerSource, outcome.plannerReason, intent);
+    const parsedLabel = providerModelFromReason(outcome.plannerReason);
+    const turnLog: DirectorTurnLog = {
+      runId: events.runId,
+      intent,
+      scopeMode: scope?.mode ?? null,
+      provider: (outcome as any).provider ?? parsedLabel.provider,
+      model: (outcome as any).model ?? parsedLabel.model,
+      plannerSource: outcome.plannerSource,
+      plannerReason: outcome.plannerReason,
+      fallback,
+      llmCalls,
+      ops: { planned: plannedCount ?? 0, afterFilters: planToCompile.operations.length, applied: appliedOperations.length, rejected: rejectedOperations.length, dropped: drops.total },
+      drops: drops.drops,
+      repairRounds,
+      criticScore: typeof crit.score === "number" ? crit.score : null,
+      latencyMs: Date.now() - startedAt,
+    };
+
     return {
       intent,
       plannerSource: outcome.plannerSource,
       plannerReason: outcome.plannerReason,
+      ...(fallback ? { plannerFallback: fallback } : {}),
+      turnLog,
       summary,
       reply: summary,
       phase,
@@ -1173,6 +1217,14 @@ export interface MobileDirectResult {
   intent: "edit" | "greet";
   plannerSource: PlannerSource;
   plannerReason: string;
+  /**
+   * Set when an edit turn was planned by the offline rules because the model could not be used (no key, error,
+   * timeout, invalid output). The phone shows it as a banner. Absent for LLM turns and for deterministic-by-design
+   * turns (the opening proposal, an offline clarifying question).
+   */
+  plannerFallback?: { code: DirectorFallbackCode; reason: string };
+  /** Structured record of this turn (provider, model, ops planned / applied / dropped by filter, latency). */
+  turnLog: DirectorTurnLog;
   summary: string;
   /** The chat message: short and friendly (1-4 sentences). */
   reply: string;

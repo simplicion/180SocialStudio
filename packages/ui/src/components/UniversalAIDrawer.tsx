@@ -160,7 +160,7 @@ export function UniversalAIDrawer({
 
     const [aiStatus, setAiStatus] = useState<{ isConfigured: boolean; model: string }>({
         isConfigured: true,
-        model: 'Google Gemini 1.5 Flash'
+        model: ''
     });
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -182,7 +182,7 @@ export function UniversalAIDrawer({
                         const data = res.data || res;
                         setAiStatus({
                             isConfigured: data.isConfigured !== false,
-                            model: data.model || 'Google Gemini 1.5 Flash'
+                            model: data.model || ''
                         });
                     }
                 } catch {
@@ -533,7 +533,7 @@ export function UniversalAIDrawer({
                         <div className="flex gap-2.5 items-center text-xs text-indigo-600 dark:text-indigo-400">
                             <AILogo size={24} className="rounded-lg shadow-xs flex-shrink-0 animate-pulse" />
                             <div className="bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-3 flex items-center gap-2">
-                                <span className="animate-pulse font-medium">Synthesizing live changes with {aiStatus.model}...</span>
+                                <span className="animate-pulse font-medium">Synthesizing live changes with {aiStatus.model || 'AI'}...</span>
                             </div>
                         </div>
                     )}
@@ -593,7 +593,7 @@ export function UniversalAIDrawer({
 
                     <div className="flex items-center justify-between text-[10px] text-zinc-400 px-1">
                         <span className="flex items-center gap-1 truncate">
-                            <ShieldCheck className="w-3 h-3 text-emerald-500" /> Powered by {aiStatus.model}
+                            <ShieldCheck className="w-3 h-3 text-emerald-500" /> Powered by {aiStatus.model || 'AI'}
                         </span>
                         <span className="truncate">180 Workspace Autonomous OS</span>
                     </div>

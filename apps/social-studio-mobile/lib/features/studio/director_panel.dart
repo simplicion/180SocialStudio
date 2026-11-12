@@ -166,6 +166,10 @@ class _DirectorPanelState extends State<DirectorPanel> {
     return [
       _DirectorBubble(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          if (r != null && r.isFallback) ...[
+            FallbackBanner(response: r),
+            const SizedBox(height: 8),
+          ],
           MarkdownBody(
             data: text,
             selectable: true,
@@ -319,6 +323,56 @@ class _DirectorPanelState extends State<DirectorPanel> {
       return "I've hit my usage limit for now, so I can't edit this one. Try again a bit later?";
     }
     return 'Hmm, something went wrong on my side. Want me to try that again?';
+  }
+}
+
+/// Shown on a turn the offline rules made because the AI model could not be used, so a weak edit is never
+/// mistaken for the AI editor's work. Plain words first, the server's technical reason underneath.
+class FallbackBanner extends StatelessWidget {
+  const FallbackBanner({super.key, required this.response});
+  final DirectorResponse response;
+
+  static String headline(String? code) => switch (code) {
+        'no_key' => "The AI editor isn't set up for this workspace yet",
+        'llm_disabled' => 'The AI editor is turned off for this request',
+        'timeout' => 'The AI editor took too long to answer',
+        'budget' => 'The AI editor hit its limit for this turn',
+        'invalid_output' || 'empty_response' => "The AI editor's answer couldn't be used",
+        _ => "The AI editor couldn't be reached",
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    final reason = (response.fallbackReason ?? response.plannerReason ?? '').trim();
+    return Container(
+      key: const ValueKey('director-fallback-banner'),
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: AppTheme.warning.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppTheme.warning.withValues(alpha: 0.5)),
+      ),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Icon(Icons.warning_amber_rounded, size: 18, color: AppTheme.warning),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(
+              '${headline(response.fallbackCode)}, so basic offline rules made this edit.',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
+            ),
+            if (reason.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(
+                reason.length > 220 ? '${reason.substring(0, 219)}…' : reason,
+                style: TextStyle(fontSize: 11, color: AppTheme.textSecondary),
+              ),
+            ],
+          ]),
+        ),
+      ]),
+    );
   }
 }
 

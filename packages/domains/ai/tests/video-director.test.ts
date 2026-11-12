@@ -147,9 +147,9 @@ function srcToTimeline(ir: MobileEditIR, srcMs: number): number | null {
 test("LLM path: tool calls become validated operations and the result is labelled llm", async () => {
   const { res, calls } = await runLLM("remove the pauses", [tc("removeSilences", { minDurationSec: 0.5 }), finish("Removed 6 pauses.")]);
   assert.equal(res.plannerSource, "llm");
-  assert.match(res.plannerReason, /claude\/claude-sonnet-5/);
+  assert.match(res.plannerReason, /claude\/claude-opus-5-5/);
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].options.model, "claude-sonnet-5");
+  assert.equal(calls[0].options.model, "claude-opus-5-5");
   assert.ok(calls[0].prompt.includes('"remove the pauses"'), "user request in prompt");
   assert.ok(calls[0].prompt.includes(`${(PUNCH.startMs / 1000).toFixed(2)}-`), "word timings in prompt");
   assert.ok(calls[0].prompt.includes("Silences (start+duration)"), "silences in prompt");
@@ -235,7 +235,7 @@ test("LLM error (e.g. 401/timeout): deterministic fallback with the provider err
   const { client } = mockClient([new Error("401 invalid x-api-key")]);
   const res = await director.directMobile(mobileRequest("remove the pauses"), { llmClient: client });
   assert.equal(res.plannerSource, "deterministic");
-  assert.match(res.plannerReason, /LLM call failed \(claude\/claude-sonnet-5\): 401 invalid x-api-key/);
+  assert.match(res.plannerReason, /LLM call failed \(claude\/claude-opus-5-5\): 401 invalid x-api-key/);
 });
 
 test("text-only LLM reply is a conversational turn: no edits, timeline unchanged", async () => {

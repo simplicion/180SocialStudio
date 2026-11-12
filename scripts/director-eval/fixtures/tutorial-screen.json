@@ -1,0 +1,559 @@
+{
+  "id": "tutorial-screen",
+  "title": "Tutorial, screen recording",
+  "description": "16:9 screen capture, no face. Step two is explained twice; OCR shows the UI labels.",
+  "request": {
+    "prompt": "clean this tutorial up and add captions",
+    "media": {
+      "assetId": "primary",
+      "durationMs": 46868,
+      "width": 1920,
+      "height": 1080,
+      "fps": 30,
+      "transcript": {
+        "words": [
+          {
+            "text": "In",
+            "startMs": 400,
+            "endMs": 693
+          },
+          {
+            "text": "this",
+            "startMs": 763,
+            "endMs": 1141
+          },
+          {
+            "text": "video",
+            "startMs": 1211,
+            "endMs": 1631
+          },
+          {
+            "text": "I",
+            "startMs": 1701,
+            "endMs": 1953
+          },
+          {
+            "text": "will",
+            "startMs": 2023,
+            "endMs": 2401
+          },
+          {
+            "text": "show",
+            "startMs": 2471,
+            "endMs": 2848
+          },
+          {
+            "text": "you",
+            "startMs": 2918,
+            "endMs": 3254
+          },
+          {
+            "text": "how",
+            "startMs": 3324,
+            "endMs": 3660
+          },
+          {
+            "text": "to",
+            "startMs": 3730,
+            "endMs": 4023
+          },
+          {
+            "text": "set",
+            "startMs": 4093,
+            "endMs": 4429
+          },
+          {
+            "text": "up",
+            "startMs": 4499,
+            "endMs": 4792
+          },
+          {
+            "text": "automatic",
+            "startMs": 4862,
+            "endMs": 5451
+          },
+          {
+            "text": "backups",
+            "startMs": 5521,
+            "endMs": 6026
+          },
+          {
+            "text": "in",
+            "startMs": 6096,
+            "endMs": 6389
+          },
+          {
+            "text": "three",
+            "startMs": 6459,
+            "endMs": 6879
+          },
+          {
+            "text": "steps",
+            "startMs": 6949,
+            "endMs": 7370
+          },
+          {
+            "text": "Step",
+            "startMs": 8040,
+            "endMs": 8417
+          },
+          {
+            "text": "one",
+            "startMs": 8487,
+            "endMs": 8823
+          },
+          {
+            "text": "open",
+            "startMs": 8893,
+            "endMs": 9271
+          },
+          {
+            "text": "settings",
+            "startMs": 9341,
+            "endMs": 9888
+          },
+          {
+            "text": "and",
+            "startMs": 9958,
+            "endMs": 10293
+          },
+          {
+            "text": "click",
+            "startMs": 10363,
+            "endMs": 10784
+          },
+          {
+            "text": "on",
+            "startMs": 10854,
+            "endMs": 11147
+          },
+          {
+            "text": "the",
+            "startMs": 11217,
+            "endMs": 11553
+          },
+          {
+            "text": "backup",
+            "startMs": 11623,
+            "endMs": 12085
+          },
+          {
+            "text": "tab",
+            "startMs": 12155,
+            "endMs": 12491
+          },
+          {
+            "text": "Step",
+            "startMs": 13961,
+            "endMs": 14339
+          },
+          {
+            "text": "two",
+            "startMs": 14409,
+            "endMs": 14744
+          },
+          {
+            "text": "choose",
+            "startMs": 14814,
+            "endMs": 15277
+          },
+          {
+            "text": "a",
+            "startMs": 15347,
+            "endMs": 15598
+          },
+          {
+            "text": "folder",
+            "startMs": 15668,
+            "endMs": 16130
+          },
+          {
+            "text": "where",
+            "startMs": 16200,
+            "endMs": 16620
+          },
+          {
+            "text": "your",
+            "startMs": 16690,
+            "endMs": 17068
+          },
+          {
+            "text": "backups",
+            "startMs": 17138,
+            "endMs": 17643
+          },
+          {
+            "text": "will",
+            "startMs": 17713,
+            "endMs": 18091
+          },
+          {
+            "text": "be",
+            "startMs": 18161,
+            "endMs": 18454
+          },
+          {
+            "text": "saved",
+            "startMs": 18524,
+            "endMs": 18944
+          },
+          {
+            "text": "so",
+            "startMs": 19514,
+            "endMs": 19808
+          },
+          {
+            "text": "basically",
+            "startMs": 19878,
+            "endMs": 20467
+          },
+          {
+            "text": "you",
+            "startMs": 20537,
+            "endMs": 20872
+          },
+          {
+            "text": "pick",
+            "startMs": 20942,
+            "endMs": 21320
+          },
+          {
+            "text": "a",
+            "startMs": 21390,
+            "endMs": 21641
+          },
+          {
+            "text": "folder",
+            "startMs": 21711,
+            "endMs": 22174
+          },
+          {
+            "text": "where",
+            "startMs": 22244,
+            "endMs": 22664
+          },
+          {
+            "text": "all",
+            "startMs": 22734,
+            "endMs": 23069
+          },
+          {
+            "text": "the",
+            "startMs": 23139,
+            "endMs": 23475
+          },
+          {
+            "text": "backups",
+            "startMs": 23545,
+            "endMs": 24050
+          },
+          {
+            "text": "go",
+            "startMs": 24120,
+            "endMs": 24413
+          },
+          {
+            "text": "and",
+            "startMs": 24483,
+            "endMs": 24819
+          },
+          {
+            "text": "that",
+            "startMs": 24889,
+            "endMs": 25267
+          },
+          {
+            "text": "is",
+            "startMs": 25337,
+            "endMs": 25630
+          },
+          {
+            "text": "the",
+            "startMs": 25700,
+            "endMs": 26036
+          },
+          {
+            "text": "folder",
+            "startMs": 26106,
+            "endMs": 26568
+          },
+          {
+            "text": "they",
+            "startMs": 26638,
+            "endMs": 27016
+          },
+          {
+            "text": "get",
+            "startMs": 27086,
+            "endMs": 27422
+          },
+          {
+            "text": "saved",
+            "startMs": 27492,
+            "endMs": 27912
+          },
+          {
+            "text": "in",
+            "startMs": 27982,
+            "endMs": 28275
+          },
+          {
+            "text": "Step",
+            "startMs": 29945,
+            "endMs": 30323
+          },
+          {
+            "text": "three",
+            "startMs": 30393,
+            "endMs": 30813
+          },
+          {
+            "text": "turn",
+            "startMs": 30883,
+            "endMs": 31261
+          },
+          {
+            "text": "on",
+            "startMs": 31331,
+            "endMs": 31625
+          },
+          {
+            "text": "the",
+            "startMs": 31695,
+            "endMs": 32030
+          },
+          {
+            "text": "daily",
+            "startMs": 32100,
+            "endMs": 32520
+          },
+          {
+            "text": "schedule",
+            "startMs": 32590,
+            "endMs": 33137
+          },
+          {
+            "text": "and",
+            "startMs": 33207,
+            "endMs": 33543
+          },
+          {
+            "text": "press",
+            "startMs": 33613,
+            "endMs": 34033
+          },
+          {
+            "text": "save",
+            "startMs": 34103,
+            "endMs": 34481
+          },
+          {
+            "text": "That",
+            "startMs": 35051,
+            "endMs": 35429
+          },
+          {
+            "text": "is",
+            "startMs": 35499,
+            "endMs": 35792
+          },
+          {
+            "text": "it",
+            "startMs": 35862,
+            "endMs": 36156
+          },
+          {
+            "text": "your",
+            "startMs": 36226,
+            "endMs": 36603
+          },
+          {
+            "text": "files",
+            "startMs": 36673,
+            "endMs": 37094
+          },
+          {
+            "text": "are",
+            "startMs": 37164,
+            "endMs": 37499
+          },
+          {
+            "text": "now",
+            "startMs": 37569,
+            "endMs": 37905
+          },
+          {
+            "text": "backed",
+            "startMs": 37975,
+            "endMs": 38437
+          },
+          {
+            "text": "up",
+            "startMs": 38507,
+            "endMs": 38801
+          },
+          {
+            "text": "every",
+            "startMs": 38871,
+            "endMs": 39291
+          },
+          {
+            "text": "night",
+            "startMs": 39361,
+            "endMs": 39781
+          },
+          {
+            "text": "If",
+            "startMs": 40251,
+            "endMs": 40544
+          },
+          {
+            "text": "this",
+            "startMs": 40614,
+            "endMs": 40992
+          },
+          {
+            "text": "helped",
+            "startMs": 41062,
+            "endMs": 41525
+          },
+          {
+            "text": "leave",
+            "startMs": 41595,
+            "endMs": 42015
+          },
+          {
+            "text": "a",
+            "startMs": 42085,
+            "endMs": 42336
+          },
+          {
+            "text": "comment",
+            "startMs": 42406,
+            "endMs": 42910
+          },
+          {
+            "text": "with",
+            "startMs": 42980,
+            "endMs": 43358
+          },
+          {
+            "text": "what",
+            "startMs": 43428,
+            "endMs": 43806
+          },
+          {
+            "text": "I",
+            "startMs": 43876,
+            "endMs": 44127
+          },
+          {
+            "text": "should",
+            "startMs": 44197,
+            "endMs": 44660
+          },
+          {
+            "text": "cover",
+            "startMs": 44730,
+            "endMs": 45150
+          },
+          {
+            "text": "next",
+            "startMs": 45220,
+            "endMs": 45598
+          }
+        ]
+      },
+      "silences": [
+        {
+          "startMs": 12561,
+          "endMs": 13961
+        },
+        {
+          "startMs": 28345,
+          "endMs": 29945
+        },
+        {
+          "startMs": 45668,
+          "endMs": 46468
+        }
+      ],
+      "faces": [],
+      "scenesMs": [
+        8040,
+        13961,
+        29945,
+        35051
+      ],
+      "ocr": [
+        {
+          "startMs": 8040,
+          "endMs": 13961,
+          "text": "Settings > Backup"
+        },
+        {
+          "startMs": 13961,
+          "endMs": 29945,
+          "text": "Choose folder"
+        },
+        {
+          "startMs": 29945,
+          "endMs": 35051,
+          "text": "Daily schedule  [Save]"
+        }
+      ],
+      "labels": [
+        {
+          "startMs": 0,
+          "endMs": 46868,
+          "labels": [
+            "screenshot",
+            "text",
+            "software"
+          ]
+        }
+      ],
+      "loudness": {
+        "integratedLufs": -18,
+        "truePeakDb": -1.5
+      }
+    }
+  },
+  "reference": {
+    "mustDo": [
+      "Drop the repeated explanation of step two ('so basically you pick a folder ...').",
+      "Remove the long pauses between steps.",
+      "Captions that do not cover the UI being explained (bottom or top band).",
+      "Optional step titles ('Step 1', 'Step 2', 'Step 3'); zooms only onto the UI area being discussed."
+    ],
+    "mustNotDo": [
+      "Face zooms (there is no face)",
+      "Reframe to 9:16 (cuts off the UI) unless asked",
+      "Cut any of the three steps"
+    ],
+    "checks": {
+      "shouldCutSourceMs": [
+        [
+          19514,
+          29745
+        ]
+      ],
+      "mustKeepSourceMs": [
+        [
+          8040,
+          13961
+        ],
+        [
+          13961,
+          19514
+        ],
+        [
+          29945,
+          35051
+        ]
+      ],
+      "captions": true,
+      "targetAspect": "16:9"
+    }
+  }
+}

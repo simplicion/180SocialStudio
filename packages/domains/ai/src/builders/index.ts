@@ -12,6 +12,7 @@ export * from './video-ai-director.service';
 export * from './video-critic.service';
 export * from './context-resolver';
 export * from './creative-planner';
+export * from './director-turn-log';
 
 export class UniversalBuilderRegistry {
     private static builders: Map<BuilderType, IUniversalBuilder> = new Map();

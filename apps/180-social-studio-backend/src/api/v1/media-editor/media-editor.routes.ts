@@ -5,6 +5,8 @@ import { requireDesktopDevice, requireNativeDevice } from "../desktop/desktop-de
 import { audioUpload, transcribeHandler } from "./media-transcription";
 import { translateCaptionsHandler } from "./caption-translation";
 import { directorContextHandler } from "./director-context";
+import { directorReportHandler } from "./director-report";
+import { requireRole } from "../../../middleware/auth";
 import { ingestMetadataHandler, ingestDownloadHandler, ingestAutoClipHandler, queueJobStatusHandler, ingestUploadHandler, videoUploadMiddleware } from "./media-ingest.routes";
 
 const router: Router = Router();
@@ -19,6 +21,8 @@ router.post("/transcribe", requireNativeDevice, audioUpload, transcribeHandler);
 router.post("/captions/translate", requireNativeDevice, translateCaptionsHandler);
 // Brand + calendar-script context and greeting (no media, no LLM). See AI_DIRECTOR_CONTRACT.md §2.5.
 router.get("/director-context", directorContextHandler());
+// Workspace admins: share of AI Director edit turns the offline rules made instead of the model (and why).
+router.get("/director-report", requireRole("admin"), directorReportHandler());
 router.post("/generate-from-prompt", requireDesktopDevice, VideoStudioController.generateFromPrompt);
 // No POST /render: server-side rendering was removed (media is processed on the device only).
 

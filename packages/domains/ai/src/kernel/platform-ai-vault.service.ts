@@ -4,6 +4,7 @@ import { prisma } from '@workspace/db';
 import OpenAI from 'openai';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import Anthropic from '@anthropic-ai/sdk';
+import { GENERAL_DEFAULTS, isOpenAIReasoningModel } from './model-config';
 
 export interface PlatformAiKeyRecord {
     encryptedKey: string;      // AES-256-GCM envelope: v1.<keyId>.<iv>.<tag>.<ciphertext>
@@ -61,19 +62,17 @@ export interface DecryptedPlatformAiSettings {
     };
 }
 
+/** Shown when no model was saved; the real defaults live in model-config.ts. */
 const DEFAULT_MODELS: Record<string, string> = {
-    openai: 'gpt-4o',
-    gemini: 'gemini-1.5-flash',
-    claude: 'claude-3-5-sonnet-20241022',
-    groq: 'llama-3.3-70b-versatile',
+    ...GENERAL_DEFAULTS,
     cartesia: 'sonic-3.6',
     custom: 'default'
 };
 
 const DISPLAY_NAMES: Record<string, string> = {
-    openai: 'OpenAI (GPT-4o / GPT-4o-mini)',
-    gemini: 'Google Gemini (1.5 Flash / Pro)',
-    claude: 'Anthropic Claude (3.5 Sonnet / Haiku)',
+    openai: 'OpenAI (GPT-6 / GPT-4o)',
+    gemini: 'Google Gemini (3.x)',
+    claude: 'Anthropic Claude (Opus 5.5 / Sonnet 5.5)',
     groq: 'Groq Cloud (Llama 3.3 / Mixtral)',
     cartesia: 'Cartesia Neural Audio & STT (Voiceforce Voice AI)',
     custom: 'Custom Enterprise LLM (Self-hosted / OpenAI Compatible)'
@@ -442,26 +441,27 @@ export class PlatformAiVaultService {
         try {
             if (normProvider === 'openai') {
                 const openai = new OpenAI({ apiKey: keyToTest });
+                const testModel = modelToTest || DEFAULT_MODELS.openai;
                 const res = await openai.chat.completions.create({
-                    model: modelToTest || 'gpt-4o-mini',
+                    model: testModel,
                     messages: [{ role: 'user', content: 'Ping' }],
-                    max_tokens: 5
-                });
+                    ...(isOpenAIReasoningModel(testModel) ? { max_completion_tokens: 256 } : { max_tokens: 5 })
+                } as any);
                 const latencyMs = Date.now() - startTime;
                 return {
                     success: true,
                     latencyMs,
                     message: `OpenAI responded successfully (${res.choices[0]?.message?.content?.trim() || 'OK'}).`,
-                    modelUsed: modelToTest || 'gpt-4o-mini'
+                    modelUsed: testModel
                 };
             }
 
             if (normProvider === 'gemini') {
                 const genAI = new GoogleGenerativeAI(keyToTest);
-                const candidateModel = modelToTest || 'gemini-1.5-flash';
+                const candidateModel = modelToTest || DEFAULT_MODELS.gemini;
                 const model = genAI.getGenerativeModel({
                     model: candidateModel,
-                    generationConfig: { maxOutputTokens: 5 }
+                    generationConfig: { maxOutputTokens: 256 }
                 });
                 const res = await model.generateContent('Ping');
                 const latencyMs = Date.now() - startTime;
@@ -475,14 +475,15 @@ export class PlatformAiVaultService {
 
             if (normProvider === 'claude') {
                 const anthropic = new Anthropic({ apiKey: keyToTest });
-                const candidateModel = modelToTest || 'claude-3-5-sonnet-20241022';
+                const candidateModel = modelToTest || DEFAULT_MODELS.claude;
                 const res = await anthropic.messages.create({
                     model: candidateModel,
-                    max_tokens: 5,
+                    // Current Claude models think before answering: leave room for it.
+                    max_tokens: 256,
                     messages: [{ role: 'user', content: 'Ping' }]
                 });
                 const latencyMs = Date.now() - startTime;
-                const text = (res.content[0] as any)?.text || 'OK';
+                const text = (res.content.find((c: any) => c.type === 'text') as any)?.text || 'OK';
                 return {
                     success: true,
                     latencyMs,
@@ -570,19 +571,19 @@ export class PlatformAiVaultService {
                 const decrypted = this.decryptApiKey(rec.encryptedKey, prov);
                 if (prov === 'openai') {
                     settings.openaiKey = decrypted;
-                    settings.models.openai = rec.model || DEFAULT_MODELS.openai;
+                    if (rec.model) settings.models.openai = rec.model;
                 } else if (prov === 'gemini') {
                     settings.geminiKey = decrypted;
-                    settings.models.gemini = rec.model || DEFAULT_MODELS.gemini;
+                    if (rec.model) settings.models.gemini = rec.model;
                 } else if (prov === 'claude') {
                     settings.claudeKey = decrypted;
-                    settings.models.claude = rec.model || DEFAULT_MODELS.claude;
+                    if (rec.model) settings.models.claude = rec.model;
                 } else if (prov === 'groq') {
                     settings.groqKey = decrypted;
-                    settings.models.groq = rec.model || DEFAULT_MODELS.groq;
+                    if (rec.model) settings.models.groq = rec.model;
                 } else if (prov === 'cartesia') {
                     settings.cartesiaKey = decrypted;
-                    settings.models.cartesia = rec.model || DEFAULT_MODELS.cartesia;
+                    if (rec.model) settings.models.cartesia = rec.model;
                 } else if (prov === 'custom') {
                     settings.customAiKey = decrypted;
                     settings.customAiUrl = rec.endpointUrl || '';

@@ -1,108 +1,128 @@
 ---
 id: overview
-title: 180 Social Studio Overview
+title: 180 Social Studio Architecture & Platform Overview
 sidebar_label: Studio Overview
 sidebar_position: 1
-description: The unified creator and agency social media workstation combining AI scriptwriting, voice-activated teleprompter recording, multi-track video editing, 1-click multi-platform publishing, and viral comment-to-DM lead capture.
+description: The autonomous AI social media & video production platform combining an 8-Agent AI Director, voice-synced teleprompter, Remotion/FFmpeg video engine (>500 FPS stream-copy), multi-platform publishing, and viral comment-to-DM lead automation.
 ---
 
-# 180 Social Studio Overview
+# 180 Social Studio Platform Architecture
 
-**180 Social Studio** is the all-in-one social media production, publishing, and automated lead capture workstation built for creators, media brands, growth marketing agencies, and modern marketing teams.
+**180 Social Studio** is the autonomous AI social media and video production workstation built for creators, media agencies, high-velocity growth teams, and independent founders.
 
-Historically, producing high-retention video content and converting viral social attention into actual revenue required juggling five to six disconnected tools: an AI text generator for scripting, a teleprompter app for recording, a desktop editor like CapCut or Premiere for cutting, a scheduling tool like Buffer or Hootsuite for publishing, an automation tool like ManyChat for comment-to-DM flows, and a separate CRM for sales.
-
-180 Social Studio eliminates this fragmented stack by unifying the entire creative, distribution, and monetization lifecycle onto the **180 Sovereign Work Graph**.
+Instead of paying for 5–7 disconnected subscriptions (ChatGPT for scripts, PromptSmart for teleprompters, CapCut/Premiere for editing, Buffer for scheduling, ManyChat for DM automation, and HubSpot for CRM leads), 180 Social Studio unifies the entire creation-to-cash pipeline on the **180 Sovereign Work Graph**.
 
 ```mermaid
-graph LR
-    subgraph "1. Ideation & Scripting"
-        Idea[Content Idea / Article] --> AI[AI Script Director<br/>Multi-agent viral research & hooks]
+graph TD
+    subgraph "Client Layer"
+        Web[Web Studio Next.js / Vite]
+        Mobile[Flutter Cross-Platform Mobile App<br/>180 Core SSO + 4K Camera]
     end
 
-    subgraph "2. Filming & Recording"
-        AI --> Tele[Inbuilt Teleprompter<br/>4K front camera with voice-synced scroll]
+    subgraph "Autonomous 8-Agent AI Director (Port :4005)"
+        A1[1. Trend Researcher] --> A2[2. Hook Architect]
+        A2 --> A3[3. Narrative Dramatist]
+        A3 --> A4[4. Visual & B-Roll Stylist]
+        A4 --> A5[5. Typography & Sound Designer]
+        A5 --> A6[6. Retention Critic]
+        A6 --> A7[7. Multi-Platform Strategist]
+        A7 --> A8[8. Auto-DM Conversion Closer]
     end
 
-    subgraph "3. Autonomous Editing"
-        Tele --> Timeline[Multi-Track Video Engine<br/>WebGPU 60fps, smart stream-cut, kinetic captions]
+    subgraph "High-Performance Media Engine"
+        Prompt[Voice-Synced Teleprompter]
+        IR[Timeline Intermediate Representation IR]
+        Remotion[Remotion GPU Compositor]
+        FFmpeg[FFmpeg >500 FPS Lossless Stream-Copy]
     end
 
-    subgraph "4. 1-Click Distribution"
-        Timeline --> Push[Multi-Platform Publisher<br/>YouTube, IG, TikTok, X, LinkedIn, FB]
+    subgraph "180 Platform Ecosystem"
+        Core[180 Core Auth & Pay<br/>api.180core.cloud]
+        CRM[180 Workspace CRM & Work Graph]
     end
 
-    subgraph "5. Lead Capture & Monetization"
-        Push --> AutoDM[Viral Auto-DM Engine<br/>Keyword comment triggers & funnels]
-        AutoDM --> CRM[180 Workspace CRM<br/>Deals, pipeline & 180 Pay checkout]
-    end
+    Web --> A1
+    Mobile --> Core
+    Mobile --> Prompt
+    Prompt --> IR
+    IR --> Remotion
+    Remotion --> FFmpeg
+    FFmpeg --> A7
+    A8 --> CRM
 ```
 
 ---
 
-## The 6 Core Pillars of 180 Social Studio
+## Autonomous 8-Agent AI Director
 
-### 1. AI Script Director
-- **Multi-Agent Orchestration**: Specialized sub-agents research viral trends, craft high-retention hooks, draft structured body scripts, and suggest visual B-roll cues.
-- **Brand Voice & Cadence Calibration**: Learns your distinct vocabulary, humor, and pacing across educational, contrarian, humorous, or enterprise tones.
-- **1-Click Teleprompter Transfer**: Seamlessly send your polished script directly to the recording prompter with zero manual copy-pasting.
+At the heart of Social Studio is a specialized multi-agent director that autonomously transforms a raw concept, product URL, or voice memo into high-converting video assets:
 
-### 2. Inbuilt Teleprompter Camera
-- **Front-Camera Web & Mobile Recording**: Read your script directly beside your device's camera lens to maintain natural, magnetic eye contact with your audience.
-- **Synchronous Voice-Activated Scrolling**: The teleprompter dynamically tracks your spoken words in real time, pausing when you pause and adjusting to your natural conversational cadence.
-- **Multi-Take Bookmarking**: Record multiple variations of your hook or intro in a single session and bookmark your favorites for instant timeline assembly.
-
-### 3. Multi-Track Video Timeline Engine
-- **Hardware-Accelerated 60fps Editing**: Non-linear multi-track editing powered by WebGPU and a local native media core for instant, lag-free scrubbing.
-- **Lossless Smart Stream-Splicing**: Slices and trims untouched footage without re-encoding, reducing export times from minutes to seconds.
-- **Kinetic Typography & Dynamic Captions**: Generates synchronized, word-highlighted karaoke subtitles with customizable fonts, bounce physics, and emoji accents.
-- **Object & Face Attention Engine**: Automatically tracks faces and subjects to apply dynamic camera zooms, punch-ins, and auto-reframing for vertical (9:16) format.
-
-### 4. 1-Click Multi-Platform Publishing
-- **Unified Distribution**: Schedule and publish content across Instagram (Reels & Feed), YouTube (Shorts & Long-Form), TikTok, X (Twitter), LinkedIn, and Facebook with a single click.
-- **Automated Format Adaptation**: Automatically reframes aspect ratios, optimizes bitrates, and tailors captions and character limits per social network.
-- **Best-Time-To-Post AI**: Recommends optimal posting windows based on your audience's unique historical engagement heatmaps.
-
-### 5. Viral Auto-DM Lead Automation
-- **Keyword Comment Triggers**: When viewers comment keywords like `"BLUEPRINT"` or `"SCALE"` on your reels, videos, or posts, Social Studio instantly sends private DMs with download links, coupon codes, or booking links.
-- **Multi-Step Conversational Funnels**: Qualify prospects directly inside the DM with interactive buttons, lead magnets, and contact information capture.
-- **Direct CRM Ingestion**: Every engaged follower is instantly logged as an enriched lead within **180 Workspace CRM**.
-
-### 6. Analytics & Interactive Content Calendar
-- **Cross-Platform Performance Aggregator**: View aggregated impressions, engagement rates, and drop-off curves across all connected social profiles in one centralized dashboard.
-- **Audience Retention Curves**: Inspect second-by-second viewer drop-off analytics to identify high-performing hooks and optimize future video pacing.
-- **Attributed Revenue Reporting**: Connect views, comments, and DM conversations directly to completed transactions and subscription revenue via **180 Pay**.
-
----
-
-## Tool Consolidation Comparison
-
-| Capability | Traditional Disjointed Tool Stack | 180 Social Studio |
+| Agent | Specialized Role | Execution Output |
 | :--- | :--- | :--- |
-| **Scriptwriting** | ChatGPT / Claude ($20/mo) | **Native Multi-Agent Script Director** with retention frameworks |
-| **Teleprompter** | Teleprompter Premium / PromptSmart ($15/mo) | **Inbuilt Voice-Synced 4K Teleprompter** |
-| **Video Editing** | CapCut Pro / Premiere / Descript ($25-$40/mo) | **Multi-Track WebGPU Video Timeline** with smart stream-splicing |
-| **Social Scheduling** | Buffer / Hootsuite / Later ($18-$49/mo) | **1-Click Multi-Platform Publisher** with best-time AI |
-| **Comment-to-DM** | ManyChat Pro ($15-$65/mo) | **Native Auto-DM Automation Engine** with CRM sync |
-| **CRM & Sales Pipeline** | HubSpot / Pipedrive ($30-$90/mo) | **180 Workspace CRM & Work Graph** natively connected |
-| **Estimated Monthly Cost** | **$118 – $279 / month** | **Included in 180 Platform Subscription** |
+| **1. Trend & Intelligence Agent** | Analyzes top-performing hooks, audio trends, and viral formats across TikTok, Instagram Reels, and YouTube Shorts. | Viral trend brief & pattern interrupt angles |
+| **2. Hook Architect** | Crafts 3-second visual and verbal opening hooks designed for >70% 3-second hold rates. | 5 hook variations with behavioral psychology tags |
+| **3. Narrative Dramatist** | Structures scripts following proven retention frameworks (Problem → Agitate → Solve → Proof → CTA). | Full production script with teleprompter timing |
+| **4. Visual & B-Roll Stylist** | Maps script timestamps to kinetic B-roll clips, stock assets, AI image generations, and screen recordings. | Visual storyboard & asset acquisition manifest |
+| **5. Kinetic Typography & Audio Designer** | Generates word-level synchronized karaoke subtitles, sound effect risers, whooshes, and audio dips. | Subtitle styling manifest & audio mix timeline |
+| **6. Retention Critic Agent** | Evaluates script and pacing against second-by-second drop-off models, flagging drag spots. | Pacing score (0–100) & edit recommendations |
+| **7. Multi-Platform Compliance Strategist** | Adapts aspect ratios (9:16 vertical, 16:9 horizontal, 1:1 square), tags, character limits, and posting times. | Platform-tailored payloads for 6 networks |
+| **8. Auto-DM & Conversion Closer** | Programs keyword comment triggers (`"SCALE"`, `"TEMPLATE"`), interactive DM sequences, and CRM attribution. | Automated DM funnel & 180 Pay checkout link |
 
 ---
 
-## 180 Work Graph Integration
+## High-Performance Video Engine Architecture
 
-180 Social Studio does not operate as an isolated silo. It is deeply connected to the entire 180 Workspace platform:
+Social Studio couples WebGPU client rendering with an enterprise server-side video rendering pipeline operating on port `:4005`:
 
-- **180 Workspace CRM**: Social Studio automatically provisions leads, captures emails, and tags contacts with originating social post IDs and campaign names.
-- **180 Storage & Assets**: Raw 4K footage, generated B-roll, motion graphics, and audio stems are securely stored with multi-tenant company isolation.
-- **180 Pay**: Distribute personalized, one-click checkout links and dynamic coupon codes directly inside automated DM sequences.
-- **180 Traffic Director**: Seamlessly transition high-performing organic video posts into paid advertising campaigns with intelligent edge link routing and bot filtering.
+### 1. Timeline Intermediate Representation (Timeline IR)
+Video edits are stored as declarative JSON timelines specifying tracks, clips, transitions, animated text layers, and audio volumes. Timelines can be manipulated programmatically by AI agents or adjusted by creators with sub-frame precision.
+
+### 2. Lossless Smart Stream-Splicing (>500 FPS)
+For jump-cuts, pauses, and silence removal in camera recordings, Social Studio employs **FFmpeg smart stream-copy**. By cutting on keyframes without re-encoding untouched video frames, clip assembly runs at over **500 frames per second**, exporting a 60-second video in under 2 seconds.
+
+### 3. Remotion GPU Composition
+Complex animations, animated charts, kinetic typography, and motion overlays are rendered via headless Remotion render workers, outputting pristine 1080p60 or 4K ProRes/H.264 video.
+
+### 4. Hardware-Synced Mobile Teleprompter (Flutter)
+The companion Flutter mobile app provides front-camera recording with speech-recognition auto-scrolling:
+- Uses local on-device Vosk / Whisper speech models to scroll the teleprompter exactly as you speak.
+- Allows recording multiple hook takes with 1-tap bookmarking for instant timeline insertion.
+- Authenticates seamlessly using **180 Core Universal SSO** (`profile.180core.cloud`).
 
 ---
 
-## Social Studio Documentation Index
+## 1-Click Multi-Platform Publishing & Attribution
 
-Explore the comprehensive guides below to master every aspect of 180 Social Studio:
+Connect your social channels once and publish across the entire landscape:
+
+- **Supported Channels**: Instagram (Reels & Feed), YouTube (Shorts & Long-Form), TikTok, X (Twitter), LinkedIn, and Facebook Pages.
+- **Smart Queue & Best-Time AI**: Distributes content according to your audience's unique historical engagement heatmaps.
+- **Closed-Loop ROI Tracking**: Matches video views and comments to actual downstream CRM opportunities and Stripe/180 Pay revenue.
+
+---
+
+## Viral Auto-DM Lead Capture Pipeline
+
+When viewers comment keywords on your posts:
+1. **Instant Webhook Ingestion**: Comment received within 150ms.
+2. **Autonomous DM Dispatch**: Sends a personalized private message with the requested resource, booking link, or coupon code.
+3. **Conversational Qualification**: Chatbot collects email, phone number, and company size.
+4. **Instant CRM Deal Sync**: Enriched lead is immediately logged in **180 Workspace CRM** with the originating video ID, attribution UTMs, and transaction history.
+
+---
+
+## Microservices Ports & Architecture Map
+
+| Component | Port | Environment | Technology |
+| :--- | :--- | :--- | :--- |
+| **Social Studio Backend API** | `4005` | Production / Local | Node.js Express, FFmpeg, Whisper, Remotion Engine |
+| **Social Studio Mobile App** | Mobile | iOS / Android | Flutter Cross-Platform, CameraX, 180 Core SSO |
+| **180 Core Identity & Pay** | `4003` / `https://api.180core.cloud` | Production | Universal OIDC, RS256 JWKS, 180 Pay |
+| **180 Workspace Graph** | `4000` / `https://app.180workspace.com` | Production | Unified Work Graph, CRM, Multi-Company RBAC |
+
+---
+
+## Documentation Index
 
 - **[Auto-DM Automation](/docs/products/180-social-studio/auto-dm-automation)**: Set up keyword triggers, automated conversation flows, and lead qualification funnels.
 - **[Multi-Platform Publishing](/docs/products/180-social-studio/multi-platform-publishing)**: Connect your social accounts, schedule queues, and adapt video formats across 6 networks.
@@ -111,3 +131,4 @@ Explore the comprehensive guides below to master every aspect of 180 Social Stud
 - **[Multi-Track Video Timeline Engine](/docs/products/180-social-studio/video-editor-and-timeline)**: Edit videos with 60fps WebGPU rendering, lossless stream splicing, auto-zoom, and kinetic captions.
 - **[Analytics & Visual Calendar](/docs/products/180-social-studio/analytics-and-calendar)**: Monitor cross-platform engagement, audience retention curves, and content calendars.
 - **[Creator Playbook & Workflows](/docs/products/180-social-studio/creator-playbook-and-workflows)**: Step-by-step master workflow: from blank page to viral video and paid clients in 15 minutes.
+- **[Mobile App & SSO Architecture](/docs/products/180-social-studio/mobile-app-and-sso)**: Flutter cross-platform architecture, CameraX teleprompter, and 180 Core Universal SSO PKCE integration.

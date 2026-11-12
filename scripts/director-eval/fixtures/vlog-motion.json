@@ -1,0 +1,545 @@
+{
+  "id": "vlog-motion",
+  "title": "Travel vlog with motion",
+  "description": "Handheld travel vlog: a cut every ~2.7 s, short voice lines, the creator in frame only in some shots.",
+  "request": {
+    "prompt": "make it a punchy travel vlog with music",
+    "media": {
+      "assetId": "primary",
+      "durationMs": 45721,
+      "width": 1080,
+      "height": 1920,
+      "fps": 30,
+      "transcript": {
+        "words": [
+          {
+            "text": "Okay",
+            "startMs": 800,
+            "endMs": 1178
+          },
+          {
+            "text": "we",
+            "startMs": 1248,
+            "endMs": 1541
+          },
+          {
+            "text": "just",
+            "startMs": 1611,
+            "endMs": 1989
+          },
+          {
+            "text": "landed",
+            "startMs": 2059,
+            "endMs": 2522
+          },
+          {
+            "text": "in",
+            "startMs": 2592,
+            "endMs": 2885
+          },
+          {
+            "text": "Lisbon",
+            "startMs": 2955,
+            "endMs": 3417
+          },
+          {
+            "text": "and",
+            "startMs": 3487,
+            "endMs": 3823
+          },
+          {
+            "text": "the",
+            "startMs": 3893,
+            "endMs": 4229
+          },
+          {
+            "text": "light",
+            "startMs": 4299,
+            "endMs": 4719
+          },
+          {
+            "text": "here",
+            "startMs": 4789,
+            "endMs": 5167
+          },
+          {
+            "text": "is",
+            "startMs": 5237,
+            "endMs": 5530
+          },
+          {
+            "text": "unreal",
+            "startMs": 5600,
+            "endMs": 6062
+          },
+          {
+            "text": "First",
+            "startMs": 11332,
+            "endMs": 11753
+          },
+          {
+            "text": "stop",
+            "startMs": 11823,
+            "endMs": 12200
+          },
+          {
+            "text": "pastel",
+            "startMs": 12270,
+            "endMs": 12733
+          },
+          {
+            "text": "de",
+            "startMs": 12803,
+            "endMs": 13096
+          },
+          {
+            "text": "nata",
+            "startMs": 13166,
+            "endMs": 13544
+          },
+          {
+            "text": "obviously",
+            "startMs": 13614,
+            "endMs": 14203
+          },
+          {
+            "text": "This",
+            "startMs": 20673,
+            "endMs": 21051
+          },
+          {
+            "text": "is",
+            "startMs": 21121,
+            "endMs": 21414
+          },
+          {
+            "text": "the",
+            "startMs": 21484,
+            "endMs": 21820
+          },
+          {
+            "text": "best",
+            "startMs": 21890,
+            "endMs": 22268
+          },
+          {
+            "text": "one",
+            "startMs": 22338,
+            "endMs": 22674
+          },
+          {
+            "text": "I",
+            "startMs": 22744,
+            "endMs": 22995
+          },
+          {
+            "text": "have",
+            "startMs": 23065,
+            "endMs": 23443
+          },
+          {
+            "text": "ever",
+            "startMs": 23513,
+            "endMs": 23891
+          },
+          {
+            "text": "had",
+            "startMs": 23961,
+            "endMs": 24296
+          },
+          {
+            "text": "no",
+            "startMs": 24366,
+            "endMs": 24660
+          },
+          {
+            "text": "contest",
+            "startMs": 24730,
+            "endMs": 25234
+          },
+          {
+            "text": "Sunset",
+            "startMs": 32304,
+            "endMs": 32767
+          },
+          {
+            "text": "at",
+            "startMs": 32837,
+            "endMs": 33130
+          },
+          {
+            "text": "the",
+            "startMs": 33200,
+            "endMs": 33536
+          },
+          {
+            "text": "viewpoint",
+            "startMs": 33606,
+            "endMs": 34195
+          },
+          {
+            "text": "this",
+            "startMs": 34265,
+            "endMs": 34643
+          },
+          {
+            "text": "is",
+            "startMs": 34713,
+            "endMs": 35006
+          },
+          {
+            "text": "why",
+            "startMs": 35076,
+            "endMs": 35412
+          },
+          {
+            "text": "we",
+            "startMs": 35482,
+            "endMs": 35775
+          },
+          {
+            "text": "came",
+            "startMs": 35845,
+            "endMs": 36223
+          },
+          {
+            "text": "See",
+            "startMs": 42293,
+            "endMs": 42629
+          },
+          {
+            "text": "you",
+            "startMs": 42699,
+            "endMs": 43034
+          },
+          {
+            "text": "tomorrow",
+            "startMs": 43104,
+            "endMs": 43651
+          }
+        ]
+      },
+      "silences": [
+        {
+          "startMs": 6132,
+          "endMs": 11332
+        },
+        {
+          "startMs": 14273,
+          "endMs": 20673
+        },
+        {
+          "startMs": 25304,
+          "endMs": 32304
+        },
+        {
+          "startMs": 36293,
+          "endMs": 42293
+        },
+        {
+          "startMs": 43721,
+          "endMs": 45721
+        }
+      ],
+      "faces": [
+        {
+          "tMs": 0,
+          "x": 0.5,
+          "y": 0.4,
+          "w": 0.22,
+          "h": 0.3
+        },
+        {
+          "tMs": 500,
+          "x": 0.5051,
+          "y": 0.4026,
+          "w": 0.22,
+          "h": 0.3
+        },
+        {
+          "tMs": 1000,
+          "x": 0.5097,
+          "y": 0.4048,
+          "w": 0.22,
+          "h": 0.3
+        },
+        {
+          "tMs": 1500,
+          "x": 0.513,
+          "y": 0.4065,
+          "w": 0.22,
+          "h": 0.3
+        },
+        {
+          "tMs": 2000,
+          "x": 0.5148,
+          "y": 0.4074,
+          "w": 0.22,
+          "h": 0.3
+        },
+        {
+          "tMs": 2500,
+          "x": 0.5148,
+          "y": 0.4074,
+          "w": 0.22,
+          "h": 0.3
+        },
+        {
+          "tMs": 3000,
+          "x": 0.5129,
+          "y": 0.4065,
+          "w": 0.22,
+          "h": 0.3
+        },
+        {
+          "tMs": 14200,
+          "x": 0.4426,
+          "y": 0.4163,
+          "w": 0.22,
+          "h": 0.3
+        },
+        {
+          "tMs": 14700,
+          "x": 0.4386,
+          "y": 0.4143,
+          "w": 0.22,
+          "h": 0.3
+        },
+        {
+          "tMs": 15200,
+          "x": 0.4359,
+          "y": 0.413,
+          "w": 0.22,
+          "h": 0.3
+        },
+        {
+          "tMs": 15700,
+          "x": 0.435,
+          "y": 0.4125,
+          "w": 0.22,
+          "h": 0.3
+        },
+        {
+          "tMs": 16200,
+          "x": 0.4359,
+          "y": 0.4129,
+          "w": 0.22,
+          "h": 0.3
+        },
+        {
+          "tMs": 16700,
+          "x": 0.4385,
+          "y": 0.4142,
+          "w": 0.22,
+          "h": 0.3
+        },
+        {
+          "tMs": 33200,
+          "x": 0.5358,
+          "y": 0.3729,
+          "w": 0.22,
+          "h": 0.3
+        },
+        {
+          "tMs": 33700,
+          "x": 0.535,
+          "y": 0.3725,
+          "w": 0.22,
+          "h": 0.3
+        },
+        {
+          "tMs": 34200,
+          "x": 0.5361,
+          "y": 0.373,
+          "w": 0.22,
+          "h": 0.3
+        },
+        {
+          "tMs": 34700,
+          "x": 0.5388,
+          "y": 0.3744,
+          "w": 0.22,
+          "h": 0.3
+        },
+        {
+          "tMs": 35200,
+          "x": 0.5429,
+          "y": 0.3765,
+          "w": 0.22,
+          "h": 0.3
+        },
+        {
+          "tMs": 35700,
+          "x": 0.5479,
+          "y": 0.3789,
+          "w": 0.22,
+          "h": 0.3
+        }
+      ],
+      "scenesMs": [
+        3100,
+        6300,
+        8800,
+        11500,
+        14200,
+        16900,
+        19800,
+        22400,
+        25100,
+        27900,
+        30600,
+        33200,
+        36000,
+        38100
+      ],
+      "labels": [
+        {
+          "startMs": 0,
+          "endMs": 3100,
+          "labels": [
+            "airport",
+            "person"
+          ]
+        },
+        {
+          "startMs": 3100,
+          "endMs": 6300,
+          "labels": [
+            "street",
+            "tram"
+          ]
+        },
+        {
+          "startMs": 6300,
+          "endMs": 8800,
+          "labels": [
+            "street",
+            "building"
+          ]
+        },
+        {
+          "startMs": 8800,
+          "endMs": 11500,
+          "labels": [
+            "food",
+            "pastry"
+          ]
+        },
+        {
+          "startMs": 11500,
+          "endMs": 14200,
+          "labels": [
+            "food",
+            "cafe"
+          ]
+        },
+        {
+          "startMs": 14200,
+          "endMs": 16900,
+          "labels": [
+            "person",
+            "food"
+          ]
+        },
+        {
+          "startMs": 16900,
+          "endMs": 19800,
+          "labels": [
+            "street",
+            "people"
+          ]
+        },
+        {
+          "startMs": 19800,
+          "endMs": 22400,
+          "labels": [
+            "sky",
+            "city"
+          ]
+        },
+        {
+          "startMs": 22400,
+          "endMs": 25100,
+          "labels": [
+            "sunset",
+            "sky"
+          ]
+        },
+        {
+          "startMs": 25100,
+          "endMs": 27900,
+          "labels": [
+            "person",
+            "sunset"
+          ]
+        },
+        {
+          "startMs": 27900,
+          "endMs": 30600,
+          "labels": [
+            "city",
+            "night"
+          ]
+        },
+        {
+          "startMs": 30600,
+          "endMs": 33200,
+          "labels": [
+            "hotel",
+            "room"
+          ]
+        },
+        {
+          "startMs": 33200,
+          "endMs": 36000,
+          "labels": [
+            "person",
+            "room"
+          ]
+        },
+        {
+          "startMs": 36000,
+          "endMs": 38100,
+          "labels": [
+            "night",
+            "street"
+          ]
+        },
+        {
+          "startMs": 38100,
+          "endMs": 45721,
+          "labels": [
+            "person"
+          ]
+        }
+      ],
+      "loudness": {
+        "integratedLufs": -24,
+        "truePeakDb": -4
+      }
+    }
+  },
+  "reference": {
+    "mustDo": [
+      "Upbeat music bed, ducked under the voice lines.",
+      "Keep the visual shots (the footage is the B-roll); do not cut long silences that carry visuals.",
+      "Captions on the voice lines only.",
+      "Transitions or cuts on the beat; a quick-cut pace."
+    ],
+    "mustNotDo": [
+      "Remove silences so aggressively the visuals disappear",
+      "Face zooms on shots without a face",
+      "Stock B-roll over the creator's own travel footage"
+    ],
+    "checks": {
+      "music": true,
+      "maxZooms": 3,
+      "mustKeepSourceMs": [
+        [
+          19800,
+          25100
+        ]
+      ]
+    }
+  }
+}

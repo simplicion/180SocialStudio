@@ -27,7 +27,8 @@ import {
   buildIntentPrompt,
   zodToPortableJsonSchema,
 } from "@workspace/video-contracts";
-import { AIProviderService, AIClient, AISettings } from "../kernel/ai-provider.service";
+import { AIProviderService, AIClient, AISettings, ReasoningEffort } from "../kernel/ai-provider.service";
+import { resolveModel, VaultModels } from "../kernel/model-config";
 import {
   CHAT_TOOL_NAME,
   DIRECTOR_PERSONA,
@@ -90,6 +91,10 @@ export interface PlannerOutcome {
   injectionFlags?: string[];
   /** What the model said to the creator (`reply_to_creator`, or a text-only answer). */
   conversation?: DirectorConversation;
+  /** Provider asked for this plan (null = none resolved). Set by planWithSource, also on a fallback. */
+  provider?: string | null;
+  /** Model id requested (null = the provider adapter's own default). */
+  model?: string | null;
 }
 
 const MAX_TRANSCRIPT_WORDS = 2500;
@@ -199,12 +204,19 @@ export function missingRequestedOperations(prompt: string, operationTypes: strin
     .map((r) => `${r.label} (${r.ops.filter((o) => !allowedTools || allowedTools.has(o)).join(" / ")})`);
 }
 
-/** Model defaults per provider. Anthropic default follows the product decision (latest Sonnet). */
-function modelFor(provider: string, override?: string): string | undefined {
-  if (override) return override;
-  if (provider === "claude") return process.env.AI_DIRECTOR_CLAUDE_MODEL || "claude-sonnet-5";
-  if (provider === "openai") return process.env.AI_DIRECTOR_OPENAI_MODEL || undefined;
-  return undefined;
+/**
+ * The Director's model for a provider: an explicit override, else model-config (AI_DIRECTOR_MODEL_<PROVIDER> env →
+ * saved vault model → the provider's most capable default). Never a hardcoded ID here.
+ */
+function modelFor(provider: string, override?: string, vaultModels?: VaultModels): string {
+  return override || resolveModel(provider, "director", { vaultModels });
+}
+
+const EFFORTS = new Set(["low", "medium", "high", "xhigh", "max"]);
+/** Planning depth (AI_DIRECTOR_EFFORT, default "medium": the deepest that fits the phone's 120 s wait per turn). */
+export function directorEffort(): ReasoningEffort {
+  const v = (process.env.AI_DIRECTOR_EFFORT || "").toLowerCase().trim();
+  return (EFFORTS.has(v) ? v : "medium") as ReasoningEffort;
 }
 
 /** Per-call LLM timeout: `AI_DIRECTOR_LLM_TIMEOUT_MS` (default 60 s). A timeout is a DirectorTimeoutError. */
@@ -237,7 +249,16 @@ export class CreativePlanner {
    *      outcome says so explicitly (plannerSource + plannerReason). Never silent.
    */
   static async planWithSource(params: PlanGenerationParams): Promise<PlannerOutcome> {
-    const { client, reason: noClientReason, model } = await this.resolveClient(params);
+    const resolved = await this.resolveClient(params);
+    const outcome = await this.planWithClient(params, resolved);
+    // Which provider/model was asked (also on a fallback, so the turn log shows what failed).
+    return { ...outcome, provider: resolved.client?.provider ?? null, model: resolved.model ?? null };
+  }
+
+  private static async planWithClient(
+    params: PlanGenerationParams,
+    { client, reason: noClientReason, model }: { client: AIClient | null; reason: string; model?: string }
+  ): Promise<PlannerOutcome> {
     if (!client) {
       return this.deterministicOutcome(params, noClientReason, 0);
     }
@@ -252,7 +273,8 @@ export class CreativePlanner {
       buildChatToolDefinition(),
     ];
     const basePrompt = this.buildPrompt(params);
-    const options: any = { max_tokens: 16000, temperature: 0.2 };
+    // Persona + rules as the system prompt (stable per mode, so the provider caches it with the tools).
+    const options: any = { max_tokens: 16000, temperature: 0.2, effort: directorEffort(), system: this.buildSystemPrompt(params) };
     if (model) options.model = model;
     const label = `${client.provider}${model ? `/${model}` : ""}`;
     const timeoutMs = directorLlmTimeoutMs(params.llmTimeoutMs);
@@ -261,8 +283,10 @@ export class CreativePlanner {
     try {
       first = await withTimeout(client.generateWithTools(basePrompt, tools, options), timeoutMs, "LLM call");
     } catch (err: any) {
+      console.warn(`[CreativePlanner] ${llmFailureReason("LLM call", label, err)}`);
       return this.deterministicOutcome(params, llmFailureReason("LLM call", label, err), 1);
     }
+    const cutOff = first?.stopReason === "max_tokens";
 
     const split = splitChatCalls(first?.toolCalls || []);
     const firstCalls = split.calls;
@@ -271,7 +295,7 @@ export class CreativePlanner {
     // agrees, so edit calls next to a proposal are dropped.
     if (firstCalls.length === 0 || (conversation && PROPOSAL_PHASES.has(conversation.phase))) {
       conversation = conversation || conversationFromText(first?.text || "") || undefined;
-      if (!conversation) return this.deterministicOutcome(params, `LLM (${label}) returned an empty response`, 1);
+      if (!conversation) return this.deterministicOutcome(params, `LLM (${label}) returned an empty response${cutOff ? " (stopped at max_tokens)" : ""}`, 1);
       return {
         plan: this.buildPlan(params, [], conversation.reply, false),
         plannerSource: "llm",
@@ -333,8 +357,9 @@ export class CreativePlanner {
         } else {
           coverageNote = ", coverage retry not better";
         }
-      } catch {
+      } catch (err: any) {
         coverageNote = ", coverage retry failed";
+        console.warn(`[CreativePlanner] ${llmFailureReason("LLM coverage call", label, err)}`);
       }
       attempts += 1;
     }
@@ -345,7 +370,7 @@ export class CreativePlanner {
     return {
       plan: this.buildPlan(params, validation.operations, summary, validation.finish?.requiresConfirmation ?? false),
       plannerSource: "llm",
-      plannerReason: `${label} tool-calling plan (${attempts} attempt${attempts === 1 ? "" : "s"}${repairedErrors ? ", repaired" : ""}${coverageNote})`,
+      plannerReason: `${label} tool-calling plan (${attempts} attempt${attempts === 1 ? "" : "s"}${repairedErrors ? ", repaired" : ""}${coverageNote}${cutOff ? ", first answer cut off at max_tokens" : ""})`,
       llmAttempts: attempts,
       repairedErrors,
       brandWatermark: validation.finish?.brandWatermark,
@@ -374,7 +399,7 @@ export class CreativePlanner {
       timelineLines: params.currentEditIR ? this.describeEditIR(params.currentEditIR, params.itemMeta).slice(0, 120) : ["(raw clip, nothing edited yet)"],
       history: params.history,
     });
-    const options: any = { max_tokens: 600, temperature: 0 };
+    const options: any = { max_tokens: 2000, temperature: 0, effort: "low" };
     if (model) options.model = model;
     try {
       const res = await withTimeout(client.generateWithTools(prompt, [tool], options), Math.min(20000, directorLlmTimeoutMs(params.llmTimeoutMs)), "LLM intent call");
@@ -385,7 +410,9 @@ export class CreativePlanner {
       // Tool names the model invented are dropped; real ones are kept.
       const known = new Set(DIRECTOR_TOOL_SPECS.map((s) => s.name as string));
       return { intent: { ...parsed.data, allowedTools: parsed.data.allowedTools.filter((t) => known.has(t)) }, reason: `${client.provider}${model ? `/${model}` : ""} intent call` };
-    } catch {
+    } catch (err: any) {
+      // The offline classifier takes over; the failure is logged, not hidden.
+      console.warn(`[CreativePlanner] ${llmFailureReason("LLM intent call", `${client.provider}/${model}`, err)}`);
       return null;
     }
   }
@@ -402,15 +429,15 @@ export class CreativePlanner {
     try {
       // Lazy import: keeps prisma out of the module graph for callers that inject a client.
       const { AICompanyConfigService } = await import("../kernel/ai-company-config.service");
-      settings = (await AICompanyConfigService.getCompanyAISettings(params.companyId)).settings;
+      settings = (await AICompanyConfigService.getCompanyAISettings(params.companyId, { purpose: "director" })).settings;
     } catch (err: any) {
       return { client: null, reason: `could not load AI settings: ${truncate(err?.message || String(err), 160)}` };
     }
-    const client = await AIProviderService.getInstance().getClient(settings);
+    const client = await AIProviderService.getInstance().getClient(settings, { purpose: "director" });
     if (!client) {
       return { client: null, reason: `no AI API key configured in server environment (provider "${settings.aiProvider || "none"}")` };
     }
-    return { client, reason: "", model: modelFor(client.provider, params.llmModel) };
+    return { client, reason: "", model: modelFor(client.provider, params.llmModel, settings.models) };
   }
 
   private static deterministicOutcome(params: PlanGenerationParams, reason: string, attempts: number): PlannerOutcome {
@@ -466,34 +493,20 @@ export class CreativePlanner {
   }
 
   /** Builds the full director prompt. Exported for tests / prompt inspection. */
-  static buildPrompt(params: PlanGenerationParams): string {
-    const ctx = params.timelineContext;
-    const g = params.mediaGraph;
-    const lines: string[] = [];
+  /**
+   * The system prompt: persona, conversation protocol, rules and craft. Depends only on the request's mode, so it is
+   * byte-identical across turns of that mode and the provider caches it (with the tools) instead of re-reading it.
+   */
+  static buildSystemPrompt(params: Pick<PlanGenerationParams, "scope">): string {
     const mode = params.scope?.mode ?? "full_edit";
     const fullEdit = mode === "full_edit";
-
-    // The first rule, before anything else: change only what was asked (Phase 3.2).
-    lines.push(
+    const lines: string[] = [
       DIRECTOR_PERSONA,
+      // The first rule, before anything else: change only what was asked (Phase 3.2).
       `## The most important rule`,
       `Change only what the creator asked. Everything not mentioned must stay exactly as it is. Prefer the update tools over removing and re-adding. Never regenerate captions, replace music, reframe or re-cut unless asked.`,
-      ``
-    );
-    if (params.scope) {
-      const targets = params.scope.targets.map((t) => `${t.kind}${t.ids?.length ? ` (${t.ids.join(", ")})` : ""}${t.timeSec !== undefined ? ` at ${t.timeSec}s` : ""}`);
-      lines.push(
-        `## Scope of this request (decided before planning)`,
-        mode === "open"
-          ? `- the request could not be scoped before planning: work out what it asks for and change only that.`
-          : `- mode: ${mode}${targets.length ? `; about: ${targets.join(", ")}` : ""}`,
-        ...(params.scope.mustNotTouch.length ? [`- do not touch: ${params.scope.mustNotTouch.join(", ")}`] : []),
-        params.scope.tools
-          ? `- you only have the tools for this scope; anything else on the timeline is locked for this turn.`
-          : `- whole-video edit: every tool is available.`,
-        ``
-      );
-    }
+      ``,
+    ];
     if (fullEdit) lines.push(
       `## Editing craft for a whole-video edit (how you edit; never recite this to the creator)`,
       `- Hook: start tight on the first spoken word; a pattern interrupt in the first 1.5s (punch-in zoom, bold title or cutaway) works well.`,
@@ -505,8 +518,8 @@ export class CreativePlanner {
       ``
     );
     lines.push(
-      `Rules:`,
-      `- All times are SECONDS on the CURRENT timeline described below (0 .. ${ctx.projectDurationSec.toFixed(2)}). Never go past the end.`,
+      `## Rules`,
+      `- All times are SECONDS on the CURRENT timeline described in the request (0 .. its duration). Never go past the end.`,
       `- Times in one response all refer to the timeline as it is NOW, before any of your operations; the server orders cuts safely. Do not adjust later times for earlier cuts.`,
       fullEdit
         ? `- Do what the creator asked. For a whole-video ask ("make it punchier for TikTok") choose a small set of concrete, tasteful operations (e.g. remove pauses, captions, 1-3 zooms on key moments, autoSoundDesign); reframe only a clip that is not already in the target aspect.`
@@ -524,6 +537,31 @@ export class CreativePlanner {
       `- ${UNTRUSTED_DATA_POLICY}`,
       ``
     );
+    return lines.join("\n");
+  }
+
+  /** The user message: this request's scope, timeline, media analysis, context and the creator's words. */
+  static buildPrompt(params: PlanGenerationParams): string {
+    const ctx = params.timelineContext;
+    const g = params.mediaGraph;
+    const lines: string[] = [];
+    const mode = params.scope?.mode ?? "full_edit";
+
+    if (params.scope) {
+      const targets = params.scope.targets.map((t) => `${t.kind}${t.ids?.length ? ` (${t.ids.join(", ")})` : ""}${t.timeSec !== undefined ? ` at ${t.timeSec}s` : ""}`);
+      lines.push(
+        `## Scope of this request (decided before planning)`,
+        mode === "open"
+          ? `- the request could not be scoped before planning: work out what it asks for and change only that.`
+          : `- mode: ${mode}${targets.length ? `; about: ${targets.join(", ")}` : ""}`,
+        ...(params.scope.mustNotTouch.length ? [`- do not touch: ${params.scope.mustNotTouch.join(", ")}`] : []),
+        params.scope.tools
+          ? `- you only have the tools for this scope; anything else on the timeline is locked for this turn.`
+          : `- whole-video edit: every tool is available.`,
+        ``
+      );
+    }
+    lines.push(`Timeline length now: 0 .. ${ctx.projectDurationSec.toFixed(2)} s (every time you give must be inside it).`, ``);
 
     lines.push(`## Current timeline`);
     lines.push(`- duration: ${ctx.projectDurationSec.toFixed(2)}s, canvas ${ctx.currentAspect} (${ctx.currentResolution.width}x${ctx.currentResolution.height}), ${ctx.clipsCount} clip(s)`);

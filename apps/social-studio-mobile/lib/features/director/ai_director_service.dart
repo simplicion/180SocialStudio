@@ -107,7 +107,16 @@ class DirectorResponse {
     this.diffSummary,
     this.scopeMode,
     this.runId,
+    this.fallbackCode,
+    this.fallbackReason,
   });
+
+  /// Why the offline rules made this edit instead of the AI model (server `plannerFallback.code`):
+  /// no_key | llm_disabled | no_tool_calling | timeout | budget | llm_error | empty_response | invalid_output | unknown.
+  final String? fallbackCode;
+
+  /// The server's technical reason for the fallback (provider, model, error).
+  final String? fallbackReason;
 
   /// Id of this turn in the server's agent run log (for Apply / Undo feedback).
   final String? runId;
@@ -161,6 +170,11 @@ class DirectorResponse {
 
   bool get isDeterministic => plannerSource == 'deterministic';
 
+  /// The offline rules stood in for the AI model on an edit (not the rule-based greeting, which is by design).
+  /// Older servers without `plannerFallback` are recognised by their warning.
+  bool get isFallback =>
+      fallbackCode != null || (isDeterministic && warnings.any((w) => w.startsWith('planned by the offline rule-based director')));
+
   factory DirectorResponse.fromData(Json d) {
     final ir = jMap(d['editIR']);
     if (ir.isEmpty) {
@@ -194,6 +208,8 @@ class DirectorResponse {
       diffSummary: d['diffSummary'] is Map ? DirectorDiffSummary.fromJson(jMap(d['diffSummary'])) : null,
       scopeMode: jStr(jMap(d['scope'])['mode']),
       runId: jStr(d['runId']),
+      fallbackCode: jStr(jMap(d['plannerFallback'])['code']),
+      fallbackReason: jStr(jMap(d['plannerFallback'])['reason']),
       editIrJson: ir,
       editIr: parsed,
       credits: {
