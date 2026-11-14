@@ -21,6 +21,7 @@ export type UntrustedSource =
   | "script"
   | "memory"
   | "comment"
+  | "vision"
   | "other";
 
 /** Printed once near the top of any prompt that contains fenced blocks. */

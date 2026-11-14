@@ -516,6 +516,216 @@
       "loudness": {
         "integratedLufs": -18,
         "truePeakDb": -1.5
+      },
+      "shotLog": {
+        "version": "shotlog/1",
+        "assetId": "primary",
+        "sourceHash": "eval-primary-46868",
+        "durationMs": 46868,
+        "model": "eval/fixture",
+        "frameCount": 24,
+        "shots": [
+          {
+            "startMs": 0,
+            "endMs": 4020,
+            "description": "a desktop with the app's home window open",
+            "subjects": [
+              {
+                "label": "app window",
+                "box": {
+                  "x": 0.1,
+                  "y": 0.1,
+                  "w": 0.8,
+                  "h": 0.8
+                },
+                "primary": true
+              }
+            ],
+            "framing": "screen",
+            "cameraMotion": "static",
+            "quality": [],
+            "onScreenText": "Backup Pro",
+            "brollSuitability": 0.1,
+            "energy": "low"
+          },
+          {
+            "startMs": 4020,
+            "endMs": 8040,
+            "description": "a desktop with the app's home window open",
+            "subjects": [
+              {
+                "label": "app window",
+                "box": {
+                  "x": 0.1,
+                  "y": 0.1,
+                  "w": 0.8,
+                  "h": 0.8
+                },
+                "primary": true
+              }
+            ],
+            "framing": "screen",
+            "cameraMotion": "static",
+            "quality": [],
+            "onScreenText": "Backup Pro",
+            "brollSuitability": 0.1,
+            "energy": "low"
+          },
+          {
+            "startMs": 8040,
+            "endMs": 13961,
+            "description": "the settings window with the Backup tab selected in the sidebar",
+            "subjects": [
+              {
+                "label": "Backup tab",
+                "box": {
+                  "x": 0.04,
+                  "y": 0.3,
+                  "w": 0.14,
+                  "h": 0.06
+                },
+                "primary": true
+              },
+              {
+                "label": "settings panel",
+                "box": {
+                  "x": 0.22,
+                  "y": 0.1,
+                  "w": 0.7,
+                  "h": 0.8
+                }
+              }
+            ],
+            "framing": "screen",
+            "cameraMotion": "static",
+            "quality": [],
+            "onScreenText": "Settings > Backup",
+            "brollSuitability": 0.1,
+            "energy": "low"
+          },
+          {
+            "startMs": 13961,
+            "endMs": 21953,
+            "description": "a folder picker dialog with the Choose folder button",
+            "subjects": [
+              {
+                "label": "Choose folder button",
+                "box": {
+                  "x": 0.66,
+                  "y": 0.72,
+                  "w": 0.18,
+                  "h": 0.07
+                },
+                "primary": true
+              }
+            ],
+            "framing": "screen",
+            "cameraMotion": "static",
+            "quality": [],
+            "onScreenText": "Choose folder",
+            "brollSuitability": 0.1,
+            "energy": "low"
+          },
+          {
+            "startMs": 21953,
+            "endMs": 29945,
+            "description": "a folder picker dialog with the Choose folder button",
+            "subjects": [
+              {
+                "label": "Choose folder button",
+                "box": {
+                  "x": 0.66,
+                  "y": 0.72,
+                  "w": 0.18,
+                  "h": 0.07
+                },
+                "primary": true
+              }
+            ],
+            "framing": "screen",
+            "cameraMotion": "static",
+            "quality": [],
+            "onScreenText": "Choose folder",
+            "brollSuitability": 0.1,
+            "energy": "low"
+          },
+          {
+            "startMs": 29945,
+            "endMs": 35051,
+            "description": "the schedule section with a Daily toggle switched on and a Save button",
+            "subjects": [
+              {
+                "label": "Save button",
+                "box": {
+                  "x": 0.78,
+                  "y": 0.84,
+                  "w": 0.1,
+                  "h": 0.06
+                },
+                "primary": true
+              },
+              {
+                "label": "Daily toggle",
+                "box": {
+                  "x": 0.3,
+                  "y": 0.4,
+                  "w": 0.12,
+                  "h": 0.05
+                }
+              }
+            ],
+            "framing": "screen",
+            "cameraMotion": "static",
+            "quality": [],
+            "onScreenText": "Daily schedule  [Save]",
+            "brollSuitability": 0.1,
+            "energy": "low"
+          },
+          {
+            "startMs": 35051,
+            "endMs": 40960,
+            "description": "a green confirmation banner saying backups are on",
+            "subjects": [
+              {
+                "label": "confirmation banner",
+                "box": {
+                  "x": 0.3,
+                  "y": 0.05,
+                  "w": 0.4,
+                  "h": 0.08
+                },
+                "primary": true
+              }
+            ],
+            "framing": "screen",
+            "cameraMotion": "static",
+            "quality": [],
+            "brollSuitability": 0.1,
+            "energy": "low"
+          },
+          {
+            "startMs": 40960,
+            "endMs": 46868,
+            "description": "a green confirmation banner saying backups are on",
+            "subjects": [
+              {
+                "label": "confirmation banner",
+                "box": {
+                  "x": 0.3,
+                  "y": 0.05,
+                  "w": 0.4,
+                  "h": 0.08
+                },
+                "primary": true
+              }
+            ],
+            "framing": "screen",
+            "cameraMotion": "static",
+            "quality": [],
+            "brollSuitability": 0.1,
+            "energy": "low"
+          }
+        ]
       }
     }
   },
@@ -553,7 +763,9 @@
         ]
       ],
       "captions": true,
-      "targetAspect": "16:9"
+      "targetAspect": "16:9",
+      "zoomsOnSubject": true,
+      "playbook": "calm_educational"
     }
   }
 }

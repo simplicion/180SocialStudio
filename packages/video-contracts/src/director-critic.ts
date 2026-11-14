@@ -1,5 +1,6 @@
 import type { MobileEditIR, MobileMediaDescriptor } from "./mobile-edit-ir";
 import type { LastExportQa } from "./ai-director-api.schema";
+import type { PlaybookReport } from "./style-playbooks";
 
 /**
  * Director critic (observe → critique → repair). Deterministic checks on the compiled MobileEditIR (integer ms),
@@ -46,6 +47,11 @@ export interface DirectorCritiqueInput {
   /** QA of the last export and the timeline that was exported (normally the request's currentEditIR). */
   lastExportQa?: LastExportQa;
   exportedEditIR?: MobileEditIR | null;
+  /**
+   * The finished edit measured against its style playbook (quality-fix Phase 6; whole edits only). Each missed target
+   * is reported: a static stretch or a wrong caption style as a WARNING, a rate outside its range as a SUGGESTION.
+   */
+  playbookReport?: PlaybookReport;
   /** Problems found by `verifyLockedRangesPreserved` (director). */
   lockedRangeProblems?: Array<{ rangeMs: [number, number]; detail: string }>;
 }
@@ -223,6 +229,18 @@ export function critiqueDirectorEdit(input: DirectorCritiqueInput): DirectorCrit
       add({ id: `export_loudness`, severity: "WARNING", category: "EXPORT", title: `The last export is ${qa.integratedLufs} LUFS (social platforms expect about -14)` });
     }
     if (qa.clippingPct != null && qa.clippingPct > T.clippingPct) add({ id: `export_clipping`, severity: "WARNING", category: "EXPORT", title: `${qa.clippingPct}% of the exported audio clips` });
+  }
+
+  // Style playbook (Phase 6): measured, reported, never auto-repaired (the creator's words win over targets).
+  for (const c of input.playbookReport?.checks ?? []) {
+    if (c.ok) continue;
+    const strong = /static stretch|caption template/.test(c.metric);
+    add({
+      id: `style:${c.metric}`,
+      severity: strong ? "WARNING" : "SUGGESTION",
+      category: "PACING",
+      title: `Style (${input.playbookReport!.playbookId}): ${c.metric} is ${c.value ?? "none"}, the style wants ${c.target}`,
+    });
   }
 
   const n = (s: CritiqueSeverity) => issues.filter((i) => i.severity === s).length;

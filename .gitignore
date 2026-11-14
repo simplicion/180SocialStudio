@@ -122,3 +122,4 @@ generated/
 
 # AI Director eval reports
 scripts/director-eval/reports/
+scripts/director-eval/history/

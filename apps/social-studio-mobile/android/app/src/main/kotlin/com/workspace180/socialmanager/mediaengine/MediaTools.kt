@@ -641,6 +641,7 @@ object MediaTools {
         timesMs: List<Long>,
         maxWidth: Int,
         exact: Boolean,
+        quality: Int = 88,
     ): List<String> {
         requireFile(sourcePath)
         if (timesMs.isEmpty()) throw MediaEngineError("INVALID_ARGS", "timesMs is empty")
@@ -660,7 +661,7 @@ object MediaTools {
                     r.getFrameAtTime(t * 1000, option)
                 }) ?: throw MediaEngineError("THUMBNAIL_FAILED", "No frame at ${t}ms in $sourcePath")
                 val out = File(dir, "${base}_$t.jpg")
-                FileOutputStream(out).use { frame.compress(Bitmap.CompressFormat.JPEG, 88, it) }
+                FileOutputStream(out).use { frame.compress(Bitmap.CompressFormat.JPEG, quality.coerceIn(1, 100), it) }
                 frame.recycle()
                 out.absolutePath
             }

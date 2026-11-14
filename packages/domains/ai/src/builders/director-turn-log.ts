@@ -63,6 +63,14 @@ export interface DirectorTurnLog {
   repairRounds: number;
   criticScore: number | null;
   latencyMs: number;
+  /** A ShotLog (vision pass) was part of the context. */
+  vision?: boolean;
+  /** The style playbook (Phase 6): which one, and how many of its targets the edit met. */
+  style?: { playbookId: string; version: string; met: number; total: number } | null;
+  /** The agent loop (Phase 4): turns, stages done, why it stopped, whether the coverage stage ran, rejections fed back. */
+  agent?: { turns: number; stages: string[]; stopped: string; coverageRetry: boolean; feedback: number } | null;
+  /** The story pass (Phase 3) of a whole edit: what it cut, or why it did not run. */
+  story?: { applied: true; removedLines: number; removedSec: number; hookLineId: string; hookMoved: boolean } | { applied: false; reason: string } | null;
 }
 
 const MAX_REASON = 200;

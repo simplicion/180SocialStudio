@@ -516,6 +516,352 @@
       "loudness": {
         "integratedLufs": -24,
         "truePeakDb": -4
+      },
+      "shotLog": {
+        "version": "shotlog/1",
+        "assetId": "primary",
+        "sourceHash": "eval-primary-45721",
+        "durationMs": 45721,
+        "model": "eval/fixture",
+        "frameCount": 23,
+        "shots": [
+          {
+            "startMs": 0,
+            "endMs": 3100,
+            "description": "the creator taking a selfie in an airport arrivals hall",
+            "subjects": [
+              {
+                "label": "creator",
+                "box": {
+                  "x": 0.3,
+                  "y": 0.15,
+                  "w": 0.4,
+                  "h": 0.45
+                },
+                "primary": true
+              }
+            ],
+            "framing": "close",
+            "cameraMotion": "handheld",
+            "quality": [],
+            "brollSuitability": 0.2,
+            "energy": "medium"
+          },
+          {
+            "startMs": 3100,
+            "endMs": 6300,
+            "description": "a yellow tram on a steep cobbled street in sunlight",
+            "subjects": [
+              {
+                "label": "tram",
+                "box": {
+                  "x": 0.2,
+                  "y": 0.35,
+                  "w": 0.6,
+                  "h": 0.4
+                },
+                "primary": true
+              }
+            ],
+            "framing": "wide",
+            "cameraMotion": "pan",
+            "quality": [],
+            "brollSuitability": 0.9,
+            "energy": "high"
+          },
+          {
+            "startMs": 6300,
+            "endMs": 8800,
+            "description": "pastel-coloured old buildings with tiled facades",
+            "subjects": [
+              {
+                "label": "building",
+                "box": {
+                  "x": 0.1,
+                  "y": 0.1,
+                  "w": 0.8,
+                  "h": 0.8
+                },
+                "primary": true
+              }
+            ],
+            "framing": "wide",
+            "cameraMotion": "static",
+            "quality": [],
+            "brollSuitability": 0.9,
+            "energy": "medium"
+          },
+          {
+            "startMs": 8800,
+            "endMs": 11500,
+            "description": "close-up of a custard tart with cinnamon on a plate",
+            "subjects": [
+              {
+                "label": "pastel de nata",
+                "box": {
+                  "x": 0.3,
+                  "y": 0.4,
+                  "w": 0.4,
+                  "h": 0.25
+                },
+                "primary": true
+              }
+            ],
+            "framing": "extreme_close",
+            "cameraMotion": "static",
+            "quality": [],
+            "brollSuitability": 0.8,
+            "energy": "medium"
+          },
+          {
+            "startMs": 11500,
+            "endMs": 14200,
+            "description": "a busy cafe counter with tarts in a glass display",
+            "subjects": [
+              {
+                "label": "display case",
+                "box": {
+                  "x": 0.15,
+                  "y": 0.4,
+                  "w": 0.7,
+                  "h": 0.35
+                },
+                "primary": true
+              }
+            ],
+            "framing": "medium",
+            "cameraMotion": "handheld",
+            "quality": [
+              "blur"
+            ],
+            "brollSuitability": 0.8,
+            "energy": "medium"
+          },
+          {
+            "startMs": 14200,
+            "endMs": 16900,
+            "description": "the creator taking a selfie in an airport arrivals hall",
+            "subjects": [
+              {
+                "label": "creator",
+                "box": {
+                  "x": 0.3,
+                  "y": 0.15,
+                  "w": 0.4,
+                  "h": 0.45
+                },
+                "primary": true
+              }
+            ],
+            "framing": "close",
+            "cameraMotion": "handheld",
+            "quality": [],
+            "brollSuitability": 0.2,
+            "energy": "medium"
+          },
+          {
+            "startMs": 16900,
+            "endMs": 19800,
+            "description": "a yellow tram on a steep cobbled street in sunlight",
+            "subjects": [
+              {
+                "label": "tram",
+                "box": {
+                  "x": 0.2,
+                  "y": 0.35,
+                  "w": 0.6,
+                  "h": 0.4
+                },
+                "primary": true
+              }
+            ],
+            "framing": "wide",
+            "cameraMotion": "pan",
+            "quality": [],
+            "brollSuitability": 0.9,
+            "energy": "high"
+          },
+          {
+            "startMs": 19800,
+            "endMs": 22400,
+            "description": "pastel-coloured old buildings with tiled facades",
+            "subjects": [
+              {
+                "label": "building",
+                "box": {
+                  "x": 0.1,
+                  "y": 0.1,
+                  "w": 0.8,
+                  "h": 0.8
+                },
+                "primary": true
+              }
+            ],
+            "framing": "wide",
+            "cameraMotion": "static",
+            "quality": [],
+            "brollSuitability": 0.9,
+            "energy": "medium"
+          },
+          {
+            "startMs": 22400,
+            "endMs": 25100,
+            "description": "close-up of a custard tart with cinnamon on a plate",
+            "subjects": [
+              {
+                "label": "pastel de nata",
+                "box": {
+                  "x": 0.3,
+                  "y": 0.4,
+                  "w": 0.4,
+                  "h": 0.25
+                },
+                "primary": true
+              }
+            ],
+            "framing": "extreme_close",
+            "cameraMotion": "static",
+            "quality": [],
+            "brollSuitability": 0.8,
+            "energy": "medium"
+          },
+          {
+            "startMs": 25100,
+            "endMs": 27900,
+            "description": "a busy cafe counter with tarts in a glass display",
+            "subjects": [
+              {
+                "label": "display case",
+                "box": {
+                  "x": 0.15,
+                  "y": 0.4,
+                  "w": 0.7,
+                  "h": 0.35
+                },
+                "primary": true
+              }
+            ],
+            "framing": "medium",
+            "cameraMotion": "handheld",
+            "quality": [
+              "blur"
+            ],
+            "brollSuitability": 0.8,
+            "energy": "medium"
+          },
+          {
+            "startMs": 27900,
+            "endMs": 30600,
+            "description": "the creator taking a selfie in an airport arrivals hall",
+            "subjects": [
+              {
+                "label": "creator",
+                "box": {
+                  "x": 0.3,
+                  "y": 0.15,
+                  "w": 0.4,
+                  "h": 0.45
+                },
+                "primary": true
+              }
+            ],
+            "framing": "close",
+            "cameraMotion": "handheld",
+            "quality": [],
+            "brollSuitability": 0.2,
+            "energy": "medium"
+          },
+          {
+            "startMs": 30600,
+            "endMs": 33200,
+            "description": "a yellow tram on a steep cobbled street in sunlight",
+            "subjects": [
+              {
+                "label": "tram",
+                "box": {
+                  "x": 0.2,
+                  "y": 0.35,
+                  "w": 0.6,
+                  "h": 0.4
+                },
+                "primary": true
+              }
+            ],
+            "framing": "wide",
+            "cameraMotion": "pan",
+            "quality": [],
+            "brollSuitability": 0.9,
+            "energy": "high"
+          },
+          {
+            "startMs": 33200,
+            "endMs": 36000,
+            "description": "pastel-coloured old buildings with tiled facades",
+            "subjects": [
+              {
+                "label": "building",
+                "box": {
+                  "x": 0.1,
+                  "y": 0.1,
+                  "w": 0.8,
+                  "h": 0.8
+                },
+                "primary": true
+              }
+            ],
+            "framing": "wide",
+            "cameraMotion": "static",
+            "quality": [],
+            "brollSuitability": 0.9,
+            "energy": "medium"
+          },
+          {
+            "startMs": 36000,
+            "endMs": 38100,
+            "description": "close-up of a custard tart with cinnamon on a plate",
+            "subjects": [
+              {
+                "label": "pastel de nata",
+                "box": {
+                  "x": 0.3,
+                  "y": 0.4,
+                  "w": 0.4,
+                  "h": 0.25
+                },
+                "primary": true
+              }
+            ],
+            "framing": "extreme_close",
+            "cameraMotion": "static",
+            "quality": [],
+            "brollSuitability": 0.8,
+            "energy": "medium"
+          },
+          {
+            "startMs": 38100,
+            "endMs": 45721,
+            "description": "a busy cafe counter with tarts in a glass display",
+            "subjects": [
+              {
+                "label": "display case",
+                "box": {
+                  "x": 0.15,
+                  "y": 0.4,
+                  "w": 0.7,
+                  "h": 0.35
+                },
+                "primary": true
+              }
+            ],
+            "framing": "medium",
+            "cameraMotion": "handheld",
+            "quality": [
+              "blur"
+            ],
+            "brollSuitability": 0.8,
+            "energy": "medium"
+          }
+        ]
       }
     }
   },
@@ -539,7 +885,8 @@
           19800,
           25100
         ]
-      ]
+      ],
+      "playbook": "cinematic_vlog"
     }
   }
 }

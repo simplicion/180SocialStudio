@@ -40,3 +40,13 @@ score and issues, timeline stats, the checks, and the reference notes.
 
 Stock B-roll and SFX lookups are not called (no network besides the LLM); music uses the built-in catalogue.
 Each run costs one Director turn per fixture (up to 6 LLM calls each).
+
+## CI and the regression gate (Phase 7)
+
+- `--provider replay`: recorded answers from `recordings/<fixture>.json`, or the deterministic scripted editor
+  (`replay.ts`) when a fixture has none. No API key. The report says which answered (`answered by`).
+- `--record` (with a real provider): saves every model answer as the fixture's recording (commit them).
+- `--judge [--judge-model <id>]`: a judge model scores each edit 0-10 against the reference (`judge.ts`).
+- `--history <file>`: appends one JSON line per run (median judge score, checks, per fixture).
+- `gate.ts --report <json> --mode replay|live [--update]`: compares with `baselines/<mode>.json` (see the header of
+  `gate.ts`). `.github/workflows/director-eval.yml` runs `replay` on pull requests and `live` nightly.

@@ -2,6 +2,7 @@ import '../../core/native_engine/edit_ir.dart';
 import '../../core/native_engine/media_engine_service.dart';
 import '../../core/native_engine/media_intelligence.dart';
 import '../../core/network/audio_transcription_service.dart';
+import '../../core/util/json.dart';
 import '../director/ai_director_service.dart';
 import 'studio_controller.dart' show TranscriptState;
 
@@ -24,6 +25,9 @@ class ClipAnalysis {
   List<int>? beatsMs;
   MediaIntelligence intelligence = MediaIntelligence();
 
+  /// The vision pass's ShotLog (only with the creator's consent; null until looked at).
+  Json? shotLog;
+
   /// Still being analysed: the Director is told, and a turn waits a little for it.
   bool get pending => queued || transcriptState == TranscriptState.running;
 
@@ -44,6 +48,7 @@ class ClipAnalysis {
       faces: faces,
       beatsMs: beatsMs,
       intelligence: intelligence.isEmpty ? null : intelligence,
+      shotLog: shotLog,
     );
   }
 }

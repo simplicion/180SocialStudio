@@ -1,4 +1,5 @@
 import { CAPTION_ANIMATIONS } from "./caption-templates";
+import { ShotLogSchema } from "./shot-log";
 import { z } from "zod";
 import {
   EditIR, VideoClip, CaptionSegment, VIDEO_EFFECT_TYPES,
@@ -386,6 +387,11 @@ export const MobileMediaDescriptorSchema = z.object({
     .array(z.object({ startMs: ms, endMs: ms, labels: z.array(z.string().max(40)).max(10) }))
     .max(500)
     .optional(),
+  /**
+   * What a vision model saw in still frames of this source (added 2026-11, quality-fix Phase 2), sent only when the
+   * creator allowed it. The phone echoes the log it got from POST /media-editor/vision/shot-log. Untrusted text.
+   */
+  shotLog: ShotLogSchema.optional(),
   /** Loudness of the clip's own audio (EBU R128 integrated LUFS, true peak dBTP, % of clipped samples). */
   loudness: z
     .object({

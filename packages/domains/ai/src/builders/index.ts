@@ -13,6 +13,10 @@ export * from './video-critic.service';
 export * from './context-resolver';
 export * from './creative-planner';
 export * from './director-turn-log';
+export * from './vision-shot-log';
+export * from './story-planner';
+export * from './director-agent';
+export * from './visual-critic';
 
 export class UniversalBuilderRegistry {
     private static builders: Map<BuilderType, IUniversalBuilder> = new Map();

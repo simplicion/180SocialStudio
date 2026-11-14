@@ -13,6 +13,8 @@ import '../../core/native_engine/media_engine_service.dart';
 import '../../core/network/api_exception.dart';
 import '../../core/network/audio_transcription_service.dart';
 import '../director/ai_director_service.dart';
+import '../director/vision_service.dart';
+import '../../core/util/json.dart';
 import 'caption_fonts.dart';
 import 'caption_languages.dart';
 import 'clip_analysis.dart';
@@ -103,6 +105,7 @@ class StudioController extends ChangeNotifier {
   StudioController({
     required this.director,
     required this.transcriber,
+    this.vision,
     this.projectId,
     this.postId,
     this.pieceId,
@@ -114,6 +117,84 @@ class StudioController extends ChangeNotifier {
 
   final AiDirectorService director;
   final AudioTranscriptionService transcriber;
+
+  /// The vision pass (stills → ShotLog), null in tests / without the service. Runs only with the creator's consent.
+  final ShotLogService? vision;
+
+  /// The creator's choice about the vision pass on this device: null = not asked yet.
+  bool? visionConsent;
+
+  /// What the vision model saw in the main clip (ShotLog JSON), null until looked at.
+  Json? shotLog;
+
+  /// Vision passes running now (the main clip and other clips).
+  int _visionRunning = 0;
+  bool get visionBusy => _visionRunning > 0;
+
+  /// Reads the consent once per session (the Director panel asks when it is still null).
+  Future<void> loadVisionConsent() async {
+    visionConsent = await VisionConsent.read();
+    _notify();
+  }
+
+  /// The creator allows or declines the vision pass. Allowing it looks at every clip now; declining forgets the
+  /// logs on this device.
+  Future<void> setVisionConsent(bool allowed) async {
+    await VisionConsent.write(allowed);
+    visionConsent = allowed;
+    if (!allowed) {
+      shotLog = null;
+      for (final a in clipAnalyses.values) {
+        a.shotLog = null;
+      }
+      await vision?.clearCache();
+      _notify();
+      return;
+    }
+    _notify();
+    final path = sourcePath;
+    if (path != null && shotLog == null) unawaited(_lookAtPrimary(path));
+    for (final a in clipAnalyses.values.toSet()) {
+      if (a.shotLog == null && a.info != null) unawaited(_lookAtClip(a));
+    }
+  }
+
+  Future<void> _lookAtPrimary(String path) async {
+    final m = meta;
+    final v = vision;
+    if (v == null || m == null || visionConsent != true) return;
+    _visionRunning++;
+    _notify();
+    try {
+      final log = await v.lookAt(
+        path: path, assetId: 'primary', durationMs: m.durationMs, width: m.displayWidth, height: m.displayHeight,
+        scenesMs: intelligence.scenesMs ?? const [],
+      );
+      if (!_disposed && visionConsent == true && log != null) shotLog = log;
+    } finally {
+      _visionRunning--;
+      _notify();
+    }
+  }
+
+  Future<void> _lookAtClip(ClipAnalysis a) async {
+    final i = a.info;
+    final v = vision;
+    if (v == null || i == null || visionConsent != true) return;
+    _visionRunning++;
+    _notify();
+    try {
+      final id = clipAnalyses.entries.firstWhere((e) => identical(e.value, a), orElse: () => MapEntry('clip', a)).key;
+      final log = await v.lookAt(
+        path: a.path, assetId: id, durationMs: i.durationMs, width: i.displayWidth, height: i.displayHeight,
+        scenesMs: a.intelligence.scenesMs ?? const [],
+      );
+      if (!_disposed && visionConsent == true && log != null) a.shotLog = log;
+    } finally {
+      _visionRunning--;
+      _notify();
+    }
+  }
   final String? projectId;
   final String? postId;
   final String? pieceId;
@@ -572,6 +653,9 @@ class StudioController extends ChangeNotifier {
     final scenes = await attempt(() => MediaEngineService.detectScenes(sourcePath: path));
     if (_disposed) return;
     intelligence = intelligence.merge(scenesMs: scenes);
+    // The vision pass needs the scene cuts (one still per shot); it runs beside the rest of the analysis.
+    if (visionConsent == null) await loadVisionConsent();
+    if (visionConsent == true) unawaited(_lookAtPrimary(path));
     final labels = await attempt(() => MediaEngineService.labelScenes(sourcePath: path));
     if (_disposed) return;
     intelligence = intelligence.merge(labels: labels);
@@ -992,6 +1076,7 @@ class StudioController extends ChangeNotifier {
     a.faces = await attempt(() => MediaEngineService.detectFaces(sourcePath: a.path));
     if (_disposed) return;
     a.intelligence = a.intelligence.merge(scenesMs: await attempt(() => MediaEngineService.detectScenes(sourcePath: a.path)));
+    if (visionConsent == true) unawaited(_lookAtClip(a));
     a.intelligence = a.intelligence.merge(labels: await attempt(() => MediaEngineService.labelScenes(sourcePath: a.path)));
     a.intelligence = a.intelligence.merge(ocr: await attempt(() => MediaEngineService.recognizeText(sourcePath: a.path)));
     if (hasAudio) {
@@ -1083,6 +1168,8 @@ class StudioController extends ChangeNotifier {
     final ir = _ir;
     if (ir == null) return const [];
     return [
+      // A vision pass in progress: the turn waits a little for what the editor will "see".
+      if (visionBusy) 'vision',
       for (final id in ir.clips.map((c) => c.assetId).toSet())
         if (clipAnalyses[id]?.pending ?? false) id,
     ];
@@ -1580,6 +1667,7 @@ class StudioController extends ChangeNotifier {
       faces: faces,
       beatsMs: beatsMs,
       intelligence: intelligence.isEmpty ? null : intelligence,
+      shotLog: shotLog,
     );
   }
 
@@ -1614,7 +1702,7 @@ class StudioController extends ChangeNotifier {
   }
 
   /// Sends [prompt] (already in the chat at [userIndex]) with the conversation before it as history.
-  Future<void> _directorTurn(String prompt, int userIndex) async {
+  Future<void> _directorTurn(String prompt, int userIndex, {Json? visualCritique}) async {
     final ir = _ir;
     if (ir == null) return;
     final history = [
@@ -1649,6 +1737,7 @@ class StudioController extends ChangeNotifier {
         postId: postId,
         currentEditIR: current.toJson(),
         baseRevision: baseRevision,
+        visualCritique: visualCritique,
       );
       r.editIr.validate();
       await materializeEmojiStickers(r.editIr);
@@ -1724,6 +1813,7 @@ class StudioController extends ChangeNotifier {
       _applyDirector(r, r.editIr);
       messages[index] = m.copyWith(applied: true, appliedIr: _ir);
       _reportApplied(r, _ir!);
+      unawaited(_visualCheck(r, m.prompt ?? ''));
       return true;
     }
     final merged = TimelineMerge.merge(base: base, mine: current, theirs: r.editIr);
@@ -1734,6 +1824,7 @@ class StudioController extends ChangeNotifier {
     _applyDirector(r, merged.ir);
     messages[index] = m.copyWith(applied: true, appliedIr: _ir);
     _reportApplied(r, _ir!, conflicts: merged.conflicts.length);
+    unawaited(_visualCheck(r, m.prompt ?? ''));
     final notes = merged.conflicts.toSet();
     messages.add(DirectorMessage(
       fromUser: false,
@@ -1800,6 +1891,95 @@ class StudioController extends ChangeNotifier {
     selectedClip = null;
   }
 
+  /// The visual check is running (preview render → stills → critique).
+  bool visualChecking = false;
+
+  /// Quality-fix Phase 5: after a Director edit is applied, look at the result. With the creator's vision consent the
+  /// phone renders a fast 360p preview, takes stills at the server's checkpoints and asks for a critique; real
+  /// problems (critical / major) go back to the Director as a repair turn. At most 2 repair rounds; never blocks the
+  /// editor, and any failure just skips the check.
+  Future<void> _visualCheck(DirectorResponse r, String prompt) async {
+    final v = vision;
+    if (v == null || kIsWeb || visionConsent != true || visualChecking || r.checkpoints.isEmpty || r.visualRound >= 2) return;
+    if (export?.running ?? false) return;
+    final ir = _ir;
+    if (ir == null || processing != null || ir.clips.any((c) => c.process != null) || ir.overlays.any((o) => o.process != null)) return;
+    visualChecking = true;
+    _notify();
+    Json? critique;
+    String? proxy;
+    try {
+      proxy = await _renderPreview(ir);
+      if (proxy == null || _disposed) return;
+      critique = await v.critique(
+        videoPath: proxy,
+        checkpoints: r.checkpoints,
+        durationMs: ir.durationMs,
+        width: ir.canvas.width,
+        height: ir.canvas.height,
+        aspect: ir.canvas.aspect,
+        prompt: prompt,
+      );
+    } catch (e) {
+      debugPrint('visual check skipped: $e');
+    } finally {
+      if (proxy != null) {
+        final f = File(proxy);
+        unawaited(f.delete().then((_) => f, onError: (_) => f));
+      }
+      visualChecking = false;
+      _notify();
+    }
+    if (critique == null || _disposed) return;
+    final score = (critique['score'] as num).toDouble();
+    final scoreText = score.toStringAsFixed(1).replaceAll(RegExp(r'\.0$'), '');
+    final issues = ShotLogService.repairableIssues(critique);
+    if (issues.isEmpty) {
+      final summary = jStr(critique['summary']);
+      messages.add(DirectorMessage(fromUser: false, text: 'I checked how it looks: $scoreText/10. ${summary == null || summary.isEmpty ? 'Ready to post.' : summary}'));
+      _notify();
+      return;
+    }
+    if (directorBusy) return;
+    await _directorTurn(prompt, messages.length, visualCritique: {'round': r.visualRound + 1, 'critique': critique});
+  }
+
+  /// A fast low-res render of [ir] for the visual check (360p, 15 fps), or null when it cannot be made.
+  Future<String?> _renderPreview(MobileEditIr ir) async {
+    final src = sourcePath;
+    if (src == null) return null;
+    final warnings = <String>[];
+    final inputs = await _renderInputs(ir, src, warnings, (_) {});
+    final out = await MediaEngineService.getOutputVideoPath('check_${DateTime.now().millisecondsSinceEpoch}.mp4');
+    final done = Completer<String?>();
+    final sub = MediaEngineService.renderEditIr(
+      editIr: inputs.working,
+      outputPath: out,
+      assetPaths: inputs.assetPaths,
+      overlayPaths: inputs.overlayPaths,
+      musicPaths: inputs.musicPaths,
+      watermarkPath: inputs.watermarkPath,
+      sfxPaths: inputs.sfxPaths,
+      fontPaths: inputs.fontPaths,
+      settings: const ExportSettings(maxShortSide: 360, fps: 15),
+    ).listen(
+      (p) {
+        if (p.state == RenderState.completed && !done.isCompleted) done.complete(out);
+      },
+      onError: (Object e) {
+        if (!done.isCompleted) done.complete(null);
+      },
+      onDone: () {
+        if (!done.isCompleted) done.complete(null);
+      },
+      cancelOnError: true,
+    );
+    return done.future.timeout(const Duration(minutes: 3), onTimeout: () {
+      unawaited(sub.cancel());
+      return null;
+    });
+  }
+
   /// Applies a proposal the director asked the user to confirm. Work done since the proposal was made is kept
   /// (merged), never overwritten (F-02).
   void applyProposal(int messageIndex) {
@@ -1814,6 +1994,233 @@ class StudioController extends ChangeNotifier {
   /// Resolves remote B-roll and music to local files, then renders on the device.
   /// Resolution / frame rate / quality picked on the export sheet; kept for the session.
   ExportSettings exportSettings = ExportSettings.studioDefault;
+
+  /// Everything a render needs, downloaded and checked (B-roll, music, SFX, logo, caption fonts, clip files). Items
+  /// that cannot be used are left out of [working] with a reason in [warnings]. Shared by the export and the
+  /// visual check's preview render, so both draw exactly the same timeline.
+  Future<({MobileEditIr working, Map<String, String> assetPaths, Map<String, String> overlayPaths, Map<String, String> musicPaths, Map<String, String> sfxPaths, Map<String, String> fontPaths, String? watermarkPath, List<String> usedUrls})>
+      _renderInputs(MobileEditIr ir, String src, List<String> warnings, void Function(String stage) onStage) async {
+    final overlayPaths = <String, String>{};
+    final usedUrls =
+        <String>[]; // resolved remote media in this export, for the credits
+    var working = ir;
+    await materializeEmojiStickers(ir);
+    for (final o in ir.overlays) {
+      final kind = o.source['kind'];
+      String? url = kind == 'url' ? o.source['url'] as String? : null;
+      if (kind == 'stock_query' && !o.isImage) {
+        try {
+          final hit = await director.resolveStockVideo(
+            '${o.source['query'] ?? ''}',
+          );
+          url = hit?.url;
+          if (hit?.credit != null) mediaCredits[hit!.url] = hit.credit!;
+        } on StockSearchException catch (e) {
+          // Providers failed: export the rest and say why this B-roll is missing.
+          warnings.add('Skipped B-roll "${o.source['query'] ?? o.id}": ${e.warnings.take(2).join('; ')}');
+          working = TimelineOps.removeOverlay(working, o.id);
+          continue;
+        }
+      }
+      if (kind == 'asset' && o.source['assetId'] == 'primary') {
+        overlayPaths[o.id] = src;
+        continue;
+      }
+      // Gallery photos / videos and stickers are files on this phone.
+      final local = localOverlayPath(o.source);
+      if (local != null) {
+        if (!File(local).existsSync()) {
+          warnings.add('Skipped "${o.source['query'] ?? o.id}": the file is no longer on this phone.');
+          working = TimelineOps.removeOverlay(working, o.id);
+        } else {
+          overlayPaths[o.id] = local;
+          if (url != null && url.startsWith('http')) usedUrls.add(url); // cached stock media still needs its credit
+        }
+        continue;
+      }
+      if (url == null) {
+        warnings.add(
+          'Skipped B-roll "${o.source['query'] ?? o.id}": no matching clip was found.',
+        );
+        working = TimelineOps.removeOverlay(working, o.id);
+        continue;
+      }
+      onStage('Downloading B-roll…');
+      try {
+        // Shared asset cache: usually already downloaded when the clip was added or the Director picked it;
+        // the cache keeps the right file type for the renderer.
+        overlayPaths[o.id] = await AssetCache.instance.ensure(url, kind: o.isImage ? AssetKind.image : AssetKind.video);
+        usedUrls.add(url);
+      } catch (e) {
+        warnings.add(
+          'Skipped B-roll "${o.source['query'] ?? o.id}": could not download media ($e).',
+        );
+        working = TimelineOps.removeOverlay(working, o.id);
+      }
+    }
+    // The renderer refuses overlapping full-screen cutaways (the whole export would fail): shorten them instead.
+    final (resolved, shortened) = TimelineOps.resolveCutawayOverlaps(working);
+    if (shortened > 0) {
+      working = resolved;
+      warnings.add('$shortened full-screen B-roll clip${shortened == 1 ? ' ran' : 's ran'} into the next one and '
+          '${shortened == 1 ? 'was' : 'were'} shortened. Make one picture-in-picture to show both.');
+    }
+    final musicPaths = <String, String>{};
+    for (final m in working.audio.music) {
+      final kind = m.source['kind'];
+      if (kind == 'asset' || kind == 'file') {
+        // The creator's own track, on this phone (F-04: it used to be dropped as "could not be found").
+        final local = localOverlayPath(m.source);
+        final name = '${m.source['title'] ?? m.source['query'] ?? 'your music file'}';
+        if (local == null || !File(local).existsSync()) {
+          warnings.add('Music "$name" is no longer on this phone, so the video was exported without it. Add it again to keep it.');
+          working = TimelineOps.removeMusic(working, id: m.id);
+        } else {
+          musicPaths[m.id] = local;
+        }
+        continue;
+      }
+      String? url = kind == 'url' ? m.source['url'] as String? : null;
+      final query = '${m.source['query'] ?? ''}';
+      if (kind == 'stock_query') {
+        final t = await director.resolveMusicTrack(query);
+        url = t?.url;
+        if (t?.credit != null) mediaCredits[t!.url] = t.credit!;
+      } else if (url != null &&
+          !mediaCredits.containsKey(url) &&
+          query.isNotEmpty) {
+        // Director-picked catalogue track: look up its credit line (best effort).
+        try {
+          final t = await director.resolveMusicTrack(query, preferUrl: url);
+          if (t?.credit != null) mediaCredits[url] = t!.credit!;
+        } catch (_) {}
+      }
+      if (url == null) {
+        warnings.add(
+          'Music "${m.source['query'] ?? ''}" could not be found, so the video was exported without it.',
+        );
+        working = TimelineOps.removeMusic(working, id: m.id);
+        continue;
+      }
+      onStage('Downloading music…');
+      try {
+        musicPaths[m.id] = await AssetCache.instance.ensure(url, kind: AssetKind.audio);
+        usedUrls.add(url);
+      } catch (e) {
+        warnings.add(
+          'Background music "${m.source['title'] ?? m.source['query'] ?? m.id}" could not be downloaded ($e). Exporting without it.',
+        );
+        working = TimelineOps.removeMusic(working, id: m.id);
+      }
+    }
+    final sfxPaths = <String, String>{};
+    final keptSfx = <EditIrSfx>[];
+    for (final e in working.audio.sfx) {
+      final kind = e.source['kind'];
+      if (kind == 'asset' || kind == 'file') {
+        final local = localOverlayPath(e.source);
+        if (local == null || !File(local).existsSync()) {
+          warnings.add('Sound effect "${e.credit ?? e.id}" is no longer on this phone and was left out.');
+        } else {
+          sfxPaths[e.id] = local;
+          keptSfx.add(e);
+        }
+        continue;
+      }
+      final url = e.source['url'] as String?;
+      if (url == null || !url.startsWith('https://')) {
+        warnings.add('Skipped a sound effect with no downloadable file.');
+        continue;
+      }
+      try {
+        sfxPaths[e.id] = await AssetCache.instance.ensure(url, kind: AssetKind.audio);
+        keptSfx.add(e);
+        if (e.credit != null) mediaCredits[url] = e.credit!;
+      } catch (_) {
+        warnings.add(
+          'A sound effect could not be downloaded and was left out.',
+        );
+      }
+    }
+    if (keptSfx.length != working.audio.sfx.length) {
+      final a = working.audio;
+      working = MobileEditIr(
+        projectId: working.projectId,
+        canvas: working.canvas,
+        durationMs: working.durationMs,
+        clips: working.clips,
+        sources: working.sources,
+        overlays: working.overlays,
+        captions: working.captions,
+        zooms: working.zooms,
+        effects: working.effects,
+        audio: EditIrAudio(
+          originalVolumeDb: a.originalVolumeDb,
+          music: a.music,
+          speechRangesMs: a.speechRangesMs,
+          sfx: keptSfx,
+          voiceovers: a.voiceovers,
+        ),
+        watermark: working.watermark,
+        itemMeta: working.itemMeta,
+      );
+    }
+    String? watermarkPath;
+    final wm = working.watermark;
+    if (wm != null) {
+      if (wm.localPath != null && File(wm.localPath!).existsSync()) {
+        watermarkPath = wm.localPath;
+      } else {
+        try {
+          onStage('Downloading logo…');
+          watermarkPath = await AssetCache.instance.ensure(wm.imageUrl, kind: AssetKind.image);
+        } catch (_) {
+          warnings.add(
+            'The brand logo could not be downloaded, so the video was exported without the watermark.',
+          );
+          working = working.withWatermark(null);
+        }
+      }
+    }
+    var fontPaths = const <String, String>{};
+    if (working.captions.isNotEmpty) {
+      onStage('Preparing caption fonts…');
+      final (paths, fontWarnings) = await CaptionFonts.resolveForExport(working);
+      fontPaths = paths;
+      warnings.addAll(fontWarnings);
+    }
+    // The renderer reads local files only: stock clips placed on the main track are downloaded first.
+    // A main clip cannot be skipped like B-roll, so a failed download stops the export with its reason.
+    final assetPaths = <String, String>{};
+    for (final id in working.assetIds) {
+      final path = _assetPathForExport(id, src);
+      if (path.startsWith('http://') || path.startsWith('https://')) {
+        onStage('Downloading clips…');
+        assetPaths[id] = await AssetCache.instance.ensure(path, kind: AssetKind.video);
+        usedUrls.add(path);
+      } else {
+        assetPaths[id] = path;
+      }
+    }
+    // Voiceover recordings are local files referenced by asset id.
+    for (final v in working.audio.voiceovers) {
+      final path = sourcePaths[v.assetId];
+      if (path == null || !File(path).existsSync()) {
+        throw MediaEngineException('FILE_NOT_FOUND', 'A voiceover recording is no longer on this phone. Record it again or remove it from the timeline.');
+      }
+      assetPaths[v.assetId] = path;
+    }
+    return (
+      working: working,
+      assetPaths: assetPaths,
+      overlayPaths: overlayPaths,
+      musicPaths: musicPaths,
+      sfxPaths: sfxPaths,
+      fontPaths: fontPaths,
+      watermarkPath: watermarkPath,
+      usedUrls: usedUrls,
+    );
+  }
 
   Future<void> startExport() async {
     if (_ir == null || sourcePath == null || (export?.running ?? false)) return;
@@ -1841,221 +2248,10 @@ class StudioController extends ChangeNotifier {
     export = ExportState(stage: 'Preparing media…');
     _notify();
     try {
-      final overlayPaths = <String, String>{};
-      final usedUrls =
-          <String>[]; // resolved remote media in this export, for the credits
-      var working = ir;
-      await materializeEmojiStickers(ir);
-      for (final o in ir.overlays) {
-        final kind = o.source['kind'];
-        String? url = kind == 'url' ? o.source['url'] as String? : null;
-        if (kind == 'stock_query' && !o.isImage) {
-          try {
-            final hit = await director.resolveStockVideo(
-              '${o.source['query'] ?? ''}',
-            );
-            url = hit?.url;
-            if (hit?.credit != null) mediaCredits[hit!.url] = hit.credit!;
-          } on StockSearchException catch (e) {
-            // Providers failed: export the rest and say why this B-roll is missing.
-            warnings.add('Skipped B-roll "${o.source['query'] ?? o.id}": ${e.warnings.take(2).join('; ')}');
-            working = TimelineOps.removeOverlay(working, o.id);
-            continue;
-          }
-        }
-        if (kind == 'asset' && o.source['assetId'] == 'primary') {
-          overlayPaths[o.id] = src;
-          continue;
-        }
-        // Gallery photos / videos and stickers are files on this phone.
-        final local = localOverlayPath(o.source);
-        if (local != null) {
-          if (!File(local).existsSync()) {
-            warnings.add('Skipped "${o.source['query'] ?? o.id}": the file is no longer on this phone.');
-            working = TimelineOps.removeOverlay(working, o.id);
-          } else {
-            overlayPaths[o.id] = local;
-            if (url != null && url.startsWith('http')) usedUrls.add(url); // cached stock media still needs its credit
-          }
-          continue;
-        }
-        if (url == null) {
-          warnings.add(
-            'Skipped B-roll "${o.source['query'] ?? o.id}": no matching clip was found.',
-          );
-          working = TimelineOps.removeOverlay(working, o.id);
-          continue;
-        }
-        export = ExportState(stage: 'Downloading B-roll…', warnings: warnings);
+      final (:working, :assetPaths, :overlayPaths, :musicPaths, :sfxPaths, :fontPaths, :watermarkPath, :usedUrls) = await _renderInputs(ir, src, warnings, (stage) {
+        export = ExportState(stage: stage, warnings: warnings);
         _notify();
-        try {
-          // Shared asset cache: usually already downloaded when the clip was added or the Director picked it;
-          // the cache keeps the right file type for the renderer.
-          overlayPaths[o.id] = await AssetCache.instance.ensure(url, kind: o.isImage ? AssetKind.image : AssetKind.video);
-          usedUrls.add(url);
-        } catch (e) {
-          warnings.add(
-            'Skipped B-roll "${o.source['query'] ?? o.id}": could not download media ($e).',
-          );
-          working = TimelineOps.removeOverlay(working, o.id);
-        }
-      }
-      // The renderer refuses overlapping full-screen cutaways (the whole export would fail): shorten them instead.
-      final (resolved, shortened) = TimelineOps.resolveCutawayOverlaps(working);
-      if (shortened > 0) {
-        working = resolved;
-        warnings.add('$shortened full-screen B-roll clip${shortened == 1 ? ' ran' : 's ran'} into the next one and '
-            '${shortened == 1 ? 'was' : 'were'} shortened. Make one picture-in-picture to show both.');
-      }
-      final musicPaths = <String, String>{};
-      for (final m in working.audio.music) {
-        final kind = m.source['kind'];
-        if (kind == 'asset' || kind == 'file') {
-          // The creator's own track, on this phone (F-04: it used to be dropped as "could not be found").
-          final local = localOverlayPath(m.source);
-          final name = '${m.source['title'] ?? m.source['query'] ?? 'your music file'}';
-          if (local == null || !File(local).existsSync()) {
-            warnings.add('Music "$name" is no longer on this phone, so the video was exported without it. Add it again to keep it.');
-            working = TimelineOps.removeMusic(working, id: m.id);
-          } else {
-            musicPaths[m.id] = local;
-          }
-          continue;
-        }
-        String? url = kind == 'url' ? m.source['url'] as String? : null;
-        final query = '${m.source['query'] ?? ''}';
-        if (kind == 'stock_query') {
-          final t = await director.resolveMusicTrack(query);
-          url = t?.url;
-          if (t?.credit != null) mediaCredits[t!.url] = t.credit!;
-        } else if (url != null &&
-            !mediaCredits.containsKey(url) &&
-            query.isNotEmpty) {
-          // Director-picked catalogue track: look up its credit line (best effort).
-          try {
-            final t = await director.resolveMusicTrack(query, preferUrl: url);
-            if (t?.credit != null) mediaCredits[url] = t!.credit!;
-          } catch (_) {}
-        }
-        if (url == null) {
-          warnings.add(
-            'Music "${m.source['query'] ?? ''}" could not be found, so the video was exported without it.',
-          );
-          working = TimelineOps.removeMusic(working, id: m.id);
-          continue;
-        }
-        export = ExportState(stage: 'Downloading music…', warnings: warnings);
-        _notify();
-        try {
-          musicPaths[m.id] = await AssetCache.instance.ensure(url, kind: AssetKind.audio);
-          usedUrls.add(url);
-        } catch (e) {
-          warnings.add(
-            'Background music "${m.source['title'] ?? m.source['query'] ?? m.id}" could not be downloaded ($e). Exporting without it.',
-          );
-          working = TimelineOps.removeMusic(working, id: m.id);
-        }
-      }
-      final sfxPaths = <String, String>{};
-      final keptSfx = <EditIrSfx>[];
-      for (final e in working.audio.sfx) {
-        final kind = e.source['kind'];
-        if (kind == 'asset' || kind == 'file') {
-          final local = localOverlayPath(e.source);
-          if (local == null || !File(local).existsSync()) {
-            warnings.add('Sound effect "${e.credit ?? e.id}" is no longer on this phone and was left out.');
-          } else {
-            sfxPaths[e.id] = local;
-            keptSfx.add(e);
-          }
-          continue;
-        }
-        final url = e.source['url'] as String?;
-        if (url == null || !url.startsWith('https://')) {
-          warnings.add('Skipped a sound effect with no downloadable file.');
-          continue;
-        }
-        try {
-          sfxPaths[e.id] = await AssetCache.instance.ensure(url, kind: AssetKind.audio);
-          keptSfx.add(e);
-          if (e.credit != null) mediaCredits[url] = e.credit!;
-        } catch (_) {
-          warnings.add(
-            'A sound effect could not be downloaded and was left out.',
-          );
-        }
-      }
-      if (keptSfx.length != working.audio.sfx.length) {
-        final a = working.audio;
-        working = MobileEditIr(
-          projectId: working.projectId,
-          canvas: working.canvas,
-          durationMs: working.durationMs,
-          clips: working.clips,
-          sources: working.sources,
-          overlays: working.overlays,
-          captions: working.captions,
-          zooms: working.zooms,
-          effects: working.effects,
-          audio: EditIrAudio(
-            originalVolumeDb: a.originalVolumeDb,
-            music: a.music,
-            speechRangesMs: a.speechRangesMs,
-            sfx: keptSfx,
-            voiceovers: a.voiceovers,
-          ),
-          watermark: working.watermark,
-          itemMeta: working.itemMeta,
-        );
-      }
-      String? watermarkPath;
-      final wm = working.watermark;
-      if (wm != null) {
-        if (wm.localPath != null && File(wm.localPath!).existsSync()) {
-          watermarkPath = wm.localPath;
-        } else {
-          try {
-            export = ExportState(stage: 'Downloading logo…', warnings: warnings);
-            _notify();
-            watermarkPath = await AssetCache.instance.ensure(wm.imageUrl, kind: AssetKind.image);
-          } catch (_) {
-            warnings.add(
-              'The brand logo could not be downloaded, so the video was exported without the watermark.',
-            );
-            working = working.withWatermark(null);
-          }
-        }
-      }
-      var fontPaths = const <String, String>{};
-      if (working.captions.isNotEmpty) {
-        export = ExportState(stage: 'Preparing caption fonts…', warnings: warnings);
-        _notify();
-        final (paths, fontWarnings) = await CaptionFonts.resolveForExport(working);
-        fontPaths = paths;
-        warnings.addAll(fontWarnings);
-      }
-      // The renderer reads local files only: stock clips placed on the main track are downloaded first.
-      // A main clip cannot be skipped like B-roll, so a failed download stops the export with its reason.
-      final assetPaths = <String, String>{};
-      for (final id in working.assetIds) {
-        final path = _assetPathForExport(id, src);
-        if (path.startsWith('http://') || path.startsWith('https://')) {
-          export = ExportState(stage: 'Downloading clips…', warnings: warnings);
-          _notify();
-          assetPaths[id] = await AssetCache.instance.ensure(path, kind: AssetKind.video);
-          usedUrls.add(path);
-        } else {
-          assetPaths[id] = path;
-        }
-      }
-      // Voiceover recordings are local files referenced by asset id.
-      for (final v in working.audio.voiceovers) {
-        final path = sourcePaths[v.assetId];
-        if (path == null || !File(path).existsSync()) {
-          throw MediaEngineException('FILE_NOT_FOUND', 'A voiceover recording is no longer on this phone. Record it again or remove it from the timeline.');
-        }
-        assetPaths[v.assetId] = path;
-      }
+      });
       final out = await MediaEngineService.getOutputVideoPath(
         'export_${DateTime.now().millisecondsSinceEpoch}.mp4',
       );

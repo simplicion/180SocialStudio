@@ -226,11 +226,9 @@ export function toGeminiSchema(schema: any): any {
 
 // ─── Claude ──────────────────────────────────────────────────────────────────────────────────────
 
+/** Parts in the caller's order: a multi-frame request labels each image with the text right before it. */
 function claudeContent(parts: AgentContentPart[]): any[] {
-    // Images first, then the text (Anthropic's recommended order).
-    const images = parts.filter((p) => p.type === 'image').map((p: any) => ({ type: 'image', source: { type: 'base64', media_type: p.mediaType, data: p.data } }));
-    const texts = parts.filter((p) => p.type === 'text').map((p: any) => ({ type: 'text', text: p.text }));
-    return [...images, ...texts];
+    return parts.map((p) => (p.type === 'image' ? { type: 'image', source: { type: 'base64', media_type: p.mediaType, data: p.data } } : { type: 'text', text: p.text }));
 }
 
 export function toClaudeMessages(messages: AgentMessage[]): any[] {
@@ -458,6 +456,18 @@ export function makeOpenAIClient(key: string, defaultModel: string, sdk?: any): 
 // ─── Gemini ──────────────────────────────────────────────────────────────────────────────────────
 
 export function toGeminiContents(messages: AgentMessage[]): any[] {
+    const raw = toGeminiContentsUnmerged(messages);
+    // Two user turns in a row (tool results, then the next instruction) become one turn.
+    const out: any[] = [];
+    for (const c of raw) {
+        const last = out[out.length - 1];
+        if (last && last.role === c.role && c.role === 'user') last.parts = [...last.parts, ...c.parts];
+        else out.push({ ...c, parts: [...(c.parts || [])] });
+    }
+    return out;
+}
+
+function toGeminiContentsUnmerged(messages: AgentMessage[]): any[] {
     const out: any[] = [];
     const partOf = (p: AgentContentPart) => (p.type === 'text' ? { text: p.text } : { inlineData: { mimeType: p.mediaType, data: p.data } });
     for (const m of messages) {

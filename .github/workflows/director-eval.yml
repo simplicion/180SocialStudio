@@ -1,0 +1,129 @@
+name: AI Director eval
+
+# Quality-fix plan, Phase 7. See docs/social-studio-mobile/AI_DIRECTOR_V2.md ("Regression gate").
+# - Pull requests: the eval with recorded / scripted model answers (no API key, deterministic) must not lose a
+#   check that passed in scripts/director-eval/baselines/replay.json.
+# - Nightly (and on demand): the eval against the real model with the judge; fails when the median judge score
+#   drops more than 1 point below baselines/live.json, or when any turn falls back to the offline rules.
+
+on:
+  pull_request:
+    paths:
+      - "packages/domains/ai/**"
+      - "packages/video-contracts/**"
+      - "scripts/director-eval/**"
+      - ".github/workflows/director-eval.yml"
+  schedule:
+    - cron: "30 2 * * *"
+  workflow_dispatch:
+    inputs:
+      provider:
+        description: "Provider for the live eval (claude | openai | gemini)"
+        default: "claude"
+
+concurrency:
+  group: director-eval-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+jobs:
+  replay:
+    name: Director eval (replay)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 9.0.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "pnpm"
+      - run: pnpm install --frozen-lockfile
+      - name: Generate the Prisma client (no database is used)
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/unused?schema=public
+        run: pnpm db:generate
+      - name: Build the video contracts
+        run: pnpm --filter @workspace/video-contracts build
+      - name: Gate, replay and judge unit tests
+        run: npx tsx --test scripts/director-eval/gate.test.ts scripts/director-eval/replay.test.ts
+      - name: Eval with recorded / scripted answers
+        run: npx tsx scripts/director-eval/run-director-eval.ts --provider replay --out scripts/director-eval/reports --name replay
+      - name: Regression gate
+        run: npx tsx scripts/director-eval/gate.ts --report scripts/director-eval/reports/replay.json --mode replay
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: director-eval-replay
+          path: scripts/director-eval/reports/
+
+  nightly:
+    name: Director eval (live model + judge)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      AI_DIRECTOR_PROVIDER: ${{ github.event.inputs.provider || 'claude' }}
+      # Small budget: 5 fixtures, at most 6 agent turns each.
+      AI_DIRECTOR_AGENT_TURNS: "6"
+      AI_DIRECTOR_AGENT_BUDGET_MS: "120000"
+    steps:
+      - name: Check the API key
+        id: key
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY$OPENAI_API_KEY$GEMINI_API_KEY" ]; then
+            echo "::warning::No AI provider secret (ANTHROPIC_API_KEY / OPENAI_API_KEY / GEMINI_API_KEY) is set: the live Director eval is skipped."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.key.outputs.run == 'true'
+        uses: actions/checkout@v4
+      - if: steps.key.outputs.run == 'true'
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9.0.0
+      - if: steps.key.outputs.run == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "pnpm"
+      - if: steps.key.outputs.run == 'true'
+        run: pnpm install --frozen-lockfile
+      - if: steps.key.outputs.run == 'true'
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/unused?schema=public
+        run: pnpm db:generate
+      - if: steps.key.outputs.run == 'true'
+        run: pnpm --filter @workspace/video-contracts build
+      - name: Restore the score history
+        if: steps.key.outputs.run == 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: scripts/director-eval/history
+          key: director-eval-history-${{ github.run_id }}
+          restore-keys: director-eval-history-
+      - name: Eval against the real model, with the judge
+        if: steps.key.outputs.run == 'true'
+        run: npx tsx scripts/director-eval/run-director-eval.ts --provider "$AI_DIRECTOR_PROVIDER" --judge --out scripts/director-eval/reports --name nightly --history scripts/director-eval/history/scores.jsonl
+      - name: Save the score history
+        if: always() && steps.key.outputs.run == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: scripts/director-eval/history
+          key: director-eval-history-${{ github.run_id }}
+      - name: Regression gate
+        if: steps.key.outputs.run == 'true'
+        run: npx tsx scripts/director-eval/gate.ts --report scripts/director-eval/reports/nightly.json --mode live --threshold 1.0
+      - if: always() && steps.key.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: director-eval-nightly
+          path: |
+            scripts/director-eval/reports/
+            scripts/director-eval/history/

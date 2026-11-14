@@ -78,6 +78,7 @@ class _StudioSessionScreenState extends ConsumerState<StudioSessionScreen> {
   late final StudioController c = StudioController(
     director: ref.read(aiDirectorServiceProvider),
     transcriber: ref.read(transcriptionServiceProvider),
+    vision: ref.read(shotLogServiceProvider),
     projectId: widget.projectId,
     postId: widget.postId,
     pieceId: widget.pieceId,

@@ -36,6 +36,7 @@ class _DirectorPanelState extends State<DirectorPanel> {
     _seenMessages = c.messages.length;
     _seenBusy = c.directorBusy;
     WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToEnd(animate: false));
+    if (c.visionConsent == null) c.loadVisionConsent();
   }
 
   @override
@@ -109,7 +110,15 @@ class _DirectorPanelState extends State<DirectorPanel> {
       child: SizedBox(
         height: MediaQuery.of(context).size.height * 0.75,
         child: Column(children: [
-          _Header(busy: c.directorBusy, onClose: () => Navigator.pop(context)),
+          _Header(
+            busy: c.directorBusy,
+            onClose: () => Navigator.pop(context),
+            vision: c.vision == null ? null : c.visionConsent,
+            looking: c.visionBusy,
+            onVision: () => c.setVisionConsent(!(c.visionConsent ?? false)),
+          ),
+          if (c.vision != null && c.visionConsent == null)
+            VisionConsentCard(onAllow: () => c.setVisionConsent(true), onDecline: () => c.setVisionConsent(false)),
           if (c.transcriptState != TranscriptState.ready) _transcriptNote(context),
           Expanded(
             child: ListView(
@@ -124,6 +133,16 @@ class _DirectorPanelState extends State<DirectorPanel> {
                 ],
                 for (var i = 0; i < msgs.length; i++)
                   ..._messageWidgets(context, i, isLatest: i == lastDirector && !waitingForDirector),
+                if (c.visualChecking && !c.directorBusy)
+                  Padding(
+                    key: const ValueKey('director-visual-check'),
+                    padding: const EdgeInsets.fromLTRB(4, 6, 4, 0),
+                    child: Row(children: [
+                      Icon(Icons.visibility_rounded, size: 14, color: AppTheme.primary),
+                      const SizedBox(width: 6),
+                      Expanded(child: Text('Checking how the edit looks…', style: TextStyle(fontSize: 12, color: AppTheme.textSecondary))),
+                    ]),
+                  ),
                 if (c.directorBusy) const _TypingIndicator(),
                 if (c.directorBusy)
                   Padding(
@@ -376,10 +395,55 @@ class FallbackBanner extends StatelessWidget {
   }
 }
 
+/// One-time question (AI Director quality-fix Phase 2): may the editor look at a few stills of the clips?
+class VisionConsentCard extends StatelessWidget {
+  const VisionConsentCard({super.key, required this.onAllow, required this.onDecline});
+  final VoidCallback onAllow;
+  final VoidCallback onDecline;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const ValueKey('director-vision-consent'),
+      margin: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(Icons.visibility_outlined, size: 18, color: AppTheme.primary),
+          const SizedBox(width: 8),
+          Expanded(child: Text('Let your editor see your clips?', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.textPrimary))),
+        ]),
+        const SizedBox(height: 6),
+        Text(
+          'For much better edits, I can look at about 60 small still photos from each clip (never the video itself). '
+          'They are used once to describe each shot and deleted right away; only the text description is kept. '
+          'You can turn this off any time with the eye button above.',
+          style: TextStyle(fontSize: 12, height: 1.35, color: AppTheme.textSecondary),
+        ),
+        const SizedBox(height: 8),
+        Wrap(spacing: 8, children: [
+          FilledButton(onPressed: onAllow, child: const Text('Allow')),
+          TextButton(onPressed: onDecline, child: const Text('Not now')),
+        ]),
+      ]),
+    );
+  }
+}
+
 class _Header extends StatelessWidget {
-  const _Header({required this.busy, required this.onClose});
+  const _Header({required this.busy, required this.onClose, this.vision, this.looking = false, this.onVision});
   final bool busy;
   final VoidCallback onClose;
+
+  /// The vision setting: null = not offered / not decided yet, true = the editor sees stills.
+  final bool? vision;
+  final bool looking;
+  final VoidCallback? onVision;
 
   @override
   Widget build(BuildContext context) {
@@ -391,9 +455,19 @@ class _Header extends StatelessWidget {
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('AI Director', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 17)),
-            Text(busy ? 'typing…' : 'Your video editor', style: TextStyle(fontSize: 12, color: busy ? AppTheme.primary : AppTheme.textMuted)),
+            Text(
+              busy ? 'typing…' : looking ? 'looking at your clips…' : 'Your video editor',
+              style: TextStyle(fontSize: 12, color: busy || looking ? AppTheme.primary : AppTheme.textMuted),
+            ),
           ]),
         ),
+        if (vision != null)
+          IconButton(
+            key: const ValueKey('director-vision-toggle'),
+            tooltip: vision! ? 'Editor sees stills of your clips (tap to turn off)' : 'Let the editor see stills of your clips',
+            onPressed: onVision,
+            icon: Icon(vision! ? Icons.visibility_rounded : Icons.visibility_off_outlined, color: vision! ? AppTheme.primary : AppTheme.textMuted),
+          ),
         IconButton(onPressed: onClose, icon: const Icon(Icons.close_rounded)),
       ]),
     );

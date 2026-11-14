@@ -10,12 +10,12 @@ Audit of `180SocialStudio-production` (Nov 2026). Scope: the mobile AI Director 
 |---|---|---|
 | 0. Baseline and visibility | Done 2026-11-13 | Turn log, `/media-editor/director-report`, phone fallback banner, `scripts/director-eval/`. Real-LLM baseline run is part of the final configuration pass. |
 | 1. Provider layer | Done 2026-11-13 | See "Phase 1: what changed". Real-key check (0% fallback) is part of the final configuration pass. |
-| 2. Eyes (frames + ShotLog) | Not started | Decided 2026-11-13: hybrid (see "Decision" below). |
-| 3. Story pass | Not started | |
-| 4. Agentic loop | Not started | |
-| 5. Visual critic | Not started | |
-| 6. Style playbooks | Not started | |
-| 7. Regression gate | Not started | |
+| 2. Eyes (frames + ShotLog) | Done 2026-11-13 | Hybrid consent; stills never stored. Swift not compiled (needs a Mac); real-footage check pending. See contract addendum 2026-11-13 (b). |
+| 3. Story pass | Done 2026-11-13 | Lines picked by id, cut at word boundaries; contract addendum 2026-11-13 (c). `SemanticTakeCurator` not used (hardcoded to one project); repetition/hook heuristics ported as signals. Real-model eval pending. |
+| 4. Agentic loop | Done 2026-11-13 | Stages + per-call tool results; contract addendum 2026-11-13 (d). Critic repairs still one-shot (Phase 5 replaces them). Real-model eval pending. |
+| 5. Visual critic | Done 2026-11-15 | Preview render → stills at checkpoints → critique → up to 2 repair turns; contract addendum 2026-11-15 (e). Planted-problem check needs real footage + a real model (pending). |
+| 6. Style playbooks | Done 2026-11-15 | 4 playbooks v1.0.0, chosen per whole edit, measured in the critic and the eval; contract addendum 2026-11-15 (f). Real-model "targets met" run pending. |
+| 7. Regression gate | Done 2026-11-15 | PR replay job + nightly live job with judge and score history (`.github/workflows/director-eval.yml`); `AI_DIRECTOR_V2.md`. Live baseline, real recordings and a first GitHub run pending (need the API-key secret and a push). |
 
 ### Phase 0: what exists now
 

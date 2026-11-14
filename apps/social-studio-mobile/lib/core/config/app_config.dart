@@ -112,6 +112,9 @@ class AppConfig {
   static const Duration connectTimeout = Duration(seconds: 15);
   static const Duration defaultReceiveTimeout = Duration(seconds: 30);
   static const Duration aiReceiveTimeout = Duration(seconds: 120);
+
+  /// One AI Director turn: a whole edit runs the story pass and then the edit planner (two model calls).
+  static const Duration directorTimeout = Duration(seconds: 180);
   static const Duration calendarGenerationTimeout = Duration(seconds: 180);
   static const Duration uploadTimeout = Duration(minutes: 10);
 

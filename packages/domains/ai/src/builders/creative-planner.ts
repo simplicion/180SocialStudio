@@ -29,9 +29,12 @@ import {
 } from "@workspace/video-contracts";
 import { AIProviderService, AIClient, AISettings, ReasoningEffort } from "../kernel/ai-provider.service";
 import { resolveModel, VaultModels } from "../kernel/model-config";
+import { playbookPromptLines, type StylePlaybook } from "@workspace/video-contracts";
 import {
   CHAT_TOOL_NAME,
   DIRECTOR_PERSONA,
+  PERSONA_BLIND,
+  PERSONA_SEEING,
   DirectorConversation,
   buildChatToolDefinition,
   conversationFromText,
@@ -72,6 +75,10 @@ export interface PlanGenerationParams {
    * may change. Absent = a whole edit (the desktop / legacy path).
    */
   scope?: { mode: DirectorIntent["mode"] | "open"; targets: DirectorIntent["targets"]; mustNotTouch: string[]; tools: string[] | null };
+  /** A ShotLog (vision pass) is part of the context: the persona may say it has seen the stills. */
+  hasVision?: boolean;
+  /** Phase 6: the style playbook of a whole edit; only this one is put in the prompt. */
+  playbook?: StylePlaybook;
 }
 
 export interface PlannerOutcome {
@@ -417,6 +424,11 @@ export class CreativePlanner {
     }
   }
 
+  /** The Director's client and model for the company (or the injected client); null client = none, with the reason. */
+  static resolveDirectorClient(params: Pick<PlanGenerationParams, "llmClient" | "llmModel" | "companyId">) {
+    return this.resolveClient(params as PlanGenerationParams);
+  }
+
   private static async resolveClient(params: PlanGenerationParams): Promise<{ client: AIClient | null; reason: string; model?: string }> {
     if (params.llmClient !== undefined) {
       if (params.llmClient === null) return { client: null, reason: "LLM disabled for this request" };
@@ -451,7 +463,7 @@ export class CreativePlanner {
     return { plan, plannerSource: "deterministic", plannerReason: reason, llmAttempts: attempts };
   }
 
-  private static buildPlan(
+  static buildPlan(
     params: PlanGenerationParams,
     operations: CreativeOperation[],
     explanation: string,
@@ -497,17 +509,19 @@ export class CreativePlanner {
    * The system prompt: persona, conversation protocol, rules and craft. Depends only on the request's mode, so it is
    * byte-identical across turns of that mode and the provider caches it (with the tools) instead of re-reading it.
    */
-  static buildSystemPrompt(params: Pick<PlanGenerationParams, "scope">): string {
+  static buildSystemPrompt(params: Pick<PlanGenerationParams, "scope" | "hasVision" | "playbook">): string {
     const mode = params.scope?.mode ?? "full_edit";
     const fullEdit = mode === "full_edit";
     const lines: string[] = [
-      DIRECTOR_PERSONA,
+      // Claims sight only when a ShotLog was sent (Phase 2.5).
+      params.hasVision ? DIRECTOR_PERSONA.replace(PERSONA_BLIND, PERSONA_SEEING) : DIRECTOR_PERSONA,
       // The first rule, before anything else: change only what was asked (Phase 3.2).
       `## The most important rule`,
       `Change only what the creator asked. Everything not mentioned must stay exactly as it is. Prefer the update tools over removing and re-adding. Never regenerate captions, replace music, reframe or re-cut unless asked.`,
       ``,
     ];
-    if (fullEdit) lines.push(
+    if (fullEdit && params.playbook) lines.push(...playbookPromptLines(params.playbook));
+    else if (fullEdit) lines.push(
       `## Editing craft for a whole-video edit (how you edit; never recite this to the creator)`,
       `- Hook: start tight on the first spoken word; a pattern interrupt in the first 1.5s (punch-in zoom, bold title or cutaway) works well.`,
       `- Pacing: on energetic edits avoid a static frame for more than ~4s; alternate the main shot, punch-in zooms on key phrases, B-roll that shows what is being said, highlighted captions.`,

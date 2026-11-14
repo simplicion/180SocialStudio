@@ -49,7 +49,11 @@ class MediaAnalysis {
     this.faces,
     this.beatsMs,
     this.intelligence,
+    this.shotLog,
   });
+
+  /// What the server's vision model saw in stills of this source (ShotLog JSON, `shotlog/1`), only with consent.
+  final Json? shotLog;
 
   /// On-device scene cuts, on-screen text, scene labels and loudness (all optional, computed on the phone).
   final MediaIntelligence? intelligence;
@@ -81,6 +85,7 @@ class MediaAnalysis {
         'faces': faces == null || faces!.isEmpty ? null : faces!.map((f) => f.toJson()).toList(),
         'beatsMs': beatsMs == null || beatsMs!.isEmpty ? null : beatsMs,
         ...?intelligence?.toJson(),
+        'shotLog': shotLog,
       });
 }
 
@@ -109,7 +114,15 @@ class DirectorResponse {
     this.runId,
     this.fallbackCode,
     this.fallbackReason,
+    this.checkpoints = const [],
+    this.visualRound = 0,
   });
+
+  /// Where to take stills of this result for the visual check (server `checkpoints`: {tMs, kind, label, refs}).
+  final List<Json> checkpoints;
+
+  /// 0 = a normal turn; 1 / 2 = this turn repaired what the visual check found.
+  final int visualRound;
 
   /// Why the offline rules made this edit instead of the AI model (server `plannerFallback.code`):
   /// no_key | llm_disabled | no_tool_calling | timeout | budget | llm_error | empty_response | invalid_output | unknown.
@@ -210,6 +223,8 @@ class DirectorResponse {
       runId: jStr(d['runId']),
       fallbackCode: jStr(jMap(d['plannerFallback'])['code']),
       fallbackReason: jStr(jMap(d['plannerFallback'])['reason']),
+      checkpoints: jList(d['checkpoints'], (m) => m).take(40).toList(),
+      visualRound: (d['visualRound'] as num?)?.toInt() ?? 0,
       editIrJson: ir,
       editIr: parsed,
       credits: {
@@ -361,6 +376,7 @@ class AiDirectorService {
     List<MediaAnalysis> mediaList = const [],
     List<String> analysisPending = const [],
     List<int> musicBeatsMs = const [],
+    Json? visualCritique,
   }) {
     final trimmed = history.length > maxHistory ? history.sublist(history.length - maxHistory) : history;
     return {
@@ -380,6 +396,8 @@ class AiDirectorService {
       if (musicBeatsMs.isNotEmpty) 'musicBeatsMs': musicBeatsMs.take(5000).toList(),
       // What this phone's renderer draws; the Director uses nothing else (Phase 6).
       if (rendererCapabilities.isNotEmpty) 'rendererCapabilities': rendererCapabilities,
+      // A repair turn after the visual check (quality-fix Phase 5): {round, critique}.
+      'visualCritique': ?visualCritique,
     };
   }
 
@@ -396,6 +414,7 @@ class AiDirectorService {
     List<MediaAnalysis> mediaList = const [],
     List<String> analysisPending = const [],
     List<int> musicBeatsMs = const [],
+    Json? visualCritique,
     CancelToken? cancelToken,
   }) async {
     if (prompt.trim().isEmpty && intent != 'greet') {
@@ -415,9 +434,10 @@ class AiDirectorService {
       mediaList: mediaList,
       analysisPending: analysisPending,
       musicBeatsMs: musicBeatsMs,
+      visualCritique: visualCritique,
     );
     Future<Json> call() => _api.post(path,
-        body: body, device: true, timeout: AppConfig.aiReceiveTimeout, cancelToken: cancelToken);
+        body: body, device: true, timeout: AppConfig.directorTimeout, cancelToken: cancelToken);
     Json r;
     try {
       r = await call();

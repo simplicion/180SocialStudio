@@ -1570,6 +1570,313 @@
       "loudness": {
         "integratedLufs": -19.5,
         "truePeakDb": -2.1
+      },
+      "shotLog": {
+        "version": "shotlog/1",
+        "assetId": "primary",
+        "sourceHash": "eval-primary-64668",
+        "durationMs": 64668,
+        "model": "eval/fixture",
+        "frameCount": 33,
+        "shots": [
+          {
+            "startMs": 0,
+            "endMs": 7185,
+            "description": "a founder talking to camera at a desk in a warm, slightly dim home office",
+            "subjects": [
+              {
+                "label": "founder",
+                "box": {
+                  "x": 0.35,
+                  "y": 0.12,
+                  "w": 0.3,
+                  "h": 0.48
+                },
+                "primary": true
+              },
+              {
+                "label": "laptop",
+                "box": {
+                  "x": 0.6,
+                  "y": 0.66,
+                  "w": 0.3,
+                  "h": 0.18
+                }
+              }
+            ],
+            "framing": "medium",
+            "cameraMotion": "static",
+            "quality": [
+              "dark"
+            ],
+            "brollSuitability": 0.2,
+            "energy": "medium"
+          },
+          {
+            "startMs": 7185,
+            "endMs": 14371,
+            "description": "a founder talking to camera at a desk in a warm, slightly dim home office",
+            "subjects": [
+              {
+                "label": "founder",
+                "box": {
+                  "x": 0.35,
+                  "y": 0.12,
+                  "w": 0.3,
+                  "h": 0.48
+                },
+                "primary": true
+              },
+              {
+                "label": "laptop",
+                "box": {
+                  "x": 0.6,
+                  "y": 0.66,
+                  "w": 0.3,
+                  "h": 0.18
+                }
+              }
+            ],
+            "framing": "medium",
+            "cameraMotion": "static",
+            "quality": [
+              "dark"
+            ],
+            "brollSuitability": 0.2,
+            "energy": "medium"
+          },
+          {
+            "startMs": 14371,
+            "endMs": 21556,
+            "description": "a founder talking to camera at a desk in a warm, slightly dim home office",
+            "subjects": [
+              {
+                "label": "founder",
+                "box": {
+                  "x": 0.35,
+                  "y": 0.12,
+                  "w": 0.3,
+                  "h": 0.48
+                },
+                "primary": true
+              },
+              {
+                "label": "laptop",
+                "box": {
+                  "x": 0.6,
+                  "y": 0.66,
+                  "w": 0.3,
+                  "h": 0.18
+                }
+              }
+            ],
+            "framing": "medium",
+            "cameraMotion": "static",
+            "quality": [
+              "dark"
+            ],
+            "brollSuitability": 0.2,
+            "energy": "medium"
+          },
+          {
+            "startMs": 21556,
+            "endMs": 28741,
+            "description": "a founder talking to camera at a desk in a warm, slightly dim home office",
+            "subjects": [
+              {
+                "label": "founder",
+                "box": {
+                  "x": 0.35,
+                  "y": 0.12,
+                  "w": 0.3,
+                  "h": 0.48
+                },
+                "primary": true
+              },
+              {
+                "label": "laptop",
+                "box": {
+                  "x": 0.6,
+                  "y": 0.66,
+                  "w": 0.3,
+                  "h": 0.18
+                }
+              }
+            ],
+            "framing": "medium",
+            "cameraMotion": "static",
+            "quality": [
+              "dark"
+            ],
+            "brollSuitability": 0.2,
+            "energy": "medium"
+          },
+          {
+            "startMs": 28741,
+            "endMs": 35927,
+            "description": "a founder talking to camera at a desk in a warm, slightly dim home office",
+            "subjects": [
+              {
+                "label": "founder",
+                "box": {
+                  "x": 0.35,
+                  "y": 0.12,
+                  "w": 0.3,
+                  "h": 0.48
+                },
+                "primary": true
+              },
+              {
+                "label": "laptop",
+                "box": {
+                  "x": 0.6,
+                  "y": 0.66,
+                  "w": 0.3,
+                  "h": 0.18
+                }
+              }
+            ],
+            "framing": "medium",
+            "cameraMotion": "static",
+            "quality": [
+              "dark"
+            ],
+            "brollSuitability": 0.2,
+            "energy": "medium"
+          },
+          {
+            "startMs": 35927,
+            "endMs": 43112,
+            "description": "a founder talking to camera at a desk in a warm, slightly dim home office",
+            "subjects": [
+              {
+                "label": "founder",
+                "box": {
+                  "x": 0.35,
+                  "y": 0.12,
+                  "w": 0.3,
+                  "h": 0.48
+                },
+                "primary": true
+              },
+              {
+                "label": "laptop",
+                "box": {
+                  "x": 0.6,
+                  "y": 0.66,
+                  "w": 0.3,
+                  "h": 0.18
+                }
+              }
+            ],
+            "framing": "medium",
+            "cameraMotion": "static",
+            "quality": [
+              "dark"
+            ],
+            "brollSuitability": 0.2,
+            "energy": "medium"
+          },
+          {
+            "startMs": 43112,
+            "endMs": 50297,
+            "description": "a founder talking to camera at a desk in a warm, slightly dim home office",
+            "subjects": [
+              {
+                "label": "founder",
+                "box": {
+                  "x": 0.35,
+                  "y": 0.12,
+                  "w": 0.3,
+                  "h": 0.48
+                },
+                "primary": true
+              },
+              {
+                "label": "laptop",
+                "box": {
+                  "x": 0.6,
+                  "y": 0.66,
+                  "w": 0.3,
+                  "h": 0.18
+                }
+              }
+            ],
+            "framing": "medium",
+            "cameraMotion": "static",
+            "quality": [
+              "dark"
+            ],
+            "brollSuitability": 0.2,
+            "energy": "medium"
+          },
+          {
+            "startMs": 50297,
+            "endMs": 57483,
+            "description": "a founder talking to camera at a desk in a warm, slightly dim home office",
+            "subjects": [
+              {
+                "label": "founder",
+                "box": {
+                  "x": 0.35,
+                  "y": 0.12,
+                  "w": 0.3,
+                  "h": 0.48
+                },
+                "primary": true
+              },
+              {
+                "label": "laptop",
+                "box": {
+                  "x": 0.6,
+                  "y": 0.66,
+                  "w": 0.3,
+                  "h": 0.18
+                }
+              }
+            ],
+            "framing": "medium",
+            "cameraMotion": "static",
+            "quality": [
+              "dark"
+            ],
+            "brollSuitability": 0.2,
+            "energy": "medium"
+          },
+          {
+            "startMs": 57483,
+            "endMs": 64668,
+            "description": "a founder talking to camera at a desk in a warm, slightly dim home office",
+            "subjects": [
+              {
+                "label": "founder",
+                "box": {
+                  "x": 0.35,
+                  "y": 0.12,
+                  "w": 0.3,
+                  "h": 0.48
+                },
+                "primary": true
+              },
+              {
+                "label": "laptop",
+                "box": {
+                  "x": 0.6,
+                  "y": 0.66,
+                  "w": 0.3,
+                  "h": 0.18
+                }
+              }
+            ],
+            "framing": "medium",
+            "cameraMotion": "static",
+            "quality": [
+              "dark"
+            ],
+            "brollSuitability": 0.2,
+            "energy": "medium"
+          }
+        ]
       }
     }
   },
@@ -1606,7 +1913,9 @@
       "captions": true,
       "minZooms": 1,
       "maxZooms": 4,
-      "maxDurationMs": 60768
+      "maxDurationMs": 60768,
+      "zoomsOnSubject": true,
+      "playbook": "fast_hype"
     }
   }
 }

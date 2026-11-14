@@ -1,3 +1,4 @@
+import { VisualRepairRequestSchema } from "./visual-critique";
 import { z } from "zod";
 import { MobileMediaDescriptorSchema, MobileEditIRSchema } from "./mobile-edit-ir";
 import { DirectorConstraintsSchema } from "./director-constraints";
@@ -120,6 +121,11 @@ export const MobileAIDirectRequestSchema = z.object({
   constraints: DirectorConstraintsSchema.optional(),
   /** Device QA of the last export of `currentEditIR`; fed to the critic. */
   lastExportQa: LastExportQaSchema.optional(),
+  /**
+   * A repair turn after the visual check (added 2026-11, quality-fix Phase 5): what the vision critic saw in stills of
+   * the applied timeline. The Director fixes only these issues (round 1 or 2) and never removes what was asked for.
+   */
+  visualCritique: VisualRepairRequestSchema.optional(),
   /**
    * The phone's timeline revision `currentEditIR` was taken at (added 2026-11). Echoed back as `baseRevision`, so a
    * response that arrives after newer manual edits is merged onto them instead of replacing them.

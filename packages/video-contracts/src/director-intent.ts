@@ -129,7 +129,7 @@ const KIND_WORDS: Array<[IntentTargetKind, RegExp]> = [
 ];
 
 /** Whole-video asks: "edit this", "make it viral", "make it punchy for reels", "do your thing". */
-const WHOLE_EDIT = /\b(edit (this|it|the video|my video)( for (reels?|tiktok|shorts|instagram|youtube))?|(make|turn) (it|this|the video)( more| a bit| a little)? (viral|punch(y|ier)|engaging|professional|pro|snappy|tiktok[- ]ready|pop|better|good|nice|great)|(for|ready for) (reels?|tiktok|shorts|youtube shorts|instagram)|do your (thing|magic)|full (edit|pass)|edit (it )?(from scratch|for me)|polish (it|this)|clean (it|this) up|improve( it| this)?|start over|redo (it|everything|the (whole )?edit))\b/g;
+const WHOLE_EDIT = /\b(edit (this|it|the video|my video)( for (reels?|tiktok|shorts|instagram|youtube))?|(make|turn) (it|this|the video)( more| a bit| a little)? (viral|punch(y|ier)|engaging|professional|pro|snappy|tiktok[- ]ready|pop|better|good|nice|great)|(for|ready for) (reels?|tiktok|shorts|youtube shorts|instagram)|do your (thing|magic)|full (edit|pass)|edit (it )?(from scratch|for me)|polish (it|this)|clean (it|this) up|improve( it| this)?|start over|redo (it|everything|the (whole )?edit)|clean (this|my|the) \w+ up|(turn|make|edit) (it|this|the video|my video)( \w+){0,2} into an? |(make|turn) (it|this) (a|an) [\w ]{0,30}?(vlog|reel|short|clip|video|tiktok))\b/g;
 /** Small talk: answered in the chat, nothing is edited. */
 const SMALL_TALK = /^\s*(hi|hey|hello|yo|hiya|thanks?|thank you|thx|ty|cool|nice|great|awesome|love it|perfect|good job|amazing|lol|haha)\b[\s!.:)]*$/i;
 /** The creator explicitly wants everything redone, even over their own edits. */
@@ -203,6 +203,12 @@ export function classifyDirectorIntentOffline(prompt: string): OfflineIntent {
   const isQuestion = QUESTION.test(text) && (!EDIT_VERB.test(text) || /^(what|how|why|which|should i|do you|is it|is there|are there)\b/.test(text));
   if (isQuestion) return { ...base, mode: "question", targets: kinds.map((kind) => ({ kind })) };
   if (wholeEdit && kinds.length === 0) return { ...base, mode: "full_edit", targets: [] };
+  // A whole-edit ask that also names features to ADD ("clean this tutorial up and add captions", "a punchy vlog with
+  // music") is a whole edit with explicit asks (quality-fix Phase 6); one that changes an existing item stays scoped.
+  if (wholeEdit && kinds.every((k) => actions.get(k) === "add" || k === "clip" || k === "canvas" || k === "audio")) {
+    const at0 = timeIn(text);
+    return { ...base, mode: "full_edit", targets: kinds.map((kind) => ({ kind, action: actions.get(kind) ?? "add", ...(at0 !== undefined ? { timeSec: at0 } : {}) })) };
+  }
   if (kinds.length === 0) {
     // Nothing the rules know ("yes", another language, an unusual phrasing): an LLM decides, with the conversation.
     return { ...base, mode: "ambiguous", targets: [], unknown: true };

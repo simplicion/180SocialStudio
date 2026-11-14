@@ -263,6 +263,60 @@
       "loudness": {
         "integratedLufs": -20,
         "truePeakDb": -2.5
+      },
+      "shotLog": {
+        "version": "shotlog/1",
+        "assetId": "take1",
+        "sourceHash": "eval-take1-10782",
+        "durationMs": 10782,
+        "model": "eval/fixture",
+        "frameCount": 6,
+        "shots": [
+          {
+            "startMs": 0,
+            "endMs": 5391,
+            "description": "the creator talking to camera in a bright kitchen",
+            "subjects": [
+              {
+                "label": "creator",
+                "box": {
+                  "x": 0.36,
+                  "y": 0.14,
+                  "w": 0.28,
+                  "h": 0.44
+                },
+                "primary": true
+              }
+            ],
+            "framing": "medium",
+            "cameraMotion": "static",
+            "quality": [],
+            "brollSuitability": 0.2,
+            "energy": "medium"
+          },
+          {
+            "startMs": 5391,
+            "endMs": 10782,
+            "description": "the creator talking to camera in a bright kitchen",
+            "subjects": [
+              {
+                "label": "creator",
+                "box": {
+                  "x": 0.36,
+                  "y": 0.14,
+                  "w": 0.28,
+                  "h": 0.44
+                },
+                "primary": true
+              }
+            ],
+            "framing": "medium",
+            "cameraMotion": "static",
+            "quality": [],
+            "brollSuitability": 0.2,
+            "energy": "medium"
+          }
+        ]
       }
     },
     "mediaList": [
@@ -591,6 +645,60 @@
         "loudness": {
           "integratedLufs": -20,
           "truePeakDb": -2.5
+        },
+        "shotLog": {
+          "version": "shotlog/1",
+          "assetId": "take2",
+          "sourceHash": "eval-take2-13401",
+          "durationMs": 13401,
+          "model": "eval/fixture",
+          "frameCount": 7,
+          "shots": [
+            {
+              "startMs": 0,
+              "endMs": 6701,
+              "description": "the creator talking to camera in a bright kitchen",
+              "subjects": [
+                {
+                  "label": "creator",
+                  "box": {
+                    "x": 0.36,
+                    "y": 0.14,
+                    "w": 0.28,
+                    "h": 0.44
+                  },
+                  "primary": true
+                }
+              ],
+              "framing": "medium",
+              "cameraMotion": "static",
+              "quality": [],
+              "brollSuitability": 0.2,
+              "energy": "medium"
+            },
+            {
+              "startMs": 6701,
+              "endMs": 13401,
+              "description": "the creator talking to camera in a bright kitchen",
+              "subjects": [
+                {
+                  "label": "creator",
+                  "box": {
+                    "x": 0.36,
+                    "y": 0.14,
+                    "w": 0.28,
+                    "h": 0.44
+                  },
+                  "primary": true
+                }
+              ],
+              "framing": "medium",
+              "cameraMotion": "static",
+              "quality": [],
+              "brollSuitability": 0.2,
+              "energy": "medium"
+            }
+          ]
         }
       },
       {
@@ -1204,6 +1312,104 @@
         "loudness": {
           "integratedLufs": -20,
           "truePeakDb": -2.5
+        },
+        "shotLog": {
+          "version": "shotlog/1",
+          "assetId": "take3",
+          "sourceHash": "eval-take3-24541",
+          "durationMs": 24541,
+          "model": "eval/fixture",
+          "frameCount": 13,
+          "shots": [
+            {
+              "startMs": 0,
+              "endMs": 6135,
+              "description": "the creator talking to camera in a bright kitchen",
+              "subjects": [
+                {
+                  "label": "creator",
+                  "box": {
+                    "x": 0.36,
+                    "y": 0.14,
+                    "w": 0.28,
+                    "h": 0.44
+                  },
+                  "primary": true
+                }
+              ],
+              "framing": "medium",
+              "cameraMotion": "static",
+              "quality": [],
+              "brollSuitability": 0.2,
+              "energy": "medium"
+            },
+            {
+              "startMs": 6135,
+              "endMs": 12271,
+              "description": "the creator talking to camera in a bright kitchen",
+              "subjects": [
+                {
+                  "label": "creator",
+                  "box": {
+                    "x": 0.36,
+                    "y": 0.14,
+                    "w": 0.28,
+                    "h": 0.44
+                  },
+                  "primary": true
+                }
+              ],
+              "framing": "medium",
+              "cameraMotion": "static",
+              "quality": [],
+              "brollSuitability": 0.2,
+              "energy": "medium"
+            },
+            {
+              "startMs": 12271,
+              "endMs": 18406,
+              "description": "the creator talking to camera in a bright kitchen",
+              "subjects": [
+                {
+                  "label": "creator",
+                  "box": {
+                    "x": 0.36,
+                    "y": 0.14,
+                    "w": 0.28,
+                    "h": 0.44
+                  },
+                  "primary": true
+                }
+              ],
+              "framing": "medium",
+              "cameraMotion": "static",
+              "quality": [],
+              "brollSuitability": 0.2,
+              "energy": "medium"
+            },
+            {
+              "startMs": 18406,
+              "endMs": 24541,
+              "description": "the creator talking to camera in a bright kitchen",
+              "subjects": [
+                {
+                  "label": "creator",
+                  "box": {
+                    "x": 0.36,
+                    "y": 0.14,
+                    "w": 0.28,
+                    "h": 0.44
+                  },
+                  "primary": true
+                }
+              ],
+              "framing": "medium",
+              "cameraMotion": "static",
+              "quality": [],
+              "brollSuitability": 0.2,
+              "energy": "medium"
+            }
+          ]
         }
       }
     ],
@@ -1311,7 +1517,9 @@
       ],
       "mustKeepAssets": [
         "take3"
-      ]
+      ],
+      "zoomsOnSubject": true,
+      "playbook": "fast_hype"
     }
   }
 }

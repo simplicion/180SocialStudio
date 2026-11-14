@@ -91,6 +91,8 @@ function mockClient(responses: Array<ToolCallResponse | Error>, provider = "clau
       throw new Error("generateStream() must not be used by the director");
     },
     generateWithTools: async (prompt, tools, options) => {
+      // The story pass of whole edits (Phase 3) is not what these tests script: it gets "no story" and is skipped.
+      if (tools.some((t: any) => (t.function?.name ?? t.name) === "plan_story")) return { text: "", toolCalls: [] };
       calls.push({ prompt, tools, options });
       const next = responses.shift();
       if (!next) throw new Error("mock LLM: no more scripted responses");

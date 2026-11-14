@@ -997,3 +997,134 @@ See `AI_DIRECTOR_QUALITY_FIX_PLAN.md`. Additive response fields of `POST /media-
 
 New route: `GET /media-editor/director-report?days=7` (1..90, workspace admins, own company only): fallback % of
 edit turns, by code, top reasons, provider/model mix, drops by filter, average latency and ops.
+
+## Addendum 2026-11-13 (b): the vision pass (ShotLog), quality-fix plan Phase 2
+
+The Director can now "see" a clip through a few stills, only when the creator allowed it on the device.
+
+**Phone.** One-time consent card in the Director panel ("Let your editor see your clips?"), changeable with the
+eye button in the panel header; stored on the device (`VisionConsent`). With consent, after the scene cuts of a source
+are known, the phone extracts stills (`keyframeTimesMs`: one ~0.3 s after each scene cut + one every 2 s, at most 60;
+JPEG quality 70, at most 512 px on the long side; `generateThumbnails` on Android and, new, iOS), hashes the file
+(sha256 of size + first and last 256 KB), and:
+
+1. uses its on-device cache (`shot_logs/<hash>.json`), else
+2. `GET /media-editor/vision/shot-log?assetId=&sourceHash=` (the workspace may already have looked at this file), else
+3. `POST /media-editor/vision/shot-log` (multipart: `frames` × N JPEG ≤ 400 KB, `timesMs` JSON one per frame,
+   `assetId`, `sourceHash`, `durationMs`, `width`, `height`, `scenesMs` JSON, `consent=granted`), then deletes the
+   stills from the phone.
+
+Native-device routes (`requireNativeDevice`). Errors: 403 `CONSENT_REQUIRED`, 400 `INVALID_REQUEST` /
+`FRAMES_REQUIRED`, 413 `FRAME_TOO_LARGE` / `TOO_MANY_FRAMES`, 415 `UNSUPPORTED_FRAME_TYPE`, 503 `VISION_UNAVAILABLE`,
+502 `VISION_FAILED`. The Director works without a ShotLog; a failure only leaves it out.
+
+**Retention.** The server holds the stills in memory for that request only; they are never written to disk, logged
+or cached, and the buffers are released when the response is sent. Only the text ShotLog is cached (per company +
+file hash, 7 days, in memory). Declining on the phone also deletes the phone's cached logs.
+
+**ShotLog** (`packages/video-contracts/src/shot-log.ts`, `shotlog/1`): per shot (split at scene cuts and every 8 s)
+`{startMs, endMs, description, subjects:[{label, box:{x,y,w,h} (top-left, 0..1), primary?}], framing, cameraMotion,
+quality[], onScreenText?, brollSuitability 0..1, energy}`, source ms. The vision model only describes frames
+(`record_frames` tool); grouping into shots is deterministic.
+
+**Request.** `media.shotLog` / `mediaList[].shotLog` (optional). The Director:
+- puts a fenced `vision` block in the prompt (one line per shot: framing, description, main subject centre + size,
+  others, on-screen text, issues, b-roll suitability, energy) in place of the on-device label words;
+- uses the main subjects as the face track of a source that has none (FACE zooms and moving crops centre on them);
+- says it has seen the stills only when a ShotLog is present (otherwise the persona states it cannot see frames);
+- reports `turnLog.vision`.
+
+## Addendum 2026-11-13 (c): the story pass, quality-fix plan Phase 3
+
+A whole-video edit (`scope.mode == "full_edit"`, transcript of 25+ words, an AI provider available) now runs a
+**story pass before** the edit planner (`packages/domains/ai/src/builders/story-planner.ts`):
+
+1. The transcript (timeline seconds, every clip) is split into numbered spoken lines `L1..Ln` (pause of 0.6 s+ or a
+   change of speaker). Signals are computed as hints: near-duplicate lines (likely retakes), restart cues ("sorry, let
+   me start again"), hook-like lines (questions, strong claims, curiosity phrases). With a ShotLog, what the picture
+   shows is included.
+2. One model call (`plan_story`, effort medium, 45 s budget) returns the hook line, the lines to remove with a reason
+   (`retake | false_start | repeated_point | off_topic | rambling | dead_air`), the role of the lines kept
+   (`hook | setup | point | proof | payoff | cta`), an optional `moveHookToStart` and a target length.
+3. The server turns removed LINES into `removeRange` cuts at word boundaries: a run of removed lines is cut from just
+   after the last kept word before it to just before the first kept word after it (40 ms pad), so no word is clipped.
+   The hook line is never removed; a story that would remove more than 60% of the speech is refused. Locked items and
+   locked ranges are enforced as for every plan. With `moveHookToStart`, the hook line is found again on the cut
+   timeline and moved to 0 (`reorderSegment`).
+4. The edit planner then works on the **cut** timeline, told what the story pass did (it does not cut more speech
+   unless asked; removeSilences / cleanFillers still apply).
+
+The story cut is dropped when the edit planner answers without edits (a recommendation or question), and skipped
+with a warning (`story pass skipped: …`) when the model fails; the turn goes on without it. Applied cuts appear in
+`appliedOperations` prefixed `story: `; `turnLog.story` reports what was cut or why the pass did not run.
+The phone waits up to 180 s for a Director turn (`AppConfig.directorTimeout`).
+
+## Addendum 2026-11-13 (d): the agent loop, quality-fix plan Phase 4
+
+When the Director's AI client supports multi-turn tool use (`generateAgentTurn`: Claude, OpenAI, Gemini, Groq/custom),
+planning is a bounded loop instead of one call (`packages/domains/ai/src/builders/director-agent.ts`):
+
+- **Stages** (whole edits, after the story pass): cleanup (pauses, fillers) → captions → framing and zooms → B-roll,
+  stickers, titles → music and sound → transitions, colour and the rest. Each turn offers only the stage's edit tools
+  plus `finish_edit`, `reply_to_creator`, `stage_done` and the read-only tools. A scoped request is one stage with its
+  scope's tools (at most 3 turns).
+- **Read-only tools**: `get_words(startSec,endSec)`, `get_shots(startSec,endSec)` (ShotLog mapped to the current
+  timeline), `get_timeline_summary()`, `search_broll(query, aspect)` (top results with up to 3 thumbnails as images;
+  `insertBroll.sourceUrl` uses a result exactly, and its licence/credit line is kept), `search_music(mood, durationSec)`.
+- **Per-call results**: each edit call runs, on its own, through beat snapping, the renderer gate, the destructive
+  guard, the scope filter, expansion, item locks and locked ranges; the turn's survivors are compiled onto the working
+  timeline. The model gets `applied: <changes>` or `rejected: <reason>` per call (invalid arguments included) and may
+  retry. Times in a turn refer to the timeline at the start of that turn.
+- **Bounds**: `AI_DIRECTOR_AGENT_TURNS` (default 8) model turns and `AI_DIRECTOR_AGENT_BUDGET_MS` (default 90 000)
+  overall; a stop keeps everything applied so far (warning "the editor stopped early"). A missing explicitly requested
+  feature gets one extra "coverage" stage. A proposal (recommend / gather / confirm) applies nothing.
+- **Fallback**: a client without multi-turn support, `AI_DIRECTOR_AGENT=0`, or a failure on the loop's first turn →
+  the one-shot planner (warning "step-by-step editing unavailable"). `plannerReason` says "agent loop (N turns, stages
+  …)"; `turnLog.agent` has turns, stages, stop reason, coverage and rejections fed back.
+
+## Addendum 2026-11-15 (e): the visual check, quality-fix plan Phase 5
+
+The Director looks at its own result (`packages/video-contracts/src/visual-critique.ts`,
+`packages/domains/ai/src/builders/visual-critic.ts`).
+
+1. **Checkpoints.** A Director response that changed the timeline carries `checkpoints: [{tMs, kind, label, refs}]`
+   (`hook | cut_before | cut_after | zoom | broll | title | caption`, at most 40): the opening (0.1, 1, 2.5 s), 200 ms
+   either side of every cut, the middle of every zoom, overlay and title, and a few captions; `label` says what should
+   be on screen, `refs` the item ids. `visualRound` is 0 for a normal turn, 1 / 2 for a repair.
+2. **Preview + stills (phone).** After the turn is applied, and only with the vision consent, the phone renders a 360p,
+   15 fps preview of the applied timeline (the export's own media preparation), takes a still at each checkpoint and
+   sends `POST /media-editor/vision/critique` (multipart `frames` JPEG ≤ 400 KB × N, `checkpoints` JSON one per still,
+   `width`, `height`, `aspect`, `prompt`, `consent=granted`; native devices). Stills: memory only, released when the
+   request ends; the preview file is deleted on the phone. Skipped while an export or footage processing runs.
+3. **Critique.** A vision model scores the stills against a fixed rubric (hook in 1.5 s, subject in frame / safe zone,
+   captions readable and off faces and UI zones, zooms not cropping heads, B-roll relevant and not jarring, no
+   awkward jump cuts, consistent colour, readable titles): `{score 0-10, issues: [{kind, severity critical|major|minor,
+   atMs, refs, description, fix}], summary}`. Errors: 403 `CONSENT_REQUIRED`, 400, 413, 415, 503
+   `VISION_UNAVAILABLE`, 502 `CRITIQUE_FAILED` (the edit is unchanged).
+4. **Repair.** With critical/major issues the phone sends a Director turn with the original request and
+   `visualCritique: {round, critique}` (no chat bubble from the creator). The repair turn skips scope classification
+   and the story pass, may use every tool, fixes only the listed issues (fenced as untrusted vision text), and is
+   discarded whole if it would remove a feature the creator asked for. The reply states the score and the fixes in plain
+   words ("I checked how it looks (6.5/10) and fixed captions off your face"). The repaired result is checked again;
+   at most 2 repair rounds. With no real problems the chat shows "I checked how it looks: 8.5/10. Ready to post."
+
+## Addendum 2026-11-15 (f): style playbooks, quality-fix plan Phase 6
+
+Editing craft is versioned data (`packages/video-contracts/src/style-playbooks/`): `fast_hype` (MrBeast / Hormozi),
+`calm_educational` (Ali Abdaal / Vox), `cinematic_vlog`, `podcast_clip`, each with numeric targets (longest static
+stretch, cuts / zooms / B-roll / SFX per minute, zoom scale, caption template, B-roll share of runtime, music level,
+pause-cut length), craft rules and a worked example.
+
+- **Choice** (whole edits only): the creator's words (content words before energy words: "a punchy travel vlog" is
+  `cinematic_vlog`), then the clip (2+ diarized speakers → podcast, a mostly-screen ShotLog → calm), the brand's pacing,
+  the canvas (9:16 → fast, else calm). The reason is reported.
+- **Prompt**: only the chosen playbook replaces the generic craft block in the system prompt (one-shot and agent loop);
+  its numbers become the agent stages' briefs (pause cut length, caption template, zoom rate and scale, B-roll density,
+  music level, max static stretch).
+- **Measure**: the finished edit is measured (`measurePlaybook`: `deriveEditStyle` + longest static stretch + B-roll share,
+  ±25% tolerance; per-minute rates only on videos of 20 s+). Misses are critic issues `style:<metric>` (static stretch
+  and caption template = WARNING, rates = SUGGESTION), never auto-repaired. Response `style: {playbookId, version,
+  label, reason, checks[], met, total}`; `turnLog.style`.
+- **Scope**: a whole-edit phrase that also names features to ADD ("clean this tutorial up and add captions", "make it a
+  punchy travel vlog with music", "turn this into a vertical clip for shorts with captions") is now `full_edit` with
+  those features as explicit asks; a request that changes an existing item stays scoped.

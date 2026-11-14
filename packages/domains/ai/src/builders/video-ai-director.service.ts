@@ -82,9 +82,9 @@ import {
   placeSfxOnTimeline,
   SfxSuggestion,
 } from "./director-sub-agents";
-import type { AIClient } from "../kernel/ai-provider.service";
+import type { AgentContentPart, AIClient } from "../kernel/ai-provider.service";
 import { ContextResolver } from "./context-resolver";
-import { CreativePlanner, requestedFeatures } from "./creative-planner";
+import { CreativePlanner, directorEffort, directorLlmTimeoutMs, missingRequestedOperations, requestedFeatures } from "./creative-planner";
 import {
   DirectorConversation,
   DirectorPhase,
@@ -102,6 +102,11 @@ import {
   tidyReply,
 } from "./director-conversation";
 import crypto from "crypto";
+import { neutraliseWordSequence, sanitizeInlineUntrusted, shotLogPromptLines, subjectSamplesFromShotLog } from "@workspace/video-contracts";
+import { StoryPlanner, STORY_MIN_WORDS, type StoryOutcome, type StoryWord } from "./story-planner";
+import { choosePlaybook, measurePlaybook, playbookStageBriefs, type PlaybookReport, type StylePlaybook } from "@workspace/video-contracts";
+import { critiqueCheckpoints, isRepairable, visualRepairInstruction, type VisualCheckpoint, type VisualRepairRequest } from "@workspace/video-contracts";
+import { AGENT_PROTOCOL, runDirectorAgent, wholeEditStages, type AgentEditResult, type DirectorAgentOutcome } from "./director-agent";
 import {
   DirectorDropRecorder,
   classifyPlannerFallback,
@@ -306,6 +311,326 @@ export class VideoAIDirectorService implements IUniversalBuilder<EditIR> {
       translateCaptionLines(lines, targetLanguage, script, (p) => c.generate(p));
   }
 
+  /**
+   * The agent loop (quality-fix Phase 4): stages of short model turns on a working timeline. Every edit call goes
+   * through the same guards as a one-shot plan, ONE OP AT A TIME so each gets its own result (renderer gate,
+   * destructive guard, scope, expansion, item locks, locked ranges, compiler), and the model is told exactly why
+   * something was refused.
+   */
+  private async runAgentLoop(p: {
+    client: AIClient;
+    model?: string;
+    request: MobileAIDirectRequest;
+    prompt: string;
+    plannerPrompt: string;
+    medias: Array<MobileAIDirectRequest["media"] & { assetId: string }>;
+    baseIR: EditIR;
+    planBase: EditIR;
+    graph: any;
+    timelineContext: any;
+    contextSections: string[];
+    scope: ResolvedDirectorIntent;
+    plannerScope: any;
+    scopeTools: Set<string> | null;
+    scopeLocks: string[];
+    constraints: ResolvedDirectorConstraints;
+    agreedToPlan: boolean;
+    hasVision: boolean;
+    allWordCount: number;
+    playbook: StylePlaybook | null;
+    drops: DirectorDropRecorder;
+    violations: string[];
+    opts: MobileDirectOptions & { resolveStockVideo?: any; resolveStockMusic?: any; llmTimeoutMs?: number };
+    events: AgentRunEmitter;
+  }): Promise<DirectorAgentOutcome<EditIR>> {
+    const { request, medias, baseIR, scope, scopeTools, drops } = p;
+    const baseDurationMs = Math.round(RationalTimeMath.toSeconds(baseIR.meta.totalDuration) * 1000);
+    const turnConstraints = p.scopeLocks.length ? mergeDirectorConstraints(baseDurationMs, p.constraints, { lockedRanges: [], lockedTracks: p.scopeLocks as any }) : p.constraints;
+    const sources = [
+      ...(request.currentEditIR?.sources || []).filter((s) => s.assetId !== request.media.assetId && s.assetId !== (request.media.assetId || "primary")),
+      { assetId: request.media.assetId || "primary", durationMs: request.media.durationMs, width: request.media.width, height: request.media.height },
+    ];
+    const itemCtx = { meta: request.currentEditIR?.itemMeta ?? {}, allowManualSweep: asksForAll(p.prompt) };
+    const speechCaptions = (ir: EditIR) => ir.tracks.captionTrack.filter((c) => c.role !== "title").length;
+    const planOf = (ops: CreativeOperation[], ir: EditIR): any => {
+      const reframe = [...ops].reverse().find((o: any) => o.type === "reframeSubject" || o.type === "changeAspectRatio") as any;
+      const locked = mapLockedRanges(baseIR, ir, turnConstraints.lockedRanges);
+      return {
+        version: "1.0.0",
+        intent: {
+          platform: "general", aspectRatio: reframe?.targetAspect ?? ir.meta.targetAspect, resolution: ir.meta.resolution, stylePreset: "CUSTOM",
+          energy: "medium", pacing: "dynamic", captionStyle: "HORMOZI_BOUNCE", audioStyle: "VOICE_PRIORITY_DUCKED", visualStyle: "CLEAN_ATTENTION",
+        },
+        constraints: {
+          protectedTimeRanges: locked.map(([a, b]) => ({ startSec: a / 1000, durationSec: (b - a) / 1000 })),
+          lockedTracks: turnConstraints.lockedTracks,
+        },
+        selectedSegments: [], removedSegments: [], reorderedSegments: [], brollPlan: [], captionPlan: [],
+        operations: ops, confidence: 0.9, explanation: "", requiresConfirmation: false,
+      };
+    };
+
+    const apply = (ops: CreativeOperation[], ir: EditIR) => {
+      const results: AgentEditResult[] = new Array(ops.length);
+      const survivors: Array<{ i: number; ops: CreativeOperation[]; note?: string }> = [];
+      const graphNow = graphFromMobileMediaList(medias, ir);
+      ops.forEach((op, i) => {
+        const notes: string[] = [];
+        let cur: CreativeOperation[] = [op];
+        if (scope.mode === "full_edit" && request.musicBeatsMs?.length) {
+          const sn = snapToBeats(cur as any[], request.musicBeatsMs);
+          if (sn.moved) notes.push("placed on the music's beat");
+          cur = sn.ops as any;
+        }
+        const gated = gateRendererFeatures(cur as any[], request.rendererCapabilities);
+        drops.record("renderer_gate", cur as any[], gated.ops as any[], gated.notes);
+        if (!gated.ops.length) return (results[i] = { status: "rejected", reason: gated.notes.join("; ") || "this phone cannot render that yet" });
+        if (gated.notes.length) notes.push(...gated.notes);
+        cur = gated.ops as any;
+        if (!p.agreedToPlan) {
+          const g = guardDestructiveVariants(cur as any[], p.prompt);
+          drops.record("destructive_guard", cur as any[], g.ops as any[], g.notes);
+          if (!g.ops.length) return (results[i] = { status: "rejected", reason: g.notes.join("; ") || "the creator did not ask to replace that" });
+          if (g.notes.length) notes.push(...g.notes);
+          cur = g.ops as any;
+        }
+        if (scopeTools && !scopeTools.has(op.type)) {
+          drops.record("scope", [op], [], `not part of the request's scope (${scope.mode})`);
+          return (results[i] = { status: "rejected", reason: `not part of what the creator asked (${scope.mode})` });
+        }
+        const expWarnings: string[] = [];
+        const canvas = (op as any).type === "reframeSubject" || (op as any).type === "changeAspectRatio"
+          ? ((op as any).width && (op as any).height ? { width: (op as any).width, height: (op as any).height } : EditIRCompiler.resolutionFor((op as any).targetAspect))
+          : ir.meta.resolution;
+        let expanded = PlanExpander.expand(planOf(cur, ir), graphNow, expWarnings, { canvas, existingCaptions: speechCaptions(ir) }).operations as CreativeOperation[];
+        if (!expanded.length) return (results[i] = { status: "rejected", reason: expWarnings.join("; ") || "nothing to change on this timeline" });
+        if (expWarnings.length) notes.push(...expWarnings.slice(0, 2));
+        if (request.currentEditIR) {
+          const r = applyItemLocks(expanded as any, request.currentEditIR, itemCtx);
+          drops.record("item_locks", expanded as any[], r.ops as any[], r.violations);
+          p.violations.push(...r.violations);
+          if (!r.ops.length) return (results[i] = { status: "rejected", reason: r.violations.join("; ") || "a locked item" });
+          expanded = r.ops as any;
+        }
+        const v = CreativePlanValidator.validate(planOf(expanded, ir), ir, []);
+        if (!v.valid) {
+          const bad = new Set(v.errors.map((e) => e.match(/^Operation #(\d+)/)?.[1]).filter(Boolean).map(Number));
+          const kept = expanded.filter((_, k) => !bad.has(k));
+          drops.record("validator", expanded as any[], kept as any[], [...v.errors, ...v.violations]);
+          p.violations.push(...v.violations);
+          if (!kept.length) return (results[i] = { status: "rejected", reason: [...v.errors, ...v.violations].join("; ").slice(0, 400) || "invalid on this timeline" });
+          expanded = kept;
+        }
+        survivors.push({ i, ops: expanded, ...(notes.length ? { note: notes.join("; ").slice(0, 300) } : {}) });
+      });
+      if (!survivors.length) return { ir, results, applied: [], rejected: [], compiled: [] };
+      const flat = survivors.flatMap((x) => x.ops);
+      const c = EditIRCompiler.compile(ir, planOf(flat, ir), [], { sources });
+      // Compiler refusals ("insertBroll: ...") are matched to the op of that type in this batch.
+      const refused = new Map<number, string>();
+      for (const r of c.rejectedOperations) {
+        const type = /^\s*([A-Za-z]\w*)\s*[:(]/.exec(r)?.[1];
+        const owner = survivors.find((x) => !refused.has(x.i) && x.ops.some((o) => o.type === type)) ?? survivors.find((x) => !refused.has(x.i) && survivors.length === 1);
+        if (owner) refused.set(owner.i, r);
+      }
+      for (const x of survivors) {
+        const why = refused.get(x.i);
+        results[x.i] = why ? { status: "rejected", reason: why } : { status: "applied", changes: c.appliedOperations.slice(0, 8), ...(x.note ? { note: x.note } : {}) };
+      }
+      return { ir: c.updatedEditIR, results, applied: c.appliedOperations, rejected: c.rejectedOperations, compiled: flat };
+    };
+
+    // Read-only tools.
+    const clipsOf = (ir: EditIR) => (ir.tracks.videoTracks.find((t) => t.type === "MAIN_VIDEO")?.clips ?? []).map((c) => ({
+      assetId: c.assetId,
+      t0: RationalTimeMath.toSeconds(c.timelineRange.start),
+      t1: RationalTimeMath.toSeconds(c.timelineRange.start) + RationalTimeMath.toSeconds(c.timelineRange.duration),
+      s0: RationalTimeMath.toSeconds(c.sourceRange.start),
+      speed: c.speedMultiplier || 1,
+    }));
+    const logs = new Map(medias.filter((m) => m.shotLog?.shots.length).map((m) => [m.assetId, m.shotLog!]));
+    const brollFound = new Map<string, any>();
+    const fmt = (n: number) => n.toFixed(2);
+    const read = {
+      getWords: (ir: EditIR, a: number, b: number) => {
+        const ws = graphFromMobileMediaList(medias, ir).transcript.filter((w: any) => w.endSeconds > a && w.startSeconds < b).slice(0, 400);
+        if (!ws.length) return `no words between ${fmt(a)} and ${fmt(b)} s`;
+        const safe = neutraliseWordSequence(ws.map((w: any) => w.word)).words;
+        return fenceUntrusted("transcript", ws.map((w: any, i: number) => `${fmt(w.startSeconds)}-${fmt(w.endSeconds)}:${safe[i]}`).join(" "), { maxChars: 12000 }).block;
+      },
+      getShots: (ir: EditIR, a: number, b: number) => {
+        if (!logs.size) return "no vision pass for this video (the creator did not allow stills, or it is still running)";
+        const lines: string[] = [];
+        for (const c of clipsOf(ir)) {
+          if (c.t1 <= a || c.t0 >= b) continue;
+          const log = logs.get(c.assetId);
+          if (!log) continue;
+          const s0 = c.s0, s1 = c.s0 + (c.t1 - c.t0) * c.speed;
+          for (const sh of log.shots) {
+            const ss = sh.startMs / 1000, se = sh.endMs / 1000;
+            if (se <= s0 || ss >= s1) continue;
+            const ta = c.t0 + (Math.max(ss, s0) - s0) / c.speed, tb = c.t0 + (Math.min(se, s1) - s0) / c.speed;
+            if (tb <= a || ta >= b) continue;
+            const main = sh.subjects.find((x) => x.primary) ?? sh.subjects[0];
+            lines.push(`${fmt(ta)}-${fmt(tb)} ${sh.framing} | ${sanitizeInlineUntrusted(sh.description, 200)}${main ? ` | main: ${sanitizeInlineUntrusted(main.label, 40)} centre (${fmt(main.box.x + main.box.w / 2)},${fmt(main.box.y + main.box.h / 2)})` : ""} | b-roll ok ${sh.brollSuitability.toFixed(1)}${sh.quality.length ? ` | issues: ${sh.quality.join(", ")}` : ""}`);
+          }
+        }
+        return lines.length ? fenceUntrusted("vision", lines.slice(0, 80).join("\n"), { maxChars: 12000 }).block : `no shots between ${fmt(a)} and ${fmt(b)} s`;
+      },
+      getTimelineSummary: (ir: EditIR) => CreativePlanner.describeEditIR(ir, request.currentEditIR?.itemMeta).join("\n").slice(0, 16000),
+      searchBroll: async (query: string, aspect: string) => {
+        const asp = aspect || p.planBase.meta.targetAspect;
+        if (p.opts.searchBroll) {
+          const hits = (await withTimeout(p.opts.searchBroll(query, asp), 6000, "b-roll search")).filter((h) => /^https:\/\//i.test(h.url)).slice(0, 4);
+          // Licence and credit of every result, so a clip used by URL still gets its credit line.
+          for (const h of hits) brollFound.set(h.url, { query, ...h });
+          if (!hits.length) return { text: `no stock clips for "${query}"; try other words` };
+          const images: AgentContentPart[] = [];
+          const fetchImage = p.opts.fetchImage ?? defaultFetchImage;
+          const lines: string[] = [];
+          for (const [k, h] of hits.entries()) {
+            lines.push(`${k + 1}. ${sanitizeInlineUntrusted(h.title || "untitled", 80)} | ${h.provider || "stock"} | ${h.license || "licence unknown"}${h.durationSec ? ` | ${Math.round(h.durationSec)} s` : ""} | url: ${h.url}`);
+            if (h.thumbnailUrl && images.length < 3) {
+              const img = await fetchImage(h.thumbnailUrl).catch(() => null);
+              if (img) images.push({ type: "text", text: `Result ${k + 1}:` }, { type: "image", mediaType: img.mediaType, data: img.data });
+            }
+          }
+          return { text: fenceUntrusted("other", lines.join("\n"), { maxChars: 4000 }).block, images };
+        }
+        if (p.opts.resolveStockVideo) {
+          const r: any = await withTimeout(p.opts.resolveStockVideo(query, asp), 6000, "b-roll search");
+          const hit: any = typeof r === "string" ? { url: r } : r;
+          if (!hit || !/^https:\/\//i.test(hit.url)) return { text: `no stock clips for "${query}"; try other words` };
+          return { text: fenceUntrusted("other", `1. ${sanitizeInlineUntrusted((hit as any).title || "untitled", 80)} | url: ${hit.url}`, { maxChars: 1000 }).block };
+        }
+        throw new Error("no stock search configured");
+      },
+      searchMusic: async (mood: string, durationSec: number) => {
+        const resolve = p.opts.resolveStockMusic || (async (q: string, d: number) => resolveMusicFromCatalog(q, d));
+        const r = await withTimeout(Promise.resolve(resolve(mood, durationSec)), 5000, "music search");
+        const t = typeof r === "string" ? { url: r } : r;
+        if (!t || !/^https:\/\//i.test(t.url)) return `no track for "${mood}"; try another mood`;
+        return `best match: ${sanitizeInlineUntrusted((t as any).title || "untitled", 80)}${(t as any).durationSec ? ` (${Math.round((t as any).durationSec)} s)` : ""}${(t as any).license ? `, ${(t as any).license}` : ""}. Add it with addBackgroundMusic and this mood as the query.`;
+      },
+    };
+
+    const stages = scope.mode === "full_edit"
+      ? wholeEditStages(scopeTools, p.playbook ? playbookStageBriefs(p.playbook) : {})
+      : [{ id: "request", label: "the creator's request", tools: scopeTools ? [...scopeTools] : DIRECTOR_TOOL_SPECS.map((x) => x.name as string).filter((n) => n !== "finish_edit"), brief: "Do exactly what the creator asked and nothing more, then call finish_edit." }];
+    const envInt = (k: string, d: number) => (Number(process.env[k]) > 0 ? Number(process.env[k]) : d);
+    const plannerParams: any = {
+      prompt: p.plannerPrompt, timelineContext: p.timelineContext, mediaGraph: p.graph, history: request.history, currentEditIR: p.planBase,
+      contextSections: p.contextSections.length ? p.contextSections : undefined, itemMeta: request.currentEditIR?.itemMeta, scope: p.plannerScope, hasVision: p.hasVision,
+      ...(p.playbook ? { playbook: p.playbook } : {}),
+    };
+    const result = await runDirectorAgent<EditIR>({
+      client: p.client,
+      model: p.model,
+      effort: directorEffort(),
+      system: `${CreativePlanner.buildSystemPrompt(plannerParams)}\n\n${AGENT_PROTOCOL}`,
+      firstMessage: CreativePlanner.buildPrompt(plannerParams),
+      stages,
+      initialIR: p.planBase,
+      apply,
+      read,
+      missingRequested: (types) => missingRequestedOperations(p.plannerPrompt, types, p.allWordCount > 0, scopeTools),
+      maxTurns: scope.mode === "full_edit" ? envInt("AI_DIRECTOR_AGENT_TURNS", 8) : 3,
+      budgetMs: envInt("AI_DIRECTOR_AGENT_BUDGET_MS", 90000),
+      perCallTimeoutMs: directorLlmTimeoutMs(p.opts.llmTimeoutMs),
+      onTurn: (t) => p.events.emit("ToolCompleted", { tool: "agent_turn", ...t }),
+    });
+    return Object.assign(result, { brollFound });
+  }
+
+  /**
+   * Story pass (quality-fix Phase 3): the story editor picks the hook, the keepers and the lines to cut; the cuts are
+   * compiled at word boundaries on the creator's timeline (locked ranges and locked items respected), then the hook
+   * is moved to the start when the model asked for it. Returns the cut timeline, or why the pass was skipped.
+   */
+  private async runStoryPass(p: {
+    request: MobileAIDirectRequest;
+    prompt: string;
+    medias: Array<MobileAIDirectRequest["media"] & { assetId: string }>;
+    baseIR: EditIR;
+    constraints: ResolvedDirectorConstraints;
+    ctx: DirectorContext;
+    sources: Array<{ assetId: string; durationMs: number; width: number; height: number }>;
+    client: AIClient | null | undefined;
+    llmModel?: string;
+    companyId?: string;
+  }): Promise<{ ok: true; ir: EditIR; result: { outcome: StoryOutcome; applied: string[]; ops: CreativeOperation[]; hookMoved: boolean } } | { ok: false; reason: string }> {
+    const resolved = await CreativePlanner.resolveDirectorClient({ llmClient: p.client, llmModel: p.llmModel, companyId: p.companyId });
+    if (!resolved.client) return { ok: false, reason: resolved.reason || "no AI provider" };
+    const graph = graphFromMobileMediaList(p.medias, p.baseIR);
+    const words: StoryWord[] = graph.transcript.map((w: any) => ({ word: w.word, startSeconds: w.startSeconds, endSeconds: w.endSeconds, ...(w.speakerId ? { speakerId: w.speakerId } : {}) }));
+    const durationSec = RationalTimeMath.toSeconds(p.baseIR.meta.totalDuration);
+    // What the picture shows, per source (SOURCE seconds; the clips are still in place before the story cut).
+    const visionLines = p.medias.flatMap((m) => (m.shotLog?.shots.length ? shotLogPromptLines(m.shotLog, 40) : []));
+    const timeoutMs = Math.min(45000, directorLlmTimeoutMs());
+    let outcome: StoryOutcome;
+    try {
+      outcome = await withTimeout(
+        StoryPlanner.plan({
+          words, durationSec, request: p.prompt, client: resolved.client, model: resolved.model,
+          targetDurationSec: p.ctx.piece?.targetDurationSec, platform: p.ctx.piece?.platform, visionLines, timeoutMs,
+        }),
+        timeoutMs,
+        "story pass"
+      );
+    } catch (err: any) {
+      const reason = String(err?.message || err).slice(0, 240);
+      console.warn(`[VideoAIDirector] story pass skipped (${resolved.client.provider}/${resolved.model}): ${reason}`);
+      return { ok: false, reason };
+    }
+    const userConstraints = {
+      protectedTimeRanges: p.constraints.lockedRanges.map(([a, b]) => ({ startSec: a / 1000, durationSec: (b - a) / 1000 })),
+      lockedTracks: p.constraints.lockedTracks,
+    };
+    const planOf = (operations: CreativeOperation[]): any => ({
+      version: "1.0.0",
+      intent: {
+        platform: "general", aspectRatio: p.baseIR.meta.targetAspect, resolution: p.baseIR.meta.resolution, stylePreset: "CUSTOM",
+        energy: "medium", pacing: "dynamic", captionStyle: "HORMOZI_BOUNCE", audioStyle: "VOICE_PRIORITY_DUCKED", visualStyle: "CLEAN_ATTENTION",
+      },
+      constraints: userConstraints,
+      selectedSegments: [], removedSegments: [], reorderedSegments: [], brollPlan: [], captionPlan: [],
+      operations, confidence: 0.8, explanation: outcome.plan.summary, requiresConfirmation: false,
+    });
+    // The same guards as every plan: locked items, locked ranges.
+    let ops = outcome.cutOps;
+    if (p.request.currentEditIR) {
+      ops = applyItemLocks(ops as any, p.request.currentEditIR, { meta: p.request.currentEditIR.itemMeta ?? {}, allowManualSweep: asksForAll(p.prompt) }).ops as any;
+    }
+    const v = CreativePlanValidator.validate(planOf(ops), p.baseIR, []);
+    if (!v.valid) {
+      const bad = new Set(v.errors.map((e) => e.match(/^Operation #(\d+)/)?.[1]).filter(Boolean).map(Number));
+      ops = ops.filter((_, i) => !bad.has(i));
+    }
+    const applied: string[] = [];
+    let ir = p.baseIR;
+    if (ops.length) {
+      const c = EditIRCompiler.compile(p.baseIR, planOf(ops), [], { sources: p.sources });
+      ir = c.updatedEditIR;
+      applied.push(...c.appliedOperations.map((a) => `story: ${a}`));
+    }
+    let hookMoved = false;
+    const all: CreativeOperation[] = [...ops];
+    if (outcome.hook) {
+      const cutWords = graphFromMobileMediaList(p.medias, ir).transcript.map((w: any) => ({ word: w.word, startSeconds: w.startSeconds, endSeconds: w.endSeconds }));
+      const move = StoryPlanner.hookMoveOp(outcome.hook, words, cutWords);
+      if (move) {
+        const c = EditIRCompiler.compile(ir, planOf([move]), [], { sources: p.sources });
+        if (c.appliedOperations.length && !c.rejectedOperations.length) {
+          ir = c.updatedEditIR;
+          applied.push(...c.appliedOperations.map((a) => `story: ${a}`));
+          all.push(move);
+          hookMoved = true;
+        }
+      }
+    }
+    return { ok: true, ir, result: { outcome, applied, ops: all, hookMoved } };
+  }
+
   private async runMobileDirector(
     request: MobileAIDirectRequest,
     opts: {
@@ -341,7 +666,11 @@ export class VideoAIDirectorService implements IUniversalBuilder<EditIR> {
     // Phase 0 turn log: which filter dropped which planned operation.
     const drops = new DirectorDropRecorder();
     let plannedCount: number | null = null;
-    const media = { ...request.media, assetId: request.media.assetId || "primary" };
+    // A source without an on-device face track takes the ShotLog's main subjects as its track (Phase 2): FACE zooms and
+    // moving crops then centre on what the vision model saw (a screen area, a product) instead of the frame centre.
+    const withVisionSubjects = <M extends { faces?: any[]; shotLog?: { shots: any[] } }>(m: M): M =>
+      !m.faces?.length && m.shotLog?.shots.length ? { ...m, faces: subjectSamplesFromShotLog(m.shotLog as any) } : m;
+    const media = withVisionSubjects({ ...request.media, assetId: request.media.assetId || "primary" });
     const projectId = request.currentEditIR?.projectId || request.projectId || crypto.randomUUID();
     const baseIR = request.currentEditIR
       ? editIRFromMobile({ ...request.currentEditIR, projectId })
@@ -350,7 +679,8 @@ export class VideoAIDirectorService implements IUniversalBuilder<EditIR> {
     const words = media.transcript?.words || [];
     // Every source on the timeline with its own analysis (Phase 4, F-10): clips 2..N are captioned, cleaned and ducked
     // from their own words. `media` stays the primary source; a mediaList entry for the same asset replaces it.
-    const listed = (request.mediaList || []).map((m) => ({ ...m, assetId: m.assetId || "primary" }));
+    const listed = (request.mediaList || []).map((m) => withVisionSubjects({ ...m, assetId: m.assetId || "primary" }));
+    const hasVision = [media, ...listed].some((m) => !!m.shotLog?.shots.length);
     const medias = [listed.find((m) => m.assetId === media.assetId) ?? media, ...listed.filter((m) => m.assetId !== media.assetId)]
       .filter((m, i, all) => all.findIndex((x) => x.assetId === m.assetId) === i);
     const wordsByAsset: Record<string, Array<{ text: string; startMs: number; endMs: number }>> = Object.fromEntries(medias.map((m) => [m.assetId, m.transcript?.words || []]));
@@ -413,8 +743,19 @@ export class VideoAIDirectorService implements IUniversalBuilder<EditIR> {
     const alignment: ScriptAlignment | null =
       ctx.piece?.sections.length && words.length ? alignScriptToTranscript(ctx.piece.sections, words) : null;
 
-    const graph = graphFromMobileMediaList(medias, baseIR);
-    const timelineContext = ContextResolver.resolveTimelineContext({ editIR: baseIR, userConstraints: toUserConstraints(constraints) });
+    let graph = graphFromMobileMediaList(medias, baseIR);
+    let timelineContext = ContextResolver.resolveTimelineContext({ editIR: baseIR, userConstraints: toUserConstraints(constraints) });
+    // The timeline the enhancement planner works on: the creator's, or the story-cut one (Phase 3).
+    let planBase: EditIR = baseIR;
+    let storyResult: { outcome: StoryOutcome; applied: string[]; ops: CreativeOperation[]; hookMoved: boolean } | null = null;
+    let storyNote: string | null = null;
+    // Phase 6 style playbook (whole edits only).
+    let playbook: StylePlaybook | null = null;
+    let playbookReason = "";
+    // Phase 4 agent loop result (null = the one-shot planner ran, or nothing to edit).
+    let agentRun: DirectorAgentOutcome<EditIR> | null = null;
+    let agentHandled = false;
+    const agentViolations: string[] = [];
 
     // LLM budget: every planner call (first plan, validation repair, critic repairs) goes through this counter.
     const budget = opts.llmCallBudget ?? 6;
@@ -432,7 +773,7 @@ export class VideoAIDirectorService implements IUniversalBuilder<EditIR> {
       } as AIClient;
     };
 
-    let outcome: { plan: any; plannerSource: PlannerSource; plannerReason: string; brandWatermark?: "add" | "remove" | "keep"; preserve?: any; conversation?: DirectorConversation };
+    let outcome!: { plan: any; plannerSource: PlannerSource; plannerReason: string; brandWatermark?: "add" | "remove" | "keep"; preserve?: any; conversation?: DirectorConversation };
     let agreedToPlan = false;
     let plannerPrompt = prompt;
     let plannerContextSections: string[] = [];
@@ -485,7 +826,11 @@ export class VideoAIDirectorService implements IUniversalBuilder<EditIR> {
       // Understand first (Phase 3.1). The offline classifier settles clear requests at once ("make the music quieter");
       // only when it is unsure does a small LLM intent call decide. "Yes" to the Director's own plan runs that plan.
       const lastAssistant = [...(request.history || [])].reverse().find((t) => t.role === "assistant")?.content;
-      if (agreedToPlan || confirmsFullEdit(prompt, lastAssistant)) {
+      if (request.visualCritique) {
+        // Phase 5: a repair turn after the visual check. It fixes only the critic's issues, on the items named.
+        plannerPrompt = visualRepairInstruction(prompt, request.visualCritique);
+        scope = { mode: "modify_existing", targets: [], allowedTools: [], mustNotTouch: [], clarifyingQuestion: null, source: "offline", note: `visual check repair, round ${request.visualCritique.round}` } as ResolvedDirectorIntent;
+      } else if (agreedToPlan || confirmsFullEdit(prompt, lastAssistant)) {
         scope = { mode: "full_edit", targets: [], allowedTools: [], mustNotTouch: [], clarifyingQuestion: null, source: "offline", note: agreedToPlan ? "the creator agreed to the proposed plan" : "the creator confirmed a full pass" };
       } else {
         const offline = classifyDirectorIntentOffline(prompt);
@@ -506,6 +851,11 @@ export class VideoAIDirectorService implements IUniversalBuilder<EditIR> {
       const scoped = scopedTools(scope, DIRECTOR_TOOL_SPECS.map((sp) => sp.name as string));
       scopeTools = scoped ? new Set(scoped) : null;
       scopeLocks = scopedLockedTracks(scope);
+      // A visual repair may touch whatever the critic named (captions, zooms, overlays ...): every tool, no track locks.
+      if (request.visualCritique) {
+        scopeTools = null;
+        scopeLocks = [];
+      }
       events.emit("ToolCalled", { tool: "intent", mode: scope.mode, source: scope.source, targets: scope.targets.map((t) => t.kind) });
 
       if (scope.mode === "ambiguous") {
@@ -529,22 +879,118 @@ export class VideoAIDirectorService implements IUniversalBuilder<EditIR> {
         };
         plannerContextSections = contextSections;
       } else {
+        // Phase 6: one style playbook for a whole edit (the creator's words, the clip, the brand, the canvas).
+        if (scope?.mode === "full_edit") {
+          const recentAsks = [...(request.history || []).filter((t) => t.role === "user").slice(-3).map((t) => t.content), prompt].join(" \n ");
+          const speakers = new Set(medias.flatMap((m) => (m.transcript?.words || []).map((w: any) => w.speaker).filter(Boolean))).size;
+          const shots = medias.flatMap((m) => m.shotLog?.shots ?? []);
+          const screenRecording = shots.length > 0 && shots.filter((s) => s.framing === "screen").length / shots.length >= 0.6;
+          const chosen = choosePlaybook({ prompt: recentAsks, brandPacing: ctx.brand ? style.pacing : undefined, speakers, screenRecording, aspect: baseIR.meta.targetAspect });
+          playbook = chosen.playbook;
+          playbookReason = chosen.reason;
+          events.emit("ToolCalled", { tool: "style", playbook: playbook.id, reason: playbookReason });
+        }
+        // Story pass first (whole edits only): select the hook, keepers and cuts, then decorate the cut timeline.
+        if (scope?.mode === "full_edit" && !request.visualCritique && opts.llmClient !== null && allWordCount >= STORY_MIN_WORDS) {
+          const story = await this.runStoryPass({
+            request, prompt, medias, baseIR, constraints, ctx, sources: [
+              ...(request.currentEditIR?.sources || []).filter((s) => s.assetId !== media.assetId),
+              { assetId: media.assetId, durationMs: media.durationMs, width: media.width, height: media.height },
+            ],
+            client: countedClient(opts.llmClient), llmModel: opts.llmModel, companyId: opts.companyId,
+          });
+          if (!("reason" in story)) {
+            storyResult = story.result;
+            planBase = story.ir;
+            const lockedNow = mapLockedRanges(baseIR, planBase, constraints.lockedRanges);
+            graph = graphFromMobileMediaList(medias, planBase);
+            timelineContext = ContextResolver.resolveTimelineContext({ editIR: planBase, userConstraints: toUserConstraints(constraints, lockedNow) });
+            contextSections.push(...storyContextSection(story.result.outcome, story.result.hookMoved));
+            events.emit("ToolCompleted", { tool: "story", removed: story.result.outcome.plan.remove.length, removedSec: story.result.outcome.removedSec, hookMoved: story.result.hookMoved });
+          } else {
+            storyNote = story.reason;
+            warnings.push(`story pass skipped: ${story.reason}`);
+          }
+        }
+        // Phase 4: a multi-turn loop with real tool feedback when the provider supports it; else the one-shot planner.
+        const plannerScope = scope ? { mode: (scope.unscoped ? "open" : scope.mode) as any, targets: scope.targets, mustNotTouch: scope.mustNotTouch, tools: scopeTools ? [...scopeTools] : null } : undefined;
+        if (process.env.AI_DIRECTOR_AGENT !== "0" && opts.llmClient !== null) {
+          const resolved = await CreativePlanner.resolveDirectorClient({ llmClient: countedClient(opts.llmClient), llmModel: opts.llmModel, companyId: opts.companyId });
+          if (resolved.client && typeof resolved.client.generateAgentTurn === "function") {
+            try {
+              agentRun = await this.runAgentLoop({
+                client: resolved.client, model: resolved.model, request, plannerPrompt, prompt, medias, baseIR, planBase, graph, timelineContext,
+                contextSections, scope: scope!, plannerScope, scopeTools, scopeLocks, constraints, agreedToPlan, hasVision, allWordCount, playbook,
+                drops, violations: agentViolations, opts, events,
+              });
+              llmCalls += agentRun.turns;
+              plannerContextSections = contextSections;
+              const label = `${resolved.client.provider}${resolved.model ? `/${resolved.model}` : ""}`;
+              const summary = agentRun.conversation?.reply || agentRun.finish?.summary || CreativePlanner.summarizeOperations(agentRun.operations);
+              const edited = agentRun.kind === "edited";
+              outcome = {
+                plan: CreativePlanner.buildPlan({ timelineContext } as any, edited ? agentRun.operations : [], summary, agentRun.finish?.requiresConfirmation ?? false),
+                plannerSource: "llm",
+                plannerReason: `${label} agent loop (${agentRun.turns} turn${agentRun.turns === 1 ? "" : "s"}, stages ${agentRun.stagesDone.join(" > ") || "none"}, ${agentRun.stopped}${agentRun.coverageRetry ? ", coverage stage" : ""}${agentRun.feedback ? `, ${agentRun.feedback} rejection(s) fed back` : ""})`,
+                brandWatermark: agentRun.finish?.brandWatermark,
+                preserve: agentRun.finish?.preserve,
+                ...(agentRun.conversation
+                  ? { conversation: edited && agentRun.operations.length ? { ...agentRun.conversation, phase: "done" as const, proposedPlan: [] } : agentRun.conversation }
+                  : {}),
+              };
+              plannedCount = agentRun.operations.length;
+              if (agentRun.stopped === "budget" || agentRun.stopped === "turns" || agentRun.stopped === "error") {
+                warnings.push(`the editor stopped early (${agentRun.stopped}${agentRun.error ? `: ${agentRun.error}` : ""}); everything applied so far is kept`);
+              }
+              agentHandled = true;
+              if (!edited) {
+                // A recommendation or a question: nothing is edited, the story cut included.
+                agentRun = null;
+                if (storyResult) {
+                  storyResult = null;
+                  storyNote = "the editor replied without editing";
+                  planBase = baseIR;
+                  graph = graphFromMobileMediaList(medias, baseIR);
+                  timelineContext = ContextResolver.resolveTimelineContext({ editIR: baseIR, userConstraints: toUserConstraints(constraints) });
+                }
+              } else if (ctx.brand) {
+                brandApplied = applyBrandDefaults(outcome.plan.operations, prompt, style);
+              }
+            } catch (err: any) {
+              agentRun = null;
+              const reason = String(err?.message || err).slice(0, 240);
+              console.warn(`[VideoAIDirector] agent loop failed on its first turn (${resolved.client.provider}/${resolved.model}): ${reason}`);
+              warnings.push(`step-by-step editing unavailable (${reason}); planned in one pass`);
+            }
+          }
+        }
+        if (!agentHandled) {
         const planned = await CreativePlanner.planWithSource({
           prompt: plannerPrompt,
           timelineContext,
           mediaGraph: graph,
           companyId: opts.companyId,
           history: request.history,
-          currentEditIR: baseIR,
+          currentEditIR: planBase,
           llmClient: countedClient(opts.llmClient),
           llmModel: opts.llmModel,
           llmTimeoutMs: opts.llmTimeoutMs,
           contextSections: contextSections.length ? contextSections : undefined,
           itemMeta: request.currentEditIR?.itemMeta,
           scope: scope ? { mode: scope.unscoped ? "open" : scope.mode, targets: scope.targets, mustNotTouch: scope.mustNotTouch, tools: scopeTools ? [...scopeTools] : null } : undefined,
+          hasVision,
+          ...(playbook ? { playbook } : {}),
         });
         outcome = planned;
         plannedCount = planned.plan.operations.length;
+        // A reply without edits (a recommendation, a question) edits nothing: the story cut is not applied either.
+        if (storyResult && planned.plan.operations.length === 0 && planned.conversation && planned.conversation.phase !== "done") {
+          storyResult = null;
+          storyNote = "the editor replied without editing";
+          planBase = baseIR;
+          graph = graphFromMobileMediaList(medias, baseIR);
+          timelineContext = ContextResolver.resolveTimelineContext({ editIR: baseIR, userConstraints: toUserConstraints(constraints) });
+        }
         plannerContextSections = contextSections;
         if (planned.plannerSource === "deterministic" && !agreedToPlan) {
           // No LLM (or it failed): keep the recommend -> confirm -> execute flow with rule-based replies.
@@ -605,6 +1051,7 @@ export class VideoAIDirectorService implements IUniversalBuilder<EditIR> {
             };
           }
         }
+        }
       }
     }
 
@@ -613,15 +1060,15 @@ export class VideoAIDirectorService implements IUniversalBuilder<EditIR> {
     const aspectOp = [...outcome.plan.operations].reverse().find((o: any) => o.type === "reframeSubject" || o.type === "changeAspectRatio") as any;
     const canvas = aspectOp
       ? (aspectOp.width && aspectOp.height ? { width: aspectOp.width, height: aspectOp.height } : EditIRCompiler.resolutionFor(aspectOp.targetAspect))
-      : baseIR.meta.resolution;
+      : planBase.meta.resolution;
     events.emit("PlanCreated", { plannerSource: outcome.plannerSource, plannerReason: outcome.plannerReason, operations: outcome.plan.operations.map((o: any) => o.type) });
     for (const op of outcome.plan.operations.slice(0, 25)) events.emit("ToolCalled", { tool: op.type });
     const speechCaptions = (ir: EditIR) => ir.tracks.captionTrack.filter((c) => c.role !== "title").length;
-    const expandedRaw = PlanExpander.expand(outcome.plan, graph, warnings, { canvas, existingCaptions: speechCaptions(baseIR) });
+    const expandedRaw = agentRun ? { ...outcome.plan, operations: agentRun.compiled } : PlanExpander.expand(outcome.plan, graph, warnings, { canvas, existingCaptions: speechCaptions(planBase) });
     // Tracks outside the request's scope are locked for this turn only (not echoed as the creator's constraints).
     const turnConstraints = scopeLocks.length ? mergeDirectorConstraints(baseDurationMs, constraints, { lockedRanges: [], lockedTracks: scopeLocks as any }) : constraints;
-    const expanded = { ...expandedRaw, constraints: { ...expandedRaw.constraints, ...toUserConstraints(turnConstraints) } };
-    const violations: string[] = [];
+    const expanded = { ...expandedRaw, constraints: { ...expandedRaw.constraints, ...toUserConstraints(turnConstraints, mapLockedRanges(baseIR, planBase, turnConstraints.lockedRanges)) } };
+    const violations: string[] = [...agentViolations];
     const dropInvalid = (plan: any, base: EditIR) => {
       const v = CreativePlanValidator.validate(plan, base, []);
       if (v.valid) return plan;
@@ -646,12 +1093,12 @@ export class VideoAIDirectorService implements IUniversalBuilder<EditIR> {
       violations.push(...r.violations);
       return { ...plan, operations: r.ops };
     };
-    const planToCompile = dropInvalid(withItemLocks(expanded), baseIR);
+    const planToCompile = agentRun ? expanded : dropInvalid(withItemLocks(expanded), planBase);
     events.emit("PlanValidated", { operations: expanded.operations.length, kept: planToCompile.operations.length, violations: violations.length, constraints: { lockedRanges: constraints.lockedRanges, lockedTracks: constraints.lockedTracks } });
     if (fromWords.notes.length) warnings.push(`constraints from your request: ${fromWords.notes.join("; ")}`);
 
     // Caption translation needs the AI provider, so it runs after compiling (see below), not in the compiler.
-    const translateOps = planToCompile.operations.filter((o: CreativeOperation) => o.type === "translateCaptions") as Array<Extract<CreativeOperation, { type: "translateCaptions" }>>;
+    const translateOps = (agentRun ? agentRun.translateOps : planToCompile.operations.filter((o: CreativeOperation) => o.type === "translateCaptions")) as Array<Extract<CreativeOperation, { type: "translateCaptions" }>>;
     const compilePlan = translateOps.length
       ? { ...planToCompile, operations: planToCompile.operations.filter((o: CreativeOperation) => o.type !== "translateCaptions") }
       : planToCompile;
@@ -660,11 +1107,14 @@ export class VideoAIDirectorService implements IUniversalBuilder<EditIR> {
       ...(request.currentEditIR?.sources || []).filter((s) => s.assetId !== media.assetId),
       { assetId: media.assetId, durationMs: media.durationMs, width: media.width, height: media.height },
     ];
-    const compilation = EditIRCompiler.compile(baseIR, compilePlan, [], { sources });
+    // The agent loop already compiled every turn onto its working timeline.
+    const compilation = agentRun
+      ? { updatedEditIR: agentRun.ir, appliedOperations: agentRun.applied, rejectedOperations: agentRun.rejected }
+      : EditIRCompiler.compile(planBase, compilePlan, [], { sources });
     let finalIR = compilation.updatedEditIR;
-    const appliedOperations = [...compilation.appliedOperations];
+    const appliedOperations = [...(storyResult?.applied ?? []), ...compilation.appliedOperations];
     const rejectedOperations = [...compilation.rejectedOperations];
-    const allOperations: CreativeOperation[] = [...outcome.plan.operations];
+    const allOperations: CreativeOperation[] = [...(storyResult?.ops ?? []), ...outcome.plan.operations];
     events.emit("ToolCompleted", { tool: "compile", applied: compilation.appliedOperations.length, rejected: compilation.rejectedOperations.length });
     const sourceWords = words.map((w) => ({ startSec: w.startMs / 1000, endSec: w.endMs / 1000 }));
     const faceCenter = dominantFaceCenter(media.faces);
@@ -672,6 +1122,7 @@ export class VideoAIDirectorService implements IUniversalBuilder<EditIR> {
       const mobile = toMobileEditIR({ editIR: ir, sources, sourceWords, primaryAssetId: media.assetId, faceCenter, sfxCredits: {}, sourceWordsByAsset, faceCenterByAsset, faceSamplesByAsset, scenesByAsset }).editIR;
       const locked = constraints.lockedRanges.length ? verifyLockedRangesPreserved(baseIR, ir, constraints.lockedRanges) : { ok: true, problems: [] };
       return critiqueDirectorEdit({
+        ...(playbook ? { playbookReport: measurePlaybook(ir, playbook) } : {}),
         editIR: mobile, sourceWords: words, sourceWordsByAsset: wordsByAsset, primaryAssetId: media.assetId, loudness: media.loudness,
         lastExportQa: request.lastExportQa, exportedEditIR: request.currentEditIR || null, lockedRangeProblems: locked.problems,
       });
@@ -708,6 +1159,7 @@ export class VideoAIDirectorService implements IUniversalBuilder<EditIR> {
           llmTimeoutMs: opts.llmTimeoutMs,
           contextSections: plannerContextSections.length ? plannerContextSections : undefined,
           itemMeta: request.currentEditIR?.itemMeta,
+          hasVision,
         });
         // A deterministic fallback of a repair prompt is not a repair: only real model output is used here.
         if (repair.plannerSource === "llm") {
@@ -772,6 +1224,15 @@ export class VideoAIDirectorService implements IUniversalBuilder<EditIR> {
       }
     }
 
+    // A visual repair never takes away what the creator asked for (a caption fix must not delete the captions).
+    if (request.visualCritique && finalIR !== baseIR) {
+      const lost = requestedFeatures(prompt, allWordCount > 0).filter((f) => featureCount(baseIR, f) > 0 && featureCount(finalIR, f) === 0);
+      if (lost.length) {
+        finalIR = baseIR;
+        appliedOperations.length = 0;
+        warnings.push(`the visual repair would have removed the requested ${lost.join(", ")} and was discarded`);
+      }
+    }
     const remainingCritical = crit.issues.filter((i) => i.severity === "CRITICAL");
     if (remainingCritical.length) warnings.push(`critic: ${remainingCritical.length} critical issue(s) remain: ${remainingCritical.slice(0, 3).map((i) => i.title).join("; ")}`);
     const critique: DirectorCritique = { score: crit.score, issues: crit.issues, repairRounds };
@@ -784,9 +1245,17 @@ export class VideoAIDirectorService implements IUniversalBuilder<EditIR> {
     };
 
     // B-roll research: resolve stock queries (the server resolver tries Pexels, then Pixabay) under the turn deadline.
+    const picked: Map<string, any> = (agentRun as any)?.brollFound ?? new Map();
     for (const track of finalIR.tracks.videoTracks) {
       if (track.type !== "B_ROLL_OVERLAY") continue;
       for (const clip of track.clips) {
+        // A clip the agent picked from search_broll by URL: its credit line comes from that search.
+        const hit = picked.get(clip.sourcePath);
+        if (hit) {
+          addCredit("broll", hit.query, hit);
+          if (hit.attribution && hit.creditRequired !== false) warnings.push(`b-roll "${hit.query}": using ${hit.title ? `"${hit.title}"` : hit.url}. Credit required when publishing: ${hit.attribution}.`);
+          continue;
+        }
         if (!clip.sourcePath.startsWith("stock-query://")) continue;
         const query = decodeURIComponent(clip.sourcePath.slice("stock-query://".length));
         let found: ResolvedStockMedia | null = null;
@@ -953,6 +1422,7 @@ export class VideoAIDirectorService implements IUniversalBuilder<EditIR> {
       summary = outcome.plannerSource === "llm" ? tidyReply(outcome.plan.explanation || "") || fallback.reply : fallback.reply;
       quickReplies = fallback.quickReplies;
     }
+    if (request.visualCritique) summary = visualRepairReply(request.visualCritique, appliedOperations.length > 0, summary);
     if (appliedOperations.length > 0 && rejectedOperations.length > 0) {
       summary += rejectedOperations.length === 1 ? " One part didn't work out, it's in the details." : ` ${rejectedOperations.length} parts didn't work out, they're in the details.`;
     }
@@ -977,6 +1447,8 @@ export class VideoAIDirectorService implements IUniversalBuilder<EditIR> {
     });
 
     drops.recordRejected(rejectedOperations);
+    const styleReport = playbook && intent === "edit" && appliedOperations.length > 0 ? measurePlaybook(finalIR, playbook) : null;
+    const agentRunInfo = agentRun ? { turns: agentRun.turns, stages: agentRun.stagesDone, stopped: agentRun.stopped, coverageRetry: agentRun.coverageRetry, feedback: agentRun.feedback } : null;
     const fallback = classifyPlannerFallback(outcome.plannerSource, outcome.plannerReason, intent);
     const parsedLabel = providerModelFromReason(outcome.plannerReason);
     const turnLog: DirectorTurnLog = {
@@ -994,6 +1466,12 @@ export class VideoAIDirectorService implements IUniversalBuilder<EditIR> {
       repairRounds,
       criticScore: typeof crit.score === "number" ? crit.score : null,
       latencyMs: Date.now() - startedAt,
+      vision: hasVision,
+      agent: agentRunInfo,
+      style: styleReport ? { playbookId: styleReport.playbookId, version: styleReport.version, met: styleReport.met, total: styleReport.total } : null,
+      story: storyResult
+        ? { applied: true, removedLines: storyResult.outcome.plan.remove.length, removedSec: storyResult.outcome.removedSec, hookLineId: storyResult.outcome.plan.hookLineId, hookMoved: storyResult.hookMoved }
+        : storyNote ? { applied: false, reason: storyNote } : null,
     };
 
     return {
@@ -1031,6 +1509,10 @@ export class VideoAIDirectorService implements IUniversalBuilder<EditIR> {
         request.currentEditIR ?? toMobileEditIR({ editIR: baseIR, sources, sourceWords, primaryAssetId: media.assetId, faceCenter, sfxCredits, sourceWordsByAsset, faceCenterByAsset, faceSamplesByAsset, scenesByAsset }).editIR,
         editIR
       ),
+      // Phase 5: where the phone should look at this result (only when it changed something).
+      ...(intent === "edit" && appliedOperations.length > 0 ? { checkpoints: critiqueCheckpoints(editIR) } : {}),
+      visualRound: request.visualCritique?.round ?? 0,
+      ...(styleReport ? { style: { ...styleReport, label: playbook!.label, reason: playbookReason } } : {}),
     };
   }
 
@@ -1265,6 +1747,12 @@ export interface MobileDirectResult {
   constraints?: { lockedRanges: Array<[number, number]>; lockedTracks: string[] };
   /** The request's `baseRevision`, echoed: the phone merges a response computed on an older timeline. */
   baseRevision?: number;
+  /** Phase 5: stills to take of the applied timeline for the visual check (absent when nothing changed). */
+  checkpoints?: VisualCheckpoint[];
+  /** 0 = a normal turn; 1 / 2 = this turn repaired what the visual check found. */
+  visualRound: number;
+  /** Phase 6: the style playbook of a whole edit and how the result measures against it. */
+  style?: PlaybookReport & { label: string; reason: string };
   /** What the request was understood to be about (Phase 3): mode, targets, and whether an LLM or the rules decided. */
   scope?: { mode: string; targets: Array<{ kind: string; ids?: string[]; timeSec?: number }>; source: "llm" | "offline"; note?: string };
   /** What this turn changes, in plain words, for the proposal card (Phase 3.3). */
@@ -1280,6 +1768,33 @@ export interface MobileDirectOptions {
   autonomy?: Partial<AutonomyPolicy>;
   /** Critic repair rounds (0..3, default 3). */
   maxRepairRounds?: number;
+  /**
+   * Stock B-roll search for the agent loop's search_broll tool (top results with thumbnails). Without it the tool
+   * falls back to resolveStockVideo (one result, no thumbnail).
+   */
+  searchBroll?: (query: string, aspect: string) => Promise<Array<{ url: string; title?: string; thumbnailUrl?: string; license?: string; provider?: string; durationSec?: number; attribution?: string; creditRequired?: boolean; sourcePage?: string }>>;
+  /** Fetches a thumbnail for the model (tests inject it). Default: HTTPS only, JPEG/PNG/WebP, at most 300 KB, 3 s. */
+  fetchImage?: (url: string) => Promise<{ mediaType: "image/jpeg" | "image/png" | "image/webp"; data: string } | null>;
+}
+
+/** A stock thumbnail for the model: HTTPS only, an image type the providers accept, small, quick. */
+async function defaultFetchImage(url: string): Promise<{ mediaType: "image/jpeg" | "image/png" | "image/webp"; data: string } | null> {
+  if (!/^https:\/\//i.test(url)) return null;
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 3000);
+  try {
+    const res = await fetch(url, { signal: ctl.signal, redirect: "follow" });
+    if (!res.ok) return null;
+    const type = (res.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
+    if (type !== "image/jpeg" && type !== "image/png" && type !== "image/webp") return null;
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.length > 300 * 1024) return null;
+    return { mediaType: type, data: buf.toString("base64") };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** Repair prompt: the creator's request plus the critic's structured issues. */
@@ -1349,6 +1864,52 @@ export function snapToBeats<T extends { type: string; [k: string]: any }>(ops: T
   return { ops: out, moved };
 }
 
+const VISUAL_FIX_WORDS: Record<string, string> = {
+  weak_hook: "a stronger opening",
+  caption_over_face: "captions off your face",
+  caption_unreadable: "easier-to-read captions",
+  caption_in_ui_zone: "captions out of the app's buttons",
+  zoom_crops_head: "a zoom that cut off your head",
+  subject_out_of_frame: "framing",
+  broll_irrelevant: "B-roll that didn't fit",
+  broll_jarring: "jarring B-roll",
+  jump_cut: "a jumpy cut",
+  color_inconsistent: "colour",
+  pacing: "pacing",
+  title_unreadable: "a hard-to-read title",
+  other: "a few details",
+};
+
+/** The creator-facing reply of a visual repair turn: the score and what was fixed, in plain words. */
+function visualRepairReply(r: VisualRepairRequest, changed: boolean, modelReply: string): string {
+  const fixed = [...new Set(r.critique.issues.filter(isRepairable).map((i) => VISUAL_FIX_WORDS[i.kind] ?? "a few details"))];
+  const score = `${r.critique.score.toFixed(1).replace(/\.0$/, "")}/10`;
+  if (!changed) return `I checked the result (${score}). ${fixed.length ? "I couldn't fix everything I spotted, it's in the details." : "Looks good to me."}`;
+  const list = fixed.length > 1 ? `${fixed.slice(0, -1).join(", ")} and ${fixed[fixed.length - 1]}` : fixed[0] ?? "a few details";
+  return `I checked how it looks (${score}) and fixed ${list}.${modelReply && !/^I (checked|fixed)/i.test(modelReply) ? ` ${modelReply}` : ""}`.trim();
+}
+
+/** What the story pass did, for the enhancement planner (it edits the cut timeline that follows). */
+function storyContextSection(o: StoryOutcome, hookMoved: boolean): string[] {
+  const byId = new Map(o.lines.map((l) => [l.id, l]));
+  const quote = (id: string) => sanitizeInlineUntrusted(byId.get(id)?.text ?? "", 90);
+  const removed = o.plan.remove.filter((r) => byId.has(r.lineId) && r.lineId !== o.plan.hookLineId);
+  const roles = new Map<string, string[]>();
+  for (const r of o.plan.roles) if (byId.has(r.lineId)) roles.set(r.role, [...(roles.get(r.role) ?? []), quote(r.lineId).split(" ").slice(0, 6).join(" ")]);
+  const lines = [
+    hookMoved ? `- the video now opens on the hook (moved to the start): "${quote(o.plan.hookLineId)}"` : byId.has(o.plan.hookLineId) ? `- hook (keep it strong in the first 1.5 s): "${quote(o.plan.hookLineId)}"` : `- hook: the first line kept`,
+    removed.length ? `- cut ${removed.length} line(s), ${o.removedSec.toFixed(1)} s: ${removed.slice(0, 12).map((r) => `${r.reason} "${quote(r.lineId)}"`).join("; ")}` : `- nothing was cut: every line carries the story`,
+    ...(roles.size ? [`- story beats kept: ${[...roles].map(([role, xs]) => `${role}: ${xs.slice(0, 3).map((x) => `"${x}…"`).join(", ")}`).join(" | ")}`] : []),
+    ...(o.plan.targetDurationSec ? [`- target length: about ${Math.round(o.plan.targetDurationSec)} s`] : []),
+  ];
+  return [
+    `## Story edit already made this turn (by the story editor)`,
+    fenceUntrusted("transcript", lines.join("\n"), { maxChars: 4000 }).block,
+    `The timeline and transcript you see are ALREADY cut to this story. Do not cut more speech (no removeRange on spoken lines, no reorder) unless the creator asked for it; removeSilences and cleanFillers are still right. Put captions, zooms, B-roll, music and effects on this cut timeline, and land a pattern interrupt on the hook.`,
+    ``,
+  ];
+}
+
 function mediaContextSections(media: MobileAIDirectRequest["media"], label?: string): string[] {
   const out: string[] = [];
   // Several sources: each one's analysis is in its own SOURCE seconds.
@@ -1358,7 +1919,10 @@ function mediaContextSections(media: MobileAIDirectRequest["media"], label?: str
     out.push(`On-screen text detected in the source (SOURCE s):`);
     out.push(fenceUntrusted("ocr", media.ocr.slice(0, 60).map((o) => `${(o.startMs / 1000).toFixed(1)}-${(o.endMs / 1000).toFixed(1)}: ${o.text}`).join(" | "), { maxChars: 4000 }).block);
   }
-  if (media.labels?.length) {
+  if (media.shotLog?.shots.length) {
+    // What a vision model saw replaces the on-device label words (it covers them and much more).
+    out.push(...shotLogPromptLines(media.shotLog));
+  } else if (media.labels?.length) {
     // ML Kit's label vocabulary is plain words; anything else is dropped so client data cannot carry instructions.
     const clean = (l: string) => (/^[a-z][a-z &'-]{0,38}$/i.test(l) ? l.toLowerCase() : null);
     const spans = media.labels

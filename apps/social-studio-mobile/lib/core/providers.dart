@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../features/director/ai_director_service.dart';
+import '../features/director/vision_service.dart';
 import 'network/api_client.dart';
 import 'network/audio_transcription_service.dart';
 import 'network/device_registration.dart';
@@ -48,6 +49,9 @@ final socialApiProvider = Provider<SocialApi>((ref) => SocialApi(
 
 final transcriptionServiceProvider = Provider<AudioTranscriptionService>(
     (ref) => AudioTranscriptionService(ref.watch(apiClientProvider), ref.watch(deviceRegistrationProvider)));
+
+final shotLogServiceProvider = Provider<ShotLogService>(
+    (ref) => ShotLogService(ref.watch(apiClientProvider), ref.watch(deviceRegistrationProvider)));
 
 final aiDirectorServiceProvider = Provider<AiDirectorService>(
     (ref) => AiDirectorService(ref.watch(apiClientProvider), ref.watch(deviceRegistrationProvider)));

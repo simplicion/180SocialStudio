@@ -135,6 +135,20 @@ public class MediaEnginePlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
         case "cancelVoiceRecording":
             cancelVoiceRecording(result: result)
 
+        case "generateThumbnails":
+            // Stills for the timeline and, with the creator's consent, for the AI Director's vision pass (Phase 2).
+            guard let sourcePath = args["sourcePath"] as? String,
+                  let outputDir = args["outputDir"] as? String,
+                  let times = args["timesMs"] as? [NSNumber], !times.isEmpty else {
+                result(FlutterError(code: "INVALID_ARGS", message: "sourcePath, outputDir and timesMs are required", details: nil))
+                return
+            }
+            let maxWidth = (args["maxWidth"] as? NSNumber)?.intValue ?? 0
+            let exact = (args["exact"] as? Bool) ?? false
+            let quality = min(100, max(1, (args["quality"] as? NSNumber)?.intValue ?? 88))
+            generateThumbnails(sourcePath: sourcePath, outputDir: outputDir, timesMs: times.map { $0.int64Value },
+                               maxWidth: maxWidth, exact: exact, quality: quality, result: result)
+
         case "extractAudio":
             // The clip's sound for transcription (audit F-13: without it iPhone has no captions, no filler or pause
             // removal and no ducking). AAC in an M4A container, which the transcription upload accepts.
@@ -232,6 +246,50 @@ public class MediaEnginePlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
                     result(FlutterError(code: "PROXY_FAILED", message: err, details: nil))
                 }
             }
+        }
+    }
+
+    /// One JPEG per time into [outputDir], upright (the track's preferred transform applied), at most [maxWidth] px wide
+    /// (0 = full size). Same contract as Android's MediaTools.generateThumbnails: paths in order, or an error.
+    private func generateThumbnails(sourcePath: String, outputDir: String, timesMs: [Int64], maxWidth: Int, exact: Bool,
+                                    quality: Int, result: @escaping FlutterResult) {
+        guard FileManager.default.fileExists(atPath: sourcePath) else {
+            result(FlutterError(code: "FILE_NOT_FOUND", message: "No file at \(sourcePath)", details: nil))
+            return
+        }
+        DispatchQueue.global(qos: .userInitiated).async {
+            let asset = AVURLAsset(url: URL(fileURLWithPath: sourcePath))
+            guard asset.tracks(withMediaType: .video).first != nil else {
+                DispatchQueue.main.async { result(FlutterError(code: "NO_VIDEO_TRACK", message: "No video track in \(sourcePath)", details: nil)) }
+                return
+            }
+            let generator = AVAssetImageGenerator(asset: asset)
+            generator.appliesPreferredTrackTransform = true
+            if maxWidth > 0 { generator.maximumSize = CGSize(width: maxWidth, height: maxWidth * 4) }
+            if exact {
+                generator.requestedTimeToleranceBefore = .zero
+                generator.requestedTimeToleranceAfter = .zero
+            }
+            try? FileManager.default.createDirectory(atPath: outputDir, withIntermediateDirectories: true)
+            let base = URL(fileURLWithPath: sourcePath).deletingPathExtension().lastPathComponent
+            var paths: [String] = []
+            for t in timesMs {
+                let time = CMTime(value: t, timescale: 1000)
+                guard let cg = try? generator.copyCGImage(at: time, actualTime: nil),
+                      let data = UIImage(cgImage: cg).jpegData(compressionQuality: CGFloat(quality) / 100.0) else {
+                    DispatchQueue.main.async { result(FlutterError(code: "THUMBNAIL_FAILED", message: "No frame at \(t)ms in \(sourcePath)", details: nil)) }
+                    return
+                }
+                let out = (outputDir as NSString).appendingPathComponent("\(base)_\(t).jpg")
+                do {
+                    try data.write(to: URL(fileURLWithPath: out), options: .atomic)
+                } catch {
+                    DispatchQueue.main.async { result(FlutterError(code: "THUMBNAIL_FAILED", message: error.localizedDescription, details: nil)) }
+                    return
+                }
+                paths.append(out)
+            }
+            DispatchQueue.main.async { result(paths) }
         }
     }
 

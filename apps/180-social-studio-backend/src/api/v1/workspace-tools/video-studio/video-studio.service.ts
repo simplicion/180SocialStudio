@@ -200,6 +200,8 @@ export class VideoStudioService {
       memoryContext: agentOs.memoryContext,
       resolveStockVideo: VideoStudioService.resolveStockVideo,
       resolveStockMusic: VideoStudioService.resolveStockMusic,
+      // The agent loop's search_broll tool: several results with thumbnails the model can look at (Phase 4).
+      searchBroll: VideoStudioService.searchBroll,
       // Freesound when FREESOUND_API_KEY is set, else Openverse sound effects (CC0 / CC BY only).
       resolveSfx: process.env.FREESOUND_API_KEY ? VideoStudioService.searchFreesoundSfx : VideoStudioService.searchFreeSfx,
       stockTimeoutMs: Number(process.env.AI_DIRECTOR_STOCK_TIMEOUT_MS) > 0 ? Number(process.env.AI_DIRECTOR_STOCK_TIMEOUT_MS) : 8000,
@@ -242,6 +244,39 @@ export class VideoStudioService {
     }
     if (errors.length) throw new Error(errors.join("; "));
     return null;
+  }
+
+  /**
+   * Stock B-roll candidates for the AI Director's search_broll tool: Pexels (with its thumbnail) when PEXELS_API_KEY is
+   * set, then the free licence-filtered providers. HTTPS URLs only; at most 4.
+   */
+  static async searchBroll(query: string, aspect: string): Promise<Array<{ url: string; title?: string; thumbnailUrl?: string; license?: string; provider?: string; durationSec?: number; attribution?: string; creditRequired?: boolean; sourcePage?: string }>> {
+    const runtime = require("@workspace/video-engine-runtime");
+    const portrait = aspect === "9:16" || aspect === "4:5";
+    const out: Array<{ url: string; title?: string; thumbnailUrl?: string; license?: string; provider?: string; durationSec?: number; attribution?: string; creditRequired?: boolean; sourcePage?: string }> = [];
+    try {
+      runtime.PexelsClient.getApiKey();
+      const orientation = portrait ? "portrait" : aspect === "1:1" ? "square" : "landscape";
+      const { videos } = await runtime.PexelsClient.searchVideos({ query, orientation, perPage: 4 });
+      for (const v of videos || []) {
+        if (typeof v?.downloadUrl === "string" && v.downloadUrl.startsWith("https://")) {
+          out.push({ url: v.downloadUrl, title: v.title, thumbnailUrl: v.thumbnailUrl || undefined, license: "Pexels License", provider: "pexels", durationSec: v.duration, attribution: `Video by ${v.photographer || "a Pexels creator"} on Pexels`, creditRequired: false, sourcePage: v.url });
+        }
+      }
+    } catch {
+      /* no key or Pexels down: the free providers answer */
+    }
+    if (out.length < 4) {
+      try {
+        const free = await runtime.searchFreeMedia({ query, kind: "video", targetAspect: aspect, minDurationSec: 2, limit: 4 - out.length, timeoutMs: 5000 });
+        for (const i of free.items || []) {
+          if (typeof i?.url === "string" && i.url.startsWith("https://")) out.push({ url: i.url, title: i.title, thumbnailUrl: i.previewUrl, license: i.license, provider: i.provider, durationSec: i.durationSec, attribution: i.attribution, creditRequired: i.creditRequired, sourcePage: i.sourcePage });
+        }
+      } catch {
+        /* nothing more */
+      }
+    }
+    return out.slice(0, 4);
   }
 
   /** Music: curated catalogue first, then the free licence-filtered providers (credit line kept). */

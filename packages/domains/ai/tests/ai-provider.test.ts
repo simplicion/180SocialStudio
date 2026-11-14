@@ -156,7 +156,7 @@ test("Claude agent turn: thinking blocks replayed verbatim, all tool results (wi
   const t2 = await c.generateAgentTurn!("sys", messages, [TOOL]);
   assert.equal(t2.text, "done");
   const sent = calls[1].body.messages;
-  assert.equal(sent[0].content[0].type, "image", "images before text");
+  assert.deepEqual(sent[0].content.map((b: any) => b.type), ["text", "image"], "parts keep the caller's order");
   assert.deepEqual(sent[1].content, first.content, "assistant turn replayed exactly (thinking signature kept)");
   assert.equal(sent[2].role, "user");
   assert.equal(sent[2].content.length, 2, "both results in ONE message");
@@ -358,4 +358,17 @@ test("the Director sends persona + rules as the system prompt, with effort and t
   assert.match(plan.prompt, /remove the pauses/);
   assert.equal(plan.options.effort, "medium");
   assert.equal(plan.options.model, DIRECTOR_DEFAULTS.claude);
+});
+
+test("Gemini: tool results followed by the next instruction become ONE user turn", async () => {
+  const { toGeminiContents } = await import("../src/kernel/ai-provider.service");
+  const c = toGeminiContents([
+    { role: "user", content: "start" },
+    { role: "assistant", toolCalls: [{ id: "1", name: "get_words", args: {} }] },
+    { role: "tool", results: [{ callId: "1", name: "get_words", content: "words" }] },
+    { role: "user", content: "Stage 2" },
+  ]);
+  assert.deepEqual(c.map((x: any) => x.role), ["user", "model", "user"]);
+  assert.equal(c[2].parts.length, 2);
+  assert.deepEqual(c[2].parts[1], { text: "Stage 2" });
 });

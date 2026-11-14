@@ -2290,6 +2290,233 @@
       "loudness": {
         "integratedLufs": -21,
         "truePeakDb": -3
+      },
+      "shotLog": {
+        "version": "shotlog/1",
+        "assetId": "primary",
+        "sourceHash": "eval-primary-55914",
+        "durationMs": 55914,
+        "model": "eval/fixture",
+        "frameCount": 28,
+        "shots": [
+          {
+            "startMs": 0,
+            "endMs": 7988,
+            "description": "two people in chairs in a podcast studio, host on the left, guest on the right, microphones between them",
+            "subjects": [
+              {
+                "label": "guest",
+                "box": {
+                  "x": 0.62,
+                  "y": 0.22,
+                  "w": 0.18,
+                  "h": 0.5
+                },
+                "primary": true
+              },
+              {
+                "label": "host",
+                "box": {
+                  "x": 0.2,
+                  "y": 0.22,
+                  "w": 0.18,
+                  "h": 0.5
+                }
+              }
+            ],
+            "framing": "wide",
+            "cameraMotion": "static",
+            "quality": [],
+            "brollSuitability": 0.4,
+            "energy": "medium"
+          },
+          {
+            "startMs": 7988,
+            "endMs": 15975,
+            "description": "two people in chairs in a podcast studio, host on the left, guest on the right, microphones between them",
+            "subjects": [
+              {
+                "label": "guest",
+                "box": {
+                  "x": 0.62,
+                  "y": 0.22,
+                  "w": 0.18,
+                  "h": 0.5
+                },
+                "primary": true
+              },
+              {
+                "label": "host",
+                "box": {
+                  "x": 0.2,
+                  "y": 0.22,
+                  "w": 0.18,
+                  "h": 0.5
+                }
+              }
+            ],
+            "framing": "wide",
+            "cameraMotion": "static",
+            "quality": [],
+            "brollSuitability": 0.4,
+            "energy": "medium"
+          },
+          {
+            "startMs": 15975,
+            "endMs": 23963,
+            "description": "two people in chairs in a podcast studio, host on the left, guest on the right, microphones between them",
+            "subjects": [
+              {
+                "label": "guest",
+                "box": {
+                  "x": 0.62,
+                  "y": 0.22,
+                  "w": 0.18,
+                  "h": 0.5
+                },
+                "primary": true
+              },
+              {
+                "label": "host",
+                "box": {
+                  "x": 0.2,
+                  "y": 0.22,
+                  "w": 0.18,
+                  "h": 0.5
+                }
+              }
+            ],
+            "framing": "wide",
+            "cameraMotion": "static",
+            "quality": [],
+            "brollSuitability": 0.4,
+            "energy": "medium"
+          },
+          {
+            "startMs": 23963,
+            "endMs": 31951,
+            "description": "two people in chairs in a podcast studio, host on the left, guest on the right, microphones between them",
+            "subjects": [
+              {
+                "label": "guest",
+                "box": {
+                  "x": 0.62,
+                  "y": 0.22,
+                  "w": 0.18,
+                  "h": 0.5
+                },
+                "primary": true
+              },
+              {
+                "label": "host",
+                "box": {
+                  "x": 0.2,
+                  "y": 0.22,
+                  "w": 0.18,
+                  "h": 0.5
+                }
+              }
+            ],
+            "framing": "wide",
+            "cameraMotion": "static",
+            "quality": [],
+            "brollSuitability": 0.4,
+            "energy": "medium"
+          },
+          {
+            "startMs": 31951,
+            "endMs": 39939,
+            "description": "two people in chairs in a podcast studio, host on the left, guest on the right, microphones between them",
+            "subjects": [
+              {
+                "label": "guest",
+                "box": {
+                  "x": 0.62,
+                  "y": 0.22,
+                  "w": 0.18,
+                  "h": 0.5
+                },
+                "primary": true
+              },
+              {
+                "label": "host",
+                "box": {
+                  "x": 0.2,
+                  "y": 0.22,
+                  "w": 0.18,
+                  "h": 0.5
+                }
+              }
+            ],
+            "framing": "wide",
+            "cameraMotion": "static",
+            "quality": [],
+            "brollSuitability": 0.4,
+            "energy": "medium"
+          },
+          {
+            "startMs": 39939,
+            "endMs": 47926,
+            "description": "two people in chairs in a podcast studio, host on the left, guest on the right, microphones between them",
+            "subjects": [
+              {
+                "label": "guest",
+                "box": {
+                  "x": 0.62,
+                  "y": 0.22,
+                  "w": 0.18,
+                  "h": 0.5
+                },
+                "primary": true
+              },
+              {
+                "label": "host",
+                "box": {
+                  "x": 0.2,
+                  "y": 0.22,
+                  "w": 0.18,
+                  "h": 0.5
+                }
+              }
+            ],
+            "framing": "wide",
+            "cameraMotion": "static",
+            "quality": [],
+            "brollSuitability": 0.4,
+            "energy": "medium"
+          },
+          {
+            "startMs": 47926,
+            "endMs": 55914,
+            "description": "two people in chairs in a podcast studio, host on the left, guest on the right, microphones between them",
+            "subjects": [
+              {
+                "label": "guest",
+                "box": {
+                  "x": 0.62,
+                  "y": 0.22,
+                  "w": 0.18,
+                  "h": 0.5
+                },
+                "primary": true
+              },
+              {
+                "label": "host",
+                "box": {
+                  "x": 0.2,
+                  "y": 0.22,
+                  "w": 0.18,
+                  "h": 0.5
+                }
+              }
+            ],
+            "framing": "wide",
+            "cameraMotion": "static",
+            "quality": [],
+            "brollSuitability": 0.4,
+            "energy": "medium"
+          }
+        ]
       }
     }
   },
@@ -2313,7 +2540,8 @@
           6632,
           15727
         ]
-      ]
+      ],
+      "playbook": "podcast_clip"
     }
   }
 }

@@ -141,7 +141,10 @@ export class PlanExpander {
   ): { x: number; y: number } | null {
     const track = graph.faces[0];
     if (!track) return null;
-    const inWindow = track.samples.filter((s) => s.timeSeconds >= startSec - 0.25 && s.timeSeconds <= endSec + 0.25);
+    // A punch-in is framed where it lands: the first moments of the zoom decide (a zoom that runs across a shot change
+    // used to be centred between the two shots' subjects).
+    const landEnd = Math.min(endSec, startSec + Math.max(0.5, Math.min(0.8, (endSec - startSec) / 2)));
+    const inWindow = track.samples.filter((s) => s.timeSeconds >= startSec - 0.25 && s.timeSeconds <= landEnd + 0.1);
     const med = (v: number[]) => {
       const a = [...v].sort((p, q) => p - q);
       const m = a.length >> 1;

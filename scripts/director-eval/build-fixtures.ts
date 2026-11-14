@@ -72,6 +72,10 @@ interface Fixture {
       shouldDropAssets?: string[];
       /** Sources whose clips must stay. */
       mustKeepAssets?: string[];
+      /** Every zoom centres within 0.2 of the main subject the ShotLog reports for that moment (Phase 2). */
+      zoomsOnSubject?: boolean;
+      /** The style playbook this video should get, and its targets met within tolerance (Phase 6). */
+      playbook?: string;
     };
   };
 }
@@ -313,6 +317,81 @@ const fixtures: Fixture[] = [];
     },
   });
 }
+
+// ── Vision (Phase 2): the ShotLog the phone would send with consent, i.e. what the vision pass returns ──────────
+
+type Box = { x: number; y: number; w: number; h: number };
+type Seg = { from: number; to: number; desc: string; subjects: Array<{ label: string; box: Box; primary?: boolean }>; framing?: string; broll?: number; quality?: string[]; text?: string; energy?: string; motion?: string };
+
+function shotLog(assetId: string, durationMs: number, segs: Seg[]) {
+  const shots: any[] = [];
+  for (const g of segs) {
+    const n = Math.max(1, Math.ceil((g.to - g.from) / 8000));
+    for (let k = 0; k < n; k++) {
+      shots.push({
+        startMs: Math.round(g.from + ((g.to - g.from) * k) / n),
+        endMs: Math.round(g.from + ((g.to - g.from) * (k + 1)) / n),
+        description: g.desc,
+        subjects: g.subjects,
+        framing: g.framing ?? "medium",
+        cameraMotion: g.motion ?? "static",
+        quality: g.quality ?? [],
+        ...(g.text ? { onScreenText: g.text } : {}),
+        brollSuitability: g.broll ?? 0.2,
+        energy: g.energy ?? "medium",
+      });
+    }
+  }
+  return { version: "shotlog/1", assetId, sourceHash: `eval-${assetId}-${durationMs}`, durationMs, model: "eval/fixture", frameCount: Math.min(60, Math.ceil(durationMs / 2000)), shots };
+}
+
+const PERSON: Box = { x: 0.35, y: 0.12, w: 0.3, h: 0.48 };
+function addVision(f: Fixture) {
+  const media = f.request.media as any;
+  const list = (f.request.mediaList as any[]) ?? [];
+  const d = media.durationMs as number;
+  if (f.id === "talking-head-45s") {
+    media.shotLog = shotLog("primary", d, [{ from: 0, to: d, desc: "a founder talking to camera at a desk in a warm, slightly dim home office", subjects: [{ label: "founder", box: PERSON, primary: true }, { label: "laptop", box: { x: 0.6, y: 0.66, w: 0.3, h: 0.18 } }], quality: ["dark"] }]);
+    f.reference.checks.zoomsOnSubject = true;
+  } else if (f.id === "interview-two-speakers") {
+    media.shotLog = shotLog("primary", d, [{ from: 0, to: d, desc: "two people in chairs in a podcast studio, host on the left, guest on the right, microphones between them", framing: "wide", broll: 0.4, subjects: [{ label: "guest", box: { x: 0.62, y: 0.22, w: 0.18, h: 0.5 }, primary: true }, { label: "host", box: { x: 0.2, y: 0.22, w: 0.18, h: 0.5 } }] }]);
+  } else if (f.id === "vlog-motion") {
+    const cuts = [0, ...(media.scenesMs as number[]), d];
+    const looks: Array<Omit<Seg, "from" | "to">> = [
+      { desc: "the creator taking a selfie in an airport arrivals hall", subjects: [{ label: "creator", box: { x: 0.3, y: 0.15, w: 0.4, h: 0.45 }, primary: true }], framing: "close", broll: 0.2, motion: "handheld" },
+      { desc: "a yellow tram on a steep cobbled street in sunlight", subjects: [{ label: "tram", box: { x: 0.2, y: 0.35, w: 0.6, h: 0.4 }, primary: true }], framing: "wide", broll: 0.9, motion: "pan", energy: "high" },
+      { desc: "pastel-coloured old buildings with tiled facades", subjects: [{ label: "building", box: { x: 0.1, y: 0.1, w: 0.8, h: 0.8 }, primary: true }], framing: "wide", broll: 0.9 },
+      { desc: "close-up of a custard tart with cinnamon on a plate", subjects: [{ label: "pastel de nata", box: { x: 0.3, y: 0.4, w: 0.4, h: 0.25 }, primary: true }], framing: "extreme_close", broll: 0.8 },
+      { desc: "a busy cafe counter with tarts in a glass display", subjects: [{ label: "display case", box: { x: 0.15, y: 0.4, w: 0.7, h: 0.35 }, primary: true }], framing: "medium", broll: 0.8, quality: ["blur"], motion: "handheld" },
+    ];
+    media.shotLog = shotLog("primary", d, cuts.slice(0, -1).map((from, i) => ({ from, to: cuts[i + 1], ...looks[i % looks.length] })));
+  } else if (f.id === "tutorial-screen") {
+    const cuts = [0, ...(media.scenesMs as number[]), d];
+    const looks: Array<Omit<Seg, "from" | "to">> = [
+      { desc: "a desktop with the app's home window open", subjects: [{ label: "app window", box: { x: 0.1, y: 0.1, w: 0.8, h: 0.8 }, primary: true }], text: "Backup Pro" },
+      { desc: "the settings window with the Backup tab selected in the sidebar", subjects: [{ label: "Backup tab", box: { x: 0.04, y: 0.3, w: 0.14, h: 0.06 }, primary: true }, { label: "settings panel", box: { x: 0.22, y: 0.1, w: 0.7, h: 0.8 } }], text: "Settings > Backup" },
+      { desc: "a folder picker dialog with the Choose folder button", subjects: [{ label: "Choose folder button", box: { x: 0.66, y: 0.72, w: 0.18, h: 0.07 }, primary: true }], text: "Choose folder" },
+      { desc: "the schedule section with a Daily toggle switched on and a Save button", subjects: [{ label: "Save button", box: { x: 0.78, y: 0.84, w: 0.1, h: 0.06 }, primary: true }, { label: "Daily toggle", box: { x: 0.3, y: 0.4, w: 0.12, h: 0.05 } }], text: "Daily schedule  [Save]" },
+      { desc: "a green confirmation banner saying backups are on", subjects: [{ label: "confirmation banner", box: { x: 0.3, y: 0.05, w: 0.4, h: 0.08 }, primary: true }] },
+    ];
+    media.shotLog = shotLog("primary", d, cuts.slice(0, -1).map((from, i) => ({ from, to: cuts[i + 1], framing: "screen", broll: 0.1, energy: "low", ...looks[i % looks.length] })));
+    f.reference.checks.zoomsOnSubject = true;
+  } else if (f.id === "multi-clip") {
+    for (const m of [media, ...list]) {
+      m.shotLog = shotLog(m.assetId, m.durationMs, [{ from: 0, to: m.durationMs, desc: "the creator talking to camera in a bright kitchen", subjects: [{ label: "creator", box: { x: 0.36, y: 0.14, w: 0.28, h: 0.44 }, primary: true }] }]);
+    }
+    f.reference.checks.zoomsOnSubject = true;
+  }
+}
+for (const f of fixtures) addVision(f);
+const PLAYBOOKS: Record<string, string> = {
+  "talking-head-45s": "fast_hype",
+  "interview-two-speakers": "podcast_clip",
+  "vlog-motion": "cinematic_vlog",
+  "tutorial-screen": "calm_educational",
+  "multi-clip": "fast_hype",
+};
+for (const f of fixtures) f.reference.checks.playbook = PLAYBOOKS[f.id];
 
 const dir = join(__dirname, "fixtures");
 mkdirSync(dir, { recursive: true });

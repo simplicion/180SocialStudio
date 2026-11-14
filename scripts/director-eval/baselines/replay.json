@@ -1,0 +1,68 @@
+{
+  "at": "2026-11-14T21:09:17.879Z",
+  "commit": null,
+  "provider": "replay",
+  "medianJudge": null,
+  "checksPassed": 33,
+  "checksTotal": 38,
+  "fixtures": {
+    "interview-two-speakers": {
+      "passed": [
+        "keep 6632-15727 ms",
+        "captions",
+        "aspect 9:16",
+        "style playbook podcast_clip"
+      ],
+      "judge": null
+    },
+    "multi-clip": {
+      "passed": [
+        "captions",
+        "zooms >= 1",
+        "duration <= 26041 ms",
+        "drop take1",
+        "drop take2",
+        "zooms on the subject",
+        "style playbook fast_hype",
+        "keep take3"
+      ],
+      "judge": null
+    },
+    "talking-head-45s": {
+      "passed": [
+        "cut 400-9794 ms",
+        "keep 9894-18220 ms",
+        "keep 59747-61247 ms",
+        "captions",
+        "zooms >= 1",
+        "zooms <= 4",
+        "duration <= 60768 ms",
+        "zooms on the subject",
+        "style playbook fast_hype"
+      ],
+      "judge": null
+    },
+    "tutorial-screen": {
+      "passed": [
+        "cut 19514-29745 ms",
+        "keep 8040-13961 ms",
+        "keep 13961-19514 ms",
+        "keep 29945-35051 ms",
+        "captions",
+        "aspect 16:9",
+        "zooms on the subject",
+        "style playbook calm_educational"
+      ],
+      "judge": null
+    },
+    "vlog-motion": {
+      "passed": [
+        "keep 19800-25100 ms",
+        "zooms <= 3",
+        "music",
+        "style playbook cinematic_vlog"
+      ],
+      "judge": null
+    }
+  }
+}

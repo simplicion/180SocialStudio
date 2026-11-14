@@ -174,7 +174,8 @@ class MediaEnginePlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventC
                     val times = call.req<List<Number>>("timesMs").map { it.toLong() }
                     val width = call.argument<Number>("maxWidth")?.toInt() ?: 0
                     val exact = call.argument<Boolean>("exact") ?: false
-                    background(result) { MediaTools.generateThumbnails(src, dir, times, width, exact) }
+                    val quality = (call.argument<Number>("quality")?.toInt() ?: 88).coerceIn(1, 100)
+                    background(result) { MediaTools.generateThumbnails(src, dir, times, width, exact, quality) }
                 }
                 "generateProxy" -> {
                     val src = call.req<String>("sourcePath")

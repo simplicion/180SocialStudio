@@ -355,6 +355,8 @@ class MediaEngineService {
     required List<int> timesMs,
     int maxWidth = 360,
     bool exact = false,
+    /// JPEG quality 1..100 (default 88; the vision pass sends 70).
+    int quality = 88,
   }) async {
     final r = await _invoke<List<Object?>>('generateThumbnails', {
       'sourcePath': sourcePath,
@@ -362,6 +364,7 @@ class MediaEngineService {
       'timesMs': timesMs,
       'maxWidth': maxWidth,
       'exact': exact,
+      'quality': quality.clamp(1, 100),
     });
     if (r == null) throw MediaEngineException('NATIVE_ERROR', 'generateThumbnails returned no paths');
     return r.cast<String>();
