@@ -22,7 +22,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import { createRequire } from "module";
 import { join, resolve } from "path";
 import { VideoAIDirectorService } from "../../packages/domains/ai/src/builders/video-ai-director.service";
-import { judgeEdit, median } from "./judge";
+import { defaultJudgeModel, judgeEdit, median } from "./judge";
 import { recordingClient, recordingPath, replayClient, type RecordedCall } from "./replay";
 import { appendFileSync } from "fs";
 import { dirname } from "path";
@@ -65,7 +65,7 @@ function args() {
     /** Fixed report name (CI): <out>/<name>.json / .md instead of a timestamp. */
     name: get("name"),
     judge: a.includes("--judge"),
-    judgeModel: get("judge-model") || process.env.DIRECTOR_JUDGE_MODEL || "claude-sonnet-5-5",
+    judgeModel: get("judge-model") || process.env.DIRECTOR_JUDGE_MODEL || "",
     record: a.includes("--record"),
     recordings: get("recordings") || join(__dirname, "recordings"),
     history: get("history"),
@@ -183,6 +183,7 @@ async function main() {
   if (!fixtures.length) throw new Error(`no fixtures${opt.fixture ? ` named ${opt.fixture}` : ""} in ${dir} (run build-fixtures.ts)`);
 
   const replay = opt.provider === "replay";
+  if (!opt.judgeModel) opt.judgeModel = defaultJudgeModel(opt.provider);
   if (replay && (opt.record || opt.judge)) throw new Error("--record and --judge need a real provider, not replay");
   const client = replay ? null : await makeClient(opt.provider);
   const director = VideoAIDirectorService.getInstance();

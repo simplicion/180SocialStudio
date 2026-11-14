@@ -5,8 +5,9 @@
  * visual critic's rubric. The fixtures carry no real footage, so the judge reads the final timeline (what is on it,
  * where, with which words) instead of rendered stills; once a fixture has `frames/` the same call can include them.
  *
- * The judge model is deliberately different from the Director's by default (DIRECTOR_JUDGE_MODEL, default
- * claude-sonnet-5-5 while the Director runs claude-opus-5-5), so the edit is not graded by the model that made it.
+ * The judge model is deliberately different from the Director's by default (DIRECTOR_JUDGE_MODEL, else
+ * `defaultJudgeModel(provider)`: gpt-6.1-sol while the Director runs gpt-6-astra, claude-sonnet-5-5 against
+ * claude-opus-5-5), so the edit is not graded by the model that made it.
  */
 import type { AIClient } from "../../packages/domains/ai/src/kernel/ai-provider.service";
 import { CreativePlanner } from "../../packages/domains/ai/src/builders/creative-planner";
@@ -21,6 +22,13 @@ export interface Judgement {
 }
 
 const TOOL = "record_judgement";
+
+/** A judge model of the same provider that is not the Director's default model. */
+export function defaultJudgeModel(provider: string): string {
+  if (provider === "openai") return "gpt-6.1-sol";
+  if (provider === "gemini") return "gemini-3.6-flash";
+  return "claude-sonnet-5-5";
+}
 
 export async function judgeEdit(client: AIClient, model: string, fixture: any, res: any): Promise<Judgement> {
   if (typeof client.generateWithTools !== "function") throw new Error("the judge needs tool calling");

@@ -18,8 +18,8 @@ on:
   workflow_dispatch:
     inputs:
       provider:
-        description: "Provider for the live eval (claude | openai | gemini)"
-        default: "claude"
+        description: "Provider for the live eval (openai | claude | gemini)"
+        default: "openai"
 
 concurrency:
   group: director-eval-${{ github.ref }}-${{ github.event_name }}
@@ -68,7 +68,7 @@ jobs:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-      AI_DIRECTOR_PROVIDER: ${{ github.event.inputs.provider || 'claude' }}
+      AI_DIRECTOR_PROVIDER: ${{ github.event.inputs.provider || 'openai' }}
       # Small budget: 5 fixtures, at most 6 agent turns each.
       AI_DIRECTOR_AGENT_TURNS: "6"
       AI_DIRECTOR_AGENT_BUDGET_MS: "120000"

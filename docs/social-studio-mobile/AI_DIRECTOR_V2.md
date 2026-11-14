@@ -69,7 +69,8 @@ is fenced as untrusted data in prompts and never followed as instructions.
   `baselines/replay.json` fails now. A recording that no longer matches the Director's conversation fails with
   "re-record with --record".
 - **Nightly** (job `nightly`, needs a provider secret): the eval against the real model plus a judge
-  (`judge.ts`, a different model by default: `DIRECTOR_JUDGE_MODEL`, `claude-sonnet-5-5`) scoring each edit 0-10
+  (`judge.ts`, a different model than the Director's by default: `DIRECTOR_JUDGE_MODEL`, else `gpt-6.1-sol` for
+  OpenAI / `claude-sonnet-5-5` for Claude) scoring each edit 0-10
   against the reference and the visual rubric. Each run appends a line to `history/scores.jsonl` (kept in the Actions
   cache and uploaded as an artifact). `gate.ts --mode live` fails on any offline-rules turn, a median judge score more
   than 1 point below `baselines/live.json`, or a check pass rate 10+ points lower.
@@ -81,8 +82,8 @@ Commands:
 ```
 npx tsx scripts/director-eval/run-director-eval.ts --provider replay --name replay            # PR check, no key
 npx tsx scripts/director-eval/gate.ts --report scripts/director-eval/reports/replay.json --mode replay
-npx tsx scripts/director-eval/run-director-eval.ts --provider claude --env apps/180-social-studio-backend/.env --record   # real answers → recordings/
-npx tsx scripts/director-eval/run-director-eval.ts --provider claude --judge --name nightly --history scripts/director-eval/history/scores.jsonl
+npx tsx scripts/director-eval/run-director-eval.ts --provider openai --env apps/180-social-studio-backend/.env --record   # real answers → recordings/
+npx tsx scripts/director-eval/run-director-eval.ts --provider openai --env apps/180-social-studio-backend/.env --judge --name nightly --history scripts/director-eval/history/scores.jsonl
 npx tsx scripts/director-eval/gate.ts --report scripts/director-eval/reports/nightly.json --mode live --update          # first live baseline
 ```
 
