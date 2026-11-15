@@ -75,3 +75,12 @@ test("the Director request accepts a visual repair (rounds 1-2 only)", () => {
   assert.ok(MobileAIDirectRequestSchema.parse({ ...base, visualCritique: { round: 1, critique } }).visualCritique);
   assert.throws(() => MobileAIDirectRequestSchema.parse({ ...base, visualCritique: { round: 3, critique } }));
 });
+
+test("QA 3j: a caption on screen for under 250 ms is reported by the structural critic", async () => {
+  const { critiqueDirectorEdit } = await import("../src/director-critic");
+  const m = ir({ captions: [{ id: "k1", kind: "caption", startMs: 1000, endMs: 1200, text: "hi", words: [], style: {} }] });
+  const crit = critiqueDirectorEdit({ editIR: m });
+  const short = crit.issues.find((i) => i.id === "caption_short:1000");
+  assert.ok(short, JSON.stringify(crit.issues.map((i) => i.id)));
+  assert.match(short!.title, /200 ms/);
+});

@@ -372,3 +372,36 @@ test('aggregateDevices: groups duplicate sessions on same device, exposes sessio
   assert.equal(phoneGroup.sessionCount, 1);
   assert.equal(phoneGroup.current, false);
 });
+
+test('a device registered while Redis was unavailable is still found once Redis is back (no lost devices)', async () => {
+  const { redis } = await import('../../../config/redis');
+  if (!redis) return; // no client in this environment: the memory registry is the only one
+  const r = redis as any;
+  const saved = { hset: r.hset, hgetall: r.hgetall, hget: r.hget, hdel: r.hdel };
+  const warn = console.warn;
+  console.warn = () => {};
+  try {
+    // Outage while registering: the write falls back to process memory.
+    r.hset = async () => { throw new Error('Stream isn\'t writeable'); };
+    r.hgetall = async () => { throw new Error('Stream isn\'t writeable'); };
+    r.hget = async () => { throw new Error('Stream isn\'t writeable'); };
+    const u = freshUser();
+    const reg = await register(u, 'Outage Laptop');
+    assert.equal(reg.status, 201);
+    // Redis is back, and empty for this user.
+    r.hgetall = async () => ({});
+    r.hget = async () => null;
+    r.hdel = async () => 0;
+    const mine = await call('GET', '/api/desktop/devices', { user: u });
+    assert.equal(mine.json.devices.length, 1, 'the device registered during the outage is listed');
+    const used = await render(u, reg.json.token);
+    assert.equal(used.status, 200, 'its token is still accepted');
+    // Revoking removes the fallback copy too.
+    const del = await call('DELETE', `/api/desktop/devices/${reg.json.deviceId}`, { user: u });
+    assert.ok(del.status < 300, `revoke status ${del.status}`);
+    assert.equal((await call('GET', '/api/desktop/devices', { user: u })).json.devices.length, 0, 'a revoked device does not come back');
+  } finally {
+    Object.assign(r, saved);
+    console.warn = warn;
+  }
+});

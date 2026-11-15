@@ -110,18 +110,30 @@ async function withRegistry<T>(redisOp: () => Promise<T>, memoryOp: () => T): Pr
   return memoryOp();
 }
 
+/** Devices saved to the memory fallback while Redis was unavailable (connecting, or a blip). */
+const memoryRows = (companyId: string, userId: string) => [...(memory.get(registryKey(companyId, userId))?.values() ?? [])];
+
 export async function listDevices(companyId: string, userId: string): Promise<DeviceRecord[]> {
   const rows = await withRegistry(
     async () => Object.values(await redis!.hgetall(registryKey(companyId, userId))).map((s) => JSON.parse(s as string) as DeviceRecord),
-    () => [...(memory.get(registryKey(companyId, userId))?.values() ?? [])]
+    () => memoryRows(companyId, userId)
   );
-  return rows.sort((a, b) => b.createdAt - a.createdAt);
+  // The fallback is per operation: a device registered while Redis was connecting lives in memory, and a read made once
+  // Redis is back must still see it (it used to vanish, so its token was refused until the phone registered again).
+  const byId = new Map(rows.map((d) => [d.deviceId, d]));
+  for (const d of memoryRows(companyId, userId)) {
+    const r = byId.get(d.deviceId);
+    if (!r || (d.lastSeenAt || 0) > (r.lastSeenAt || 0)) byId.set(d.deviceId, d);
+  }
+  return [...byId.values()].sort((a, b) => b.createdAt - a.createdAt);
 }
 
 async function saveDevice(companyId: string, userId: string, d: DeviceRecord) {
   await withRegistry(
     async () => {
       await redis!.hset(registryKey(companyId, userId), d.deviceId, JSON.stringify(d));
+      // Redis holds it now: an older fallback copy must not shadow it.
+      memory.get(registryKey(companyId, userId))?.delete(d.deviceId);
     },
     () => {
       const key = registryKey(companyId, userId);
@@ -147,11 +159,13 @@ export async function revokeDevice(companyId: string, userId: string, deviceId: 
   let anyRevoked = false;
   for (const d of targets) {
     if (d.push) await releasePushOwner(d.push.token, { companyId, userId, deviceId: d.deviceId });
+    // Gone from both places: a fallback copy would otherwise bring a revoked device back.
+    const inMemory = memory.get(registryKey(companyId, userId))?.delete(d.deviceId) ?? false;
     const ok = await withRegistry(
       async () => (await redis!.hdel(registryKey(companyId, userId), d.deviceId)) > 0,
-      () => memory.get(registryKey(companyId, userId))?.delete(d.deviceId) ?? false
+      () => false
     );
-    if (ok) anyRevoked = true;
+    if (ok || inMemory) anyRevoked = true;
   }
   return anyRevoked;
 }
@@ -160,7 +174,7 @@ async function findDevice(companyId: string, userId: string, deviceId: string): 
   return withRegistry(
     async () => {
       const raw = await redis!.hget(registryKey(companyId, userId), deviceId);
-      return raw ? (JSON.parse(raw) as DeviceRecord) : null;
+      return raw ? (JSON.parse(raw) as DeviceRecord) : (memory.get(registryKey(companyId, userId))?.get(deviceId) ?? null);
     },
     () => memory.get(registryKey(companyId, userId))?.get(deviceId) ?? null
   );

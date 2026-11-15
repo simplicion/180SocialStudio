@@ -55,6 +55,13 @@ if (process.env.NODE_ENV !== 'production') {
   globalForPrisma.socialStudioPrisma = prisma;
 }
 
+/**
+ * The unscoped client. Code ported from the larger workspace imports it as `basePrisma` (the website builder's
+ * business context and domain registry); it was never exported here, so those calls threw "Cannot read properties
+ * of undefined". `prisma` above is already unscoped, so both names are the same client.
+ */
+export const basePrisma = prisma;
+
 export function getCompanyPrisma(companyId?: string): PrismaClient {
   return prisma;
 }

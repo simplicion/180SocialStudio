@@ -110,6 +110,53 @@ void main() {
     expect(r.durationMs, closeTo(6000, 250));
   });
 
+  testWidgets('each export format (9:16, 1:1, 16:9) of a landscape clip has its canvas size, length and audio', (tester) async {
+    final info = await MediaEngineService.getVideoInfo(speech);
+    final formats = {
+      '9:16': [1080, 1920],
+      '1:1': [1080, 1080],
+      '16:9': [1280, 720],
+    };
+    final results = <String, dynamic>{};
+    for (final f in formats.entries) {
+      final w = f.value[0], h = f.value[1];
+      // Centred fill crop of the source for this canvas (normalised source coordinates).
+      final srcAspect = info.displayWidth / info.displayHeight, dstAspect = w / h;
+      final crop = dstAspect < srcAspect
+          ? {'x': (1 - dstAspect / srcAspect) / 2, 'y': 0.0, 'width': dstAspect / srcAspect, 'height': 1.0}
+          : {'x': 0.0, 'y': (1 - srcAspect / dstAspect) / 2, 'width': 1.0, 'height': srcAspect / dstAspect};
+      final ir = singleClipIr('fmt-${f.key}', 3000, w: info.displayWidth, h: info.displayHeight);
+      ir['canvas'] = {'aspect': f.key, 'width': w, 'height': h, 'fps': 30, 'background': '#000000'};
+      (ir['clips'] as List).first['crop'] = crop;
+      final out = '${evidence.path}/format_${f.key.replaceAll(':', 'x')}.mp4';
+      final r = await render(ir, speech, out);
+      final v = await MediaEngineService.getVideoInfo(out);
+      results[f.key] = {'w': v.displayWidth, 'h': v.displayHeight, 'durationMs': v.durationMs, 'hasAudio': v.hasAudio, 'fps': v.frameRate};
+      expect([v.displayWidth, v.displayHeight], [w, h], reason: '${f.key} canvas');
+      expect(r.durationMs, closeTo(3000, 250), reason: '${f.key} length');
+      expect(v.hasAudio, isTrue, reason: '${f.key} keeps the voice');
+    }
+    report['formats'] = results;
+  });
+
+  testWidgets('the Studio export (platform loudness on) lands near -14 LUFS with true peak below -1 dBTP', (tester) async {
+    final info = await MediaEngineService.getVideoInfo(speech);
+    final out = '${evidence.path}/loudness_studio.mp4';
+    RenderResult? r;
+    await for (final p in MediaEngineService.renderEditIr(
+        editIr: MobileEditIr.fromJson(singleClipIr('loud', 10000, w: info.displayWidth, h: info.displayHeight)),
+        outputPath: out, assetPaths: {'primary': speech}, settings: ExportSettings.studioDefault)) {
+      if (p.result != null) r = p.result;
+    }
+    final before = await MediaEngineService.measureLoudness(sourcePath: speech);
+    final after = await MediaEngineService.measureLoudness(sourcePath: out);
+    report['loudness'] = {'sourceLufs': before.integratedLufs, 'exportLufs': after.integratedLufs, 'exportTruePeakDb': after.truePeakDb, 'warnings': r?.warnings};
+    expect(r, isNotNull);
+    expect(after.integratedLufs, isNotNull);
+    expect(after.integratedLufs!, closeTo(ExportSettings.targetLufs, 1.5));
+    expect(after.truePeakDb!, lessThan(-1.0));
+  });
+
   testWidgets('HDR10 (PQ) source is tone-mapped to SDR and reports it', (tester) async {
     final info = await MediaEngineService.getVideoInfo(hdr);
     final out = '${evidence.path}/hdr_export.mp4';

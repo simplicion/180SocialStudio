@@ -104,7 +104,10 @@ test('analytics: 7d range counts only this project and tenant, by platform, turn
   assert.equal(a.inboxConversations, 2);
   assert.equal(a.inboxUnread, 1);
   assert.equal(a.inboxConvertedToLeads, 1);
-  for (const v of Object.values(a)) assert.ok(typeof v === 'number' || typeof v === 'string', 'flat fields only');
+  // Flat numbers / strings, plus the one structured field the app reads (creator milestones, added 2026-11-03).
+  const { milestones, ...flat } = a as any;
+  for (const v of Object.values(flat)) assert.ok(typeof v === 'number' || typeof v === 'string', 'flat fields only');
+  assert.ok(Array.isArray(milestones), 'milestones is a list');
   for (const w of calls.slice(1)) assert.equal(w.companyId, 'co-1', 'every metric query is tenant-scoped');
 });
 

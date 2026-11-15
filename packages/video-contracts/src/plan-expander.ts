@@ -228,10 +228,14 @@ export class PlanExpander {
         // Extend into the following gap (up to 150ms) so the cut lands in silence.
         const next = words[i + pat.length];
         const end = next ? Math.min(next.startSeconds, last.endSeconds + 0.15) : last.endSeconds;
+        // Start up to 50 ms into the preceding gap: the compiler snaps a cut's start UP to the next frame (so kept
+        // speech is never clipped), and a cut starting exactly on the filler would leave up to a frame of it.
+        const prev = words[i - 1];
+        const start = Math.max(prev ? prev.endSeconds : 0, first.startSeconds - 0.05);
         ops.push({
           type: "removeRange",
-          startSec: round3(first.startSeconds),
-          durationSec: round3(Math.max(0.05, end - first.startSeconds)),
+          startSec: round3(start),
+          durationSec: round3(Math.max(0.05, end - start)),
           ripple: true,
           reason: `filler word "${pat.join(" ")}"`,
         });

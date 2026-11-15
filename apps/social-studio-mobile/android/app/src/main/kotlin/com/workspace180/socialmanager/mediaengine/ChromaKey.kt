@@ -117,6 +117,49 @@ void main() {
     }
 }
 
+/**
+ * The same key as [ChromaKeyEffect]'s shader, on the CPU, for image layers (drawn by ImageLayersOverlay, which has no GL
+ * effect chain). [argb] holds non-premultiplied ARGB pixels (Bitmap.getPixels) and is keyed in place.
+ */
+object ChromaKeyCpu {
+    private fun smoothstep(e0: Float, e1: Float, x: Float): Float {
+        val t = ((x - e0) / (e1 - e0)).coerceIn(0f, 1f)
+        return t * t * (3f - 2f * t)
+    }
+
+    fun apply(argb: IntArray, key: IrChromaKey) {
+        val kr = ((key.color shr 16) and 0xFF) / 255f
+        val kg = ((key.color shr 8) and 0xFF) / 255f
+        val kb = (key.color and 0xFF) / 255f
+        val kcb = -0.168736f * kr - 0.331264f * kg + 0.5f * kb
+        val kcr = 0.5f * kr - 0.418688f * kg - 0.081312f * kb
+        val sim = key.similarity.toFloat() * 0.5f
+        val edge = sim + maxOf(key.smoothness.toFloat() * 0.5f, 0.001f)
+        val spillEdge = sim + key.smoothness.toFloat()
+        val spill = key.spill.toFloat()
+        for (i in argb.indices) {
+            val p = argb[i]
+            val sa = ((p ushr 24) and 0xFF) / 255f
+            if (sa == 0f) continue
+            var r = ((p shr 16) and 0xFF) / 255f
+            var g = ((p shr 8) and 0xFF) / 255f
+            var b = (p and 0xFF) / 255f
+            val cb = -0.168736f * r - 0.331264f * g + 0.5f * b
+            val cr = 0.5f * r - 0.418688f * g - 0.081312f * b
+            val d = kotlin.math.sqrt((cb - kcb) * (cb - kcb) + (cr - kcr) * (cr - kcr))
+            val a = smoothstep(sim, edge, d)
+            val luma = 0.2126f * r + 0.7152f * g + 0.0722f * b
+            val s = (1f - smoothstep(0f, spillEdge, d)) * spill
+            r += (luma - r) * s
+            g += (luma - g) * s
+            b += (luma - b) * s
+            val alpha = a * sa
+            fun c(v: Float) = (v * 255f + 0.5f).toInt().coerceIn(0, 255)
+            argb[i] = (c(alpha) shl 24) or (c(r) shl 16) or (c(g) shl 8) or c(b)
+        }
+    }
+}
+
 /** Shape mask on a layer (contract `mask`): `circle` or `rounded` (corner radius as a fraction of the short side). */
 data class IrMask(val shape: String, val radius: Double, val feather: Double) {
     companion object {

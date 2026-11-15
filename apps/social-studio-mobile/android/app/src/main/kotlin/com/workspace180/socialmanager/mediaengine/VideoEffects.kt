@@ -229,7 +229,17 @@ class ImageLayersOverlay(
             var sample = 1
             while (max(bounds.outWidth, bounds.outHeight) / (sample * 2) >= limit) sample *= 2
             val decoded = BitmapFactory.decodeFile(file.absolutePath, BitmapFactory.Options().apply { inSampleSize = sample }) ?: return null
-            val bmp = upright(decoded, file.absolutePath)
+            var bmp = upright(decoded, file.absolutePath)
+            // Green / blue screen on a photo layer: keyed once here (video layers are keyed by ChromaKeyEffect).
+            overlays.firstOrNull { it.id == id }?.chromaKey?.let { key ->
+                val keyed = if (bmp.isMutable && bmp.config == Bitmap.Config.ARGB_8888) bmp else bmp.copy(Bitmap.Config.ARGB_8888, true).also { bmp.recycle() }
+                val px = IntArray(keyed.width * keyed.height)
+                keyed.getPixels(px, 0, keyed.width, 0, 0, keyed.width, keyed.height)
+                ChromaKeyCpu.apply(px, key)
+                keyed.setHasAlpha(true)
+                keyed.setPixels(px, 0, keyed.width, 0, 0, keyed.width, keyed.height)
+                bmp = keyed
+            }
             bitmaps[id] = bmp
             bmp
         } catch (_: Throwable) {

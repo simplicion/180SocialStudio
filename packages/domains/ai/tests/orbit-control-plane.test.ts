@@ -10,6 +10,7 @@ import {
     OrbitReconciler,
     OrbitVerifier,
     orbitEventBus,
+    OrbitEventBus,
     registerAllDomainResources
 } from '../src';
 

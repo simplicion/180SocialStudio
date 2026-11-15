@@ -14,9 +14,9 @@ export function sendRouteError(res: Response, error: any, scope: string) {
     if (error?.code && Number.isInteger(status) && status >= 400 && status < 600 && status !== 500) {
         return res.status(status).json({ success: false, code: error.code, error: error.message, ...(error.details ? { details: error.details } : {}) });
     }
+    // Logged in full here; the client gets no internals (a Prisma message carries the query and the database host).
     console.error(`[social-media:${scope}] unexpected error`, error);
-    const message = error?.message || 'Unexpected error';
-    return res.status(500).json({ success: false, code: error?.code || 'INTERNAL', error: message, message });
+    return res.status(500).json({ success: false, code: 'INTERNAL', error: 'Unexpected error', message: 'Unexpected error' });
 }
 
 /** The caller's company from the verified JWT only (never a header, body or query value). */
