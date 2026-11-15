@@ -43,7 +43,18 @@ const SCRIPTS: Array<[number, number, string, string[]]> = [
   [0x0c00, 0x0c7f, "Noto Sans Telugu", []],
   [0x0c80, 0x0cff, "Noto Sans Kannada", []],
   [0x0d00, 0x0d7f, "Noto Sans Malayalam", []],
-  [0x0600, 0x06ff, "Noto Sans Arabic", []],
+  [0x0600, 0x06ff, "Noto Sans Arabic", ["Cairo", "Tajawal"]],
+  [0x0750, 0x077f, "Noto Sans Arabic", ["Cairo", "Tajawal"]],
+  [0x08a0, 0x08ff, "Noto Sans Arabic", ["Cairo", "Tajawal"]],
+  [0xfb50, 0xfeff, "Noto Sans Arabic", ["Cairo", "Tajawal"]],
+  [0x0e00, 0x0e7f, "Noto Sans Thai", ["Kanit", "Prompt"]],
+  [0x3040, 0x30ff, "Noto Sans JP", []],
+  [0x31f0, 0x31ff, "Noto Sans JP", []],
+  [0xac00, 0xd7af, "Noto Sans KR", []],
+  [0x1100, 0x11ff, "Noto Sans KR", []],
+  [0x3130, 0x318f, "Noto Sans KR", []],
+  [0x4e00, 0x9fff, "Noto Sans SC", ["Noto Sans JP"]],
+  [0x3400, 0x4dbf, "Noto Sans SC", ["Noto Sans JP"]],
 ];
 
 /**

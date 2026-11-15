@@ -86,7 +86,19 @@ class CaptionTools {
     (0x0C00, 0x0C7F, 'Noto Sans Telugu', {}),
     (0x0C80, 0x0CFF, 'Noto Sans Kannada', {}),
     (0x0D00, 0x0D7F, 'Noto Sans Malayalam', {}),
-    (0x0600, 0x06FF, 'Noto Sans Arabic', {}),
+    (0x0600, 0x06FF, 'Noto Sans Arabic', {'Cairo', 'Tajawal'}),
+    (0x0750, 0x077F, 'Noto Sans Arabic', {'Cairo', 'Tajawal'}),
+    (0x08A0, 0x08FF, 'Noto Sans Arabic', {'Cairo', 'Tajawal'}),
+    (0xFB50, 0xFEFF, 'Noto Sans Arabic', {'Cairo', 'Tajawal'}),
+    (0x0E00, 0x0E7F, 'Noto Sans Thai', {'Kanit', 'Prompt'}),
+    (0x3040, 0x30FF, 'Noto Sans JP', {}),
+    (0x31F0, 0x31FF, 'Noto Sans JP', {}),
+    (0xAC00, 0xD7AF, 'Noto Sans KR', {}),
+    (0x1100, 0x11FF, 'Noto Sans KR', {}),
+    (0x3130, 0x318F, 'Noto Sans KR', {}),
+    (0x4E00, 0x9FFF, 'Noto Sans SC', {'Noto Sans JP'}),
+    (0x3400, 0x4DBF, 'Noto Sans SC', {'Noto Sans JP'}),
+    (0x0590, 0x05FF, 'Noto Sans Hebrew', {}),
   ];
 
   /// The font family to draw [text] with: [family] when it covers the text's script, else the Noto Sans

@@ -1862,7 +1862,8 @@ class _CaptionPreview extends StatelessWidget {
           continue;
         }
         final hidden = anim == 'word_reveal' && t < w.startMs;
-        final label = upper ? w.text.toUpperCase() : w.text;
+        final isCased = EditIrCaption.isCasedScript(w.text);
+        final label = upper && isCased ? w.text.toUpperCase() : w.text;
         final size = fontSize * pop(w);
         final boxed = anim == 'word_box' && active(w) && !outline;
         final Paint? stroke = outline
@@ -1883,7 +1884,10 @@ class _CaptionPreview extends StatelessWidget {
           ),
         ));
         final next = i + 1 < words.length ? words[i + 1] : null;
-        if (next != null && next.text != EditIrCaption.lineBreak) out.add(const TextSpan(text: ' '));
+        if (next != null && next.text != EditIrCaption.lineBreak) {
+          final noSpace = EditIrCaption.isNoSpaceScript(w.text) && EditIrCaption.isNoSpaceScript(next.text);
+          if (!noSpace) out.add(const TextSpan(text: ' '));
+        }
       }
       return out;
     }
@@ -1896,9 +1900,11 @@ class _CaptionPreview extends StatelessWidget {
     ];
     final base = CaptionFonts.textStyle(st, fontSize: fontSize, shadows: shadows).copyWith(height: 1.1);
 
+    final isRtl = EditIrCaption.hasRtl(caption.text);
     Widget layer({required bool outline}) => Text.rich(
           TextSpan(children: spans(outline: outline)),
           textAlign: TextAlign.center,
+          textDirection: isRtl ? TextDirection.rtl : TextDirection.ltr,
           style: outline ? base.copyWith(shadows: const []) : base,
         );
 

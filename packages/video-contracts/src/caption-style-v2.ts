@@ -419,6 +419,52 @@ export function scriptOf(text: string): WritingScript {
 export const NO_SPACE_SCRIPTS: ReadonlySet<WritingScript> = new Set(["cjk-sc", "cjk-jp", "thai"]);
 /** Scripts with upper/lower case (casing is skipped for the rest). */
 export const CASED_SCRIPTS: ReadonlySet<WritingScript> = new Set(["latin", "cyrillic"]);
+/** RTL scripts: Arabic (Arabic, Urdu, Persian, Sindhi) and Hebrew. */
+export const RTL_SCRIPTS: ReadonlySet<WritingScript> = new Set(["arabic"]);
+
+/** True when the text contains strong right-to-left characters (Arabic, Urdu, Persian, Sindhi, Hebrew). */
+export function isRtlText(text: string): boolean {
+  for (const ch of text) {
+    const c = ch.codePointAt(0)!;
+    if (
+      (c >= 0x0600 && c <= 0x06ff) ||
+      (c >= 0x0750 && c <= 0x077f) ||
+      (c >= 0x08a0 && c <= 0x08ff) ||
+      (c >= 0xfb50 && c <= 0xfeff) ||
+      (c >= 0x0590 && c <= 0x05ff)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Joins a list of words into a single string for a caption:
+ * In no-space scripts (CJK, Thai), adjacent no-space tokens are joined without spaces.
+ * Spaces are preserved between ASCII/Latin alphanumeric tokens or when either token is not a no-space script.
+ */
+export function joinWordsForScript(words: string[], script?: WritingScript): string {
+  if (words.length === 0) return "";
+  const s = script ?? scriptOf(words.join(""));
+  if (!NO_SPACE_SCRIPTS.has(s)) {
+    return words.join(" ");
+  }
+  let res = words[0];
+  for (let i = 1; i < words.length; i++) {
+    const prev = words[i - 1];
+    const curr = words[i];
+    // If both adjacent tokens are ASCII alphanumeric (e.g. "iPhone 16" embedded in CJK), keep space
+    const prevAscii = /^[\w\d]+$/u.test(prev);
+    const currAscii = /^[\w\d]+$/u.test(curr);
+    if (prevAscii && currAscii) {
+      res += " " + curr;
+    } else {
+      res += curr;
+    }
+  }
+  return res;
+}
 
 /**
  * Grouping defaults per script (Netflix timed-text guides): 42 chars/line for Latin, 39 Cyrillic, 16 for CJK;

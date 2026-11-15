@@ -323,7 +323,7 @@ class TimelineOps {
           startMs: r.$1,
           endMs: r.$2,
           text: c.kind == 'caption' && words.isNotEmpty
-              ? words.map((w) => w.text).join(' ')
+              ? EditIrCaption.joinWordsForScript(words.map((w) => w.text).toList())
               : c.text,
           words: c.kind == 'text'
               ? [EditIrWord(text: c.text, startMs: r.$1, endMs: r.$2)]
@@ -1351,7 +1351,7 @@ class TimelineOps {
         final e = c.startMs + (span * done / total).round();
         words.add(EditIrWord(text: p, startMs: s, endMs: e.clamp(s + 1, c.endMs), scale: pop));
       }
-      final newText = words.map((w) => w.text).join(' ');
+      final newText = EditIrCaption.joinWordsForScript(words.map((w) => w.text).toList());
       return EditIrCaption(id: c.id, startMs: c.startMs, endMs: c.endMs, text: newText, words: words, style: _fontFitted(c.style, newText));
     }
 
@@ -1387,7 +1387,7 @@ class TimelineOps {
         }
       }
       if (identical(words, c.words)) return c;
-      return EditIrCaption(id: c.id, startMs: c.startMs, endMs: c.endMs, text: words.map((w) => w.text).join(' '), words: words, style: c.style);
+      return EditIrCaption(id: c.id, startMs: c.startMs, endMs: c.endMs, text: EditIrCaption.joinWordsForScript(words.map((w) => w.text).toList()), words: words, style: c.style);
     }
 
     return _copy(ir, captions: [for (final c in ir.captions) enhance(c)]);
@@ -1441,7 +1441,7 @@ class TimelineOps {
           id: _id('cap'),
           startMs: group.first.startMs,
           endMs: group.last.endMs,
-          text: group.map((w) => w.text).join(' '),
+          text: EditIrCaption.joinWordsForScript(group.map((w) => w.text).toList()),
           words: group,
           style: style,
         ),

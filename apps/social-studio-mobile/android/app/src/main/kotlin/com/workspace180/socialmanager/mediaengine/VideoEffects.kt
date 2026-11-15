@@ -273,6 +273,90 @@ class ImageLayersOverlay(
 /** Marker token for a hard line break typed into a title ("\n"). */
 internal const val LINE_BREAK = "\n"
 
+/** True if text belongs to a script written without spaces between words (CJK, Thai, Lao, Khmer, Burmese). */
+internal fun isNoSpaceScript(text: String): Boolean {
+    for (i in 0 until text.length) {
+        val cp = text.codePointAt(i)
+        if ((cp in 0x4e00..0x9fff) || (cp in 0x3400..0x4dbf) ||
+            (cp in 0x3040..0x30ff) || (cp in 0x31f0..0x31ff) ||
+            (cp in 0x0e00..0x0e7f) || (cp in 0x0e80..0x0eff) ||
+            (cp in 0x1780..0x17ff) || (cp in 0x1000..0x109f)) {
+            return true
+        }
+    }
+    return false
+}
+
+/** True when the text contains strong right-to-left characters (Arabic, Urdu, Persian, Sindhi, Hebrew). */
+internal fun hasRtl(text: String): Boolean {
+    for (i in 0 until text.length) {
+        val cp = text.codePointAt(i)
+        if ((cp in 0x0600..0x06ff) || (cp in 0x0750..0x077f) ||
+            (cp in 0x08a0..0x08ff) || (cp in 0xfb50..0xfeff) ||
+            (cp in 0x0590..0x05ff)) {
+            return true
+        }
+    }
+    return false
+}
+
+/** True if the script has upper/lower case (Latin, Greek, Cyrillic). */
+internal fun isCasedScript(text: String): Boolean {
+    for (i in 0 until text.length) {
+        val cp = text.codePointAt(i)
+        if ((cp in 0x0041..0x005a) || (cp in 0x0061..0x007a) ||
+            (cp in 0x00c0..0x024f) || (cp in 0x0400..0x04ff) ||
+            (cp in 0x0370..0x03ff)) {
+            return true
+        }
+    }
+    return false
+}
+
+/** Joins words according to script rules (no spaces between adjacent CJK/Thai words). */
+internal fun joinWordsForScript(words: List<String>): String {
+    if (words.isEmpty()) return ""
+    val first = words.firstOrNull { it.isNotBlank() } ?: ""
+    if (!isNoSpaceScript(first)) return words.joinToString(" ")
+    val sb = StringBuilder()
+    for (i in words.indices) {
+        val curr = words[i]
+        if (i > 0) {
+            val prev = words[i - 1]
+            val prevAscii = prev.all { it.code in 32..126 }
+            val currAscii = curr.all { it.code in 32..126 }
+            if (prevAscii && currAscii) sb.append(' ')
+        }
+        sb.append(curr)
+    }
+    return sb.toString()
+}
+
+/** Font family lookup for non-Latin scripts to avoid tofu. */
+internal fun fontForText(text: String, defaultFamily: String): String {
+    for (i in 0 until text.length) {
+        val cp = text.codePointAt(i)
+        when (cp) {
+            in 0x0900..0x097f -> return if (defaultFamily in listOf("Poppins", "Baloo 2")) defaultFamily else "Noto Sans Devanagari"
+            in 0x0980..0x09ff -> return "Noto Sans Bengali"
+            in 0x0a00..0x0a7f -> return "Noto Sans Gurmukhi"
+            in 0x0a80..0x0aff -> return "Noto Sans Gujarati"
+            in 0x0b00..0x0b7f -> return "Noto Sans Oriya"
+            in 0x0b80..0x0bff -> return "Noto Sans Tamil"
+            in 0x0c00..0x0c7f -> return "Noto Sans Telugu"
+            in 0x0c80..0x0cff -> return "Noto Sans Kannada"
+            in 0x0d00..0x0d7f -> return "Noto Sans Malayalam"
+            in 0x0600..0x06ff, in 0x0750..0x077f, in 0x08a0..0x08ff, in 0xfb50..0xfeff ->
+                return if (defaultFamily in listOf("Cairo", "Tajawal")) defaultFamily else "Noto Sans Arabic"
+            in 0x0e00..0x0e7f -> return if (defaultFamily in listOf("Kanit", "Prompt")) defaultFamily else "Noto Sans Thai"
+            in 0x3040..0x30ff, in 0x31f0..0x31ff -> return "Noto Sans JP"
+            in 0xac00..0xd7af, in 0x1100..0x11ff, in 0x3130..0x318f -> return "Noto Sans KR"
+            in 0x4e00..0x9fff, in 0x3400..0x4dbf -> return if (defaultFamily == "Noto Sans JP") "Noto Sans JP" else "Noto Sans SC"
+        }
+    }
+    return defaultFamily
+}
+
 /**
  * The words a caption draws, in order (mirrors `EditIrCaption.displayWords` in edit_ir.dart):
  *  - a title (`kind: text`) draws its `text`, word by word, for its whole time range (its `words` are only a copy
@@ -289,7 +373,25 @@ internal fun displayWords(cap: IrCaption): List<IrWord> {
         val out = mutableListOf<String>()
         text.replace("\r\n", "\n").split('\n').forEachIndexed { i, line ->
             if (i > 0) out.add(LINE_BREAK)
-            out.addAll(line.split(Regex("\\s+")).filter { it.isNotEmpty() })
+            val trimmed = line.trim()
+            if (isNoSpaceScript(trimmed) && !trimmed.contains(" ")) {
+                try {
+                    val bi = android.icu.text.BreakIterator.getWordInstance()
+                    bi.setText(trimmed)
+                    var start = bi.first()
+                    var end = bi.next()
+                    while (end != android.icu.text.BreakIterator.DONE) {
+                        val word = trimmed.substring(start, end).trim()
+                        if (word.isNotEmpty()) out.add(word)
+                        start = end
+                        end = bi.next()
+                    }
+                } catch (_: Throwable) {
+                    out.addAll(line.split(Regex("\\s+")).filter { it.isNotEmpty() })
+                }
+            } else {
+                out.addAll(line.split(Regex("\\s+")).filter { it.isNotEmpty() })
+            }
         }
         while (out.firstOrNull() == LINE_BREAK) out.removeAt(0)
         while (out.lastOrNull() == LINE_BREAK) out.removeAt(out.size - 1)
@@ -298,9 +400,10 @@ internal fun displayWords(cap: IrCaption): List<IrWord> {
     fun static(text: String) = tokens(text).map { IrWord(it, cap.startMs, cap.endMs, false, null, 1.0) }
 
     val spoken = cap.words.filter { it.text.isNotBlank() }
-    if (cap.kind == "text") return static(cap.text.ifBlank { spoken.joinToString(" ") { it.text } })
+    val joinedSpoken = joinWordsForScript(spoken.map { it.text })
+    if (cap.kind == "text") return static(cap.text.ifBlank { joinedSpoken })
     if (spoken.isEmpty()) return static(cap.text)
-    if (cap.text.isBlank() || norm(cap.text) == norm(spoken.joinToString(" ") { it.text })) return spoken
+    if (cap.text.isBlank() || norm(cap.text) == norm(joinedSpoken) || cap.text.trim() == joinedSpoken.trim()) return spoken
     // The text was edited after transcription: draw what the user typed.
     val parts = tokens(cap.text)
     val words = parts.filter { it != LINE_BREAK }
@@ -354,6 +457,25 @@ class CaptionOverlay(
     private fun splitToWidth(text: String, maxWidth: Float): List<String> {
         if (text.isEmpty() || fill.measureText(text) <= maxWidth) return listOf(text)
         val out = mutableListOf<String>()
+        try {
+            val bi = android.icu.text.BreakIterator.getLineInstance()
+            bi.setText(text)
+            var start = bi.first()
+            var current = start
+            var lineStart = start
+            while (bi.next().also { current = it } != android.icu.text.BreakIterator.DONE) {
+                val candidate = text.substring(lineStart, current)
+                if (fill.measureText(candidate) > maxWidth && lineStart != start) {
+                    out.add(text.substring(lineStart, start))
+                    lineStart = start
+                }
+                start = current
+            }
+            if (lineStart < text.length) {
+                out.add(text.substring(lineStart))
+            }
+            if (out.isNotEmpty()) return out
+        } catch (_: Throwable) {}
         var rest = text
         while (rest.isNotEmpty()) {
             var n = fill.breakText(rest, true, maxWidth, null).coerceAtLeast(1)
@@ -380,7 +502,8 @@ class CaptionOverlay(
         val scaleFactor = if (canvasWidth > 0) w / canvasWidth else 1f
         val motion = TextMotion.at(st.enter, st.exit, st.loop, cap.startMs, cap.endMs, t)
         if (motion.opacity <= 0.0) return
-        val tf = typefaceFor(st.fontFamily, st.fontWeight)
+        val effectiveFamily = fontForText(cap.text, st.fontFamily)
+        val tf = typefaceFor(effectiveFamily, st.fontWeight)
         val size = (st.fontSizePx * scaleFactor).toFloat()
         val strokeWidth = (st.strokeWidthPx * scaleFactor).toFloat()
         for (p in listOf(fill, stroke)) {
@@ -411,12 +534,19 @@ class CaptionOverlay(
                 continue
             }
             val pop = if (st.animation == "word_pop") wd.scale.coerceAtLeast(1.0).toFloat() else 1f
+            val formatted = if (st.uppercase && isCasedScript(wd.text)) {
+                if (cap.text.any { it.code in 0x0130..0x0131 }) wd.text.uppercase(java.util.Locale("tr"))
+                else wd.text.uppercase()
+            } else wd.text
             // A single word wider than the line (a long title word, a URL) is broken across lines, never clipped.
-            for (piece in splitToWidth(if (st.uppercase) wd.text.uppercase() else wd.text, maxWidth / pop)) {
+            for (piece in splitToWidth(formatted, maxWidth / pop)) {
                 val width = fill.measureText(piece)
                 tokens.add(Token(wd, piece, width, width * pop))
             }
         }
+
+        fun tokenGap(a: Token, b: Token): Float =
+            if (isNoSpaceScript(a.text) && isNoSpaceScript(b.text)) 0f else space
 
         // Greedy word wrap; typed line breaks always start a new line.
         val lines = mutableListOf<MutableList<Token>>()
@@ -429,7 +559,8 @@ class CaptionOverlay(
                 curW = 0f
                 continue
             }
-            val add = if (cur.isEmpty()) tok.slot else curW + space + tok.slot
+            val gap = if (cur.isEmpty()) 0f else tokenGap(cur.last(), tok)
+            val add = curW + gap + tok.slot
             if (cur.isNotEmpty() && add > maxWidth) {
                 lines.add(cur)
                 cur = mutableListOf(tok)
@@ -444,7 +575,17 @@ class CaptionOverlay(
         val fm = fill.fontMetrics
         val lineHeight = (fm.descent - fm.ascent) * 1.1f
         val blockH = lineHeight * lines.size
-        val lineWidths = lines.map { l -> if (l.isEmpty()) 0f else l.sumOf { it.slot.toDouble() }.toFloat() + space * (l.size - 1) }
+        val lineWidths = lines.map { l ->
+            if (l.isEmpty()) 0f
+            else {
+                var w = 0f
+                for (i in l.indices) {
+                    if (i > 0) w += tokenGap(l[i - 1], l[i])
+                    w += l[i].slot
+                }
+                w
+            }
+        }
         val blockW = lineWidths.maxOrNull() ?: 0f
         // Text transform (rotationDeg / scale / transformKeyframes): its position replaces the style's, and its
         // rotation and scale compose with the enter / exit / loop motion around the block centre.
@@ -480,12 +621,36 @@ class CaptionOverlay(
         }
 
         lines.forEachIndexed { li, line ->
+            val visualTokens = if (line.any { hasRtl(it.text) }) {
+                val lineText = line.joinToString(" ") { it.text }
+                if (java.text.Bidi.requiresBidi(lineText.toCharArray(), 0, lineText.length)) {
+                    val bidi = java.text.Bidi(lineText, java.text.Bidi.DIRECTION_DEFAULT_RIGHT_TO_LEFT)
+                    val levels = ByteArray(line.size)
+                    var offset = 0
+                    for (idx in line.indices) {
+                        levels[idx] = bidi.getLevelAt(offset.coerceAtMost(lineText.length - 1)).toByte()
+                        offset += line[idx].text.length + 1
+                    }
+                    val copy = line.toTypedArray()
+                    java.text.Bidi.reorderVisually(levels, 0, copy, 0, copy.size)
+                    copy.toList()
+                } else {
+                    line
+                }
+            } else {
+                line
+            }
+
             var x = cx - lineWidths[li] / 2f
             val baseline = top + li * lineHeight - fm.ascent + (lineHeight - (fm.descent - fm.ascent)) / 2f
-            for (tok in line) {
+            for (idx in visualTokens.indices) {
+                val tok = visualTokens[idx]
+                if (idx > 0) {
+                    x += tokenGap(visualTokens[idx - 1], tok)
+                }
                 // word_reveal: a word is not drawn before it is spoken (its room in the line is kept).
                 if (st.animation == "word_reveal" && t < tok.word.startMs) {
-                    x += tok.slot + space
+                    x += tok.slot
                     continue
                 }
                 val (color, scale) = styleFor(tok.word, st, t)
@@ -508,7 +673,7 @@ class CaptionOverlay(
                 fill.alpha = Color.alpha(color) * alpha / 255
                 canvas.drawText(tok.text, textX, baseline, fill)
                 canvas.restore()
-                x += tok.slot + space
+                x += tok.slot
             }
         }
         canvas.restore() // motion transform

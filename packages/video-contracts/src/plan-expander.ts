@@ -4,6 +4,7 @@ import { EditIR } from "./edit-ir.schema";
 import { RationalTimeMath } from "./time";
 import { resolveCaptionTemplate } from "./caption-templates";
 import { captionKeywordIndex } from "./caption-enhance";
+import { applyCaptionCase, joinWordsForScript } from "./caption-style-v2";
 import { MediaGraphBuilder } from "./media-graph";
 import { MobileMediaDescriptor, MobileFaceSample, mapSourceToTimeline, dominantFaceCenter, cropFor } from "./mobile-edit-ir";
 
@@ -261,8 +262,8 @@ export class PlanExpander {
       const end = Math.max(chunk[chunk.length - 1].endSeconds, start + 0.3);
       // Auto emphasis: one key word per caption, unless the transcript already marks one.
       const key = op.autoEmphasis !== false && !chunk.some((w) => w.isEmphasis) ? captionKeywordIndex(chunk.map((w) => w.word)) : null;
-      const shown = chunk.map((w) => (uppercase ? w.word.toUpperCase() : w.word));
-      const text = shown.join(" ");
+      const shown = chunk.map((w) => (uppercase ? applyCaptionCase(w.word, "upper") : w.word));
+      const text = joinWordsForScript(shown);
       ops.push({
         type: "addCaption",
         startSec: round3(start),

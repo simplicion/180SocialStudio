@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:social_studio_mobile/core/native_engine/edit_ir.dart';
-import 'package:social_studio_mobile/core/native_engine/overlay_layer.dart';
 import 'package:social_studio_mobile/core/network/api_client.dart';
 import 'package:social_studio_mobile/core/network/audio_transcription_service.dart';
 import 'package:social_studio_mobile/core/network/device_registration.dart';

@@ -710,6 +710,71 @@ class EditIrCaption {
   /// Marker word for a typed line break in [displayWords].
   static const lineBreak = '\n';
 
+  /// True if text belongs to a script written without spaces between words (CJK, Thai, Lao, Khmer, Burmese).
+  static bool isNoSpaceScript(String text) {
+    for (final rune in text.runes) {
+      if ((rune >= 0x4e00 && rune <= 0x9fff) ||
+          (rune >= 0x3400 && rune <= 0x4dbf) ||
+          (rune >= 0x3040 && rune <= 0x30ff) ||
+          (rune >= 0x31f0 && rune <= 0x31ff) ||
+          (rune >= 0x0e00 && rune <= 0x0e7f) ||
+          (rune >= 0x0e80 && rune <= 0x0eff) ||
+          (rune >= 0x1780 && rune <= 0x17ff) ||
+          (rune >= 0x1000 && rune <= 0x109f)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// True when the text contains strong right-to-left characters (Arabic, Urdu, Persian, Sindhi, Hebrew).
+  static bool hasRtl(String text) {
+    for (final rune in text.runes) {
+      if ((rune >= 0x0600 && rune <= 0x06ff) ||
+          (rune >= 0x0750 && rune <= 0x077f) ||
+          (rune >= 0x08a0 && rune <= 0x08ff) ||
+          (rune >= 0xfb50 && rune <= 0xfeff) ||
+          (rune >= 0x0590 && rune <= 0x05ff)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// True if the script has upper/lower case (Latin, Greek, Cyrillic).
+  static bool isCasedScript(String text) {
+    for (final rune in text.runes) {
+      if ((rune >= 0x0041 && rune <= 0x005a) ||
+          (rune >= 0x0061 && rune <= 0x007a) ||
+          (rune >= 0x00c0 && rune <= 0x024f) ||
+          (rune >= 0x0400 && rune <= 0x04ff) ||
+          (rune >= 0x0370 && rune <= 0x03ff)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// Joins words according to script rules (no spaces between adjacent CJK/Thai words).
+  static String joinWordsForScript(List<String> words) {
+    if (words.isEmpty) return '';
+    final first = words.firstWhere((w) => w.trim().isNotEmpty, orElse: () => '');
+    if (!isNoSpaceScript(first)) return words.join(' ');
+    final sb = StringBuffer();
+    for (var i = 0; i < words.length; i++) {
+      final curr = words[i];
+      if (i > 0) {
+        final prev = words[i - 1];
+        final prevAscii = prev.runes.every((r) => r >= 32 && r <= 126);
+        final currAscii = curr.runes.every((r) => r >= 32 && r <= 126);
+        if (prevAscii && currAscii) sb.write(' ');
+      }
+      sb.write(curr);
+    }
+    return sb.toString();
+  }
+
+
   /// The words the renderers draw, in order (mirrors `displayWords` in the Android VideoEffects.kt; use it in the
   /// preview so both show the same text):
   ///  - a title (`kind: text`) draws its [text] word by word for its whole range ([words] is only a stale copy);
@@ -738,9 +803,10 @@ class EditIrCaption {
     List<EditIrWord> still(String t) => [for (final p in tokens(t)) EditIrWord(text: p, startMs: startMs, endMs: endMs)];
 
     final spoken = words.where((w) => w.text.trim().isNotEmpty).toList();
-    if (kind == 'text') return still(text.trim().isEmpty ? spoken.map((w) => w.text).join(' ') : text);
+    final joined = joinWordsForScript(spoken.map((w) => w.text).toList());
+    if (kind == 'text') return still(text.trim().isEmpty ? joined : text);
     if (spoken.isEmpty) return still(text);
-    if (text.trim().isEmpty || norm(text) == norm(spoken.map((w) => w.text).join(' '))) return spoken;
+    if (text.trim().isEmpty || norm(text) == norm(joined) || text.trim() == joined.trim()) return spoken;
     final parts = tokens(text);
     final typed = parts.where((p) => p != lineBreak).toList();
     if (typed.length == spoken.length) {

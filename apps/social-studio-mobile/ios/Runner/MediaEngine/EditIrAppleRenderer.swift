@@ -358,6 +358,73 @@ public class EditIrAppleRenderer {
 
     // MARK: - Captions and titles
 
+    private func isNoSpaceScript(_ text: String) -> Bool {
+        for scalar in text.unicodeScalars {
+            let v = scalar.value
+            if (v >= 0x4e00 && v <= 0x9fff) || (v >= 0x3400 && v <= 0x4dbf) ||
+               (v >= 0x3040 && v <= 0x30ff) || (v >= 0x31f0 && v <= 0x31ff) ||
+               (v >= 0x0e00 && v <= 0x0e7f) || (v >= 0x0e80 && v <= 0x0eff) ||
+               (v >= 0x1780 && v <= 0x17ff) || (v >= 0x1000 && v <= 0x109f) {
+                return true
+            }
+        }
+        return false
+    }
+
+    private func isCasedScript(_ text: String) -> Bool {
+        for scalar in text.unicodeScalars {
+            let v = scalar.value
+            if (v >= 0x0041 && v <= 0x005a) || (v >= 0x0061 && v <= 0x007a) ||
+               (v >= 0x00c0 && v <= 0x024f) || (v >= 0x0400 && v <= 0x04ff) ||
+               (v >= 0x0370 && v <= 0x03ff) {
+                return true
+            }
+        }
+        return false
+    }
+
+    private func joinWordsForScript(_ words: [String]) -> String {
+        guard let first = words.first(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }) else { return "" }
+        if !isNoSpaceScript(first) { return words.joined(separator: " ") }
+        var res = ""
+        for (i, curr) in words.enumerated() {
+            if i > 0 {
+                let prev = words[i - 1]
+                let prevAscii = prev.unicodeScalars.allSatisfy { $0.isASCII }
+                let currAscii = curr.unicodeScalars.allSatisfy { $0.isASCII }
+                if prevAscii && currAscii { res += " " }
+            }
+            res += curr
+        }
+        return res
+    }
+
+    private func fontForText(_ text: String, defaultFamily: String) -> String {
+        for scalar in text.unicodeScalars {
+            let cp = scalar.value
+            switch cp {
+            case 0x0900...0x097f: return ["Poppins", "Baloo 2"].contains(defaultFamily) ? defaultFamily : "Noto Sans Devanagari"
+            case 0x0980...0x09ff: return "Noto Sans Bengali"
+            case 0x0a00...0x0a7f: return "Noto Sans Gurmukhi"
+            case 0x0a80...0x0aff: return "Noto Sans Gujarati"
+            case 0x0b00...0x0b7f: return "Noto Sans Oriya"
+            case 0x0b80...0x0bff: return "Noto Sans Tamil"
+            case 0x0c00...0x0c7f: return "Noto Sans Telugu"
+            case 0x0c80...0x0cff: return "Noto Sans Kannada"
+            case 0x0d00...0x0d7f: return "Noto Sans Malayalam"
+            case 0x0600...0x06ff, 0x0750...0x077f, 0x08a0...0x08ff, 0xfb50...0xfeff:
+                return ["Cairo", "Tajawal"].contains(defaultFamily) ? defaultFamily : "Noto Sans Arabic"
+            case 0x0e00...0x0e7f: return ["Kanit", "Prompt"].contains(defaultFamily) ? defaultFamily : "Noto Sans Thai"
+            case 0x3040...0x30ff, 0x31f0...0x31ff: return "Noto Sans JP"
+            case 0xac00...0xd7af, 0x1100...0x11ff, 0x3130...0x318f: return "Noto Sans KR"
+            case 0x4e00...0x9fff, 0x3400...0x4dbf: return defaultFamily == "Noto Sans JP" ? "Noto Sans JP" : "Noto Sans SC"
+            default: break
+            }
+        }
+        return defaultFamily
+    }
+
+
     /// Opacity over the whole timeline: hidden, fade in at [startMs], shown, fade out to [endMs], hidden.
     private func opacityTrack(startMs: Double, endMs: Double, fadeInMs: Double, fadeOutMs: Double, totalMs: Double) -> CAKeyframeAnimation {
         let total = max(totalMs, endMs, 1)
@@ -393,7 +460,7 @@ public class EditIrAppleRenderer {
             return out
         }
         func norm(_ s: String) -> String { s.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ") }
-        let joined = words.map { $0["text"] as? String ?? "" }.joined(separator: " ")
+        let joined = joinWordsForScript(words.map { $0["text"] as? String ?? "" })
         if (cap["kind"] as? String) == "text" || words.isEmpty {
             return tokens(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? joined : text).map { CaptionToken(text: $0, highlight: false, color: nil) }
         }
@@ -454,7 +521,7 @@ public class EditIrAppleRenderer {
         guard tokens.contains(where: { $0.text != "\n" }) else { return nil }
 
         let size = CGFloat(max(1, dbl(st["fontSizePx"], 72)))
-        let uiFont = font(family: st["fontFamily"] as? String ?? "Inter", weight: int(st["fontWeight"], 800), size: size)
+        let uiFont = font(family: fontForText(cap["text"] as? String ?? "", defaultFamily: st["fontFamily"] as? String ?? "Inter"), weight: int(st["fontWeight"], 800), size: size)
         let textColor = color(st["textColor"], .white)
         let highlight = color(st["highlightColor"], isTitle ? textColor : UIColor(red: 1, green: 0.9, blue: 0, alpha: 1))
         let upper = bool(st["uppercase"], false)
@@ -481,10 +548,15 @@ public class EditIrAppleRenderer {
         let str = NSMutableAttributedString()
         for (i, tok) in tokens.enumerated() {
             if tok.text == "\n" { str.append(NSAttributedString(string: "\n", attributes: base)); continue }
-            if i > 0 && tokens[i - 1].text != "\n" { str.append(NSAttributedString(string: " ", attributes: base)) }
+            if i > 0 && tokens[i - 1].text != "\n" {
+                let prev = tokens[i - 1].text
+                let noSpace = isNoSpaceScript(prev) && isNoSpaceScript(tok.text)
+                if !noSpace { str.append(NSAttributedString(string: " ", attributes: base)) }
+            }
             var attrs = base
             if tok.highlight { attrs[.foregroundColor] = color(tok.color, highlight) }
-            str.append(NSAttributedString(string: upper ? tok.text.uppercased() : tok.text, attributes: attrs))
+            let text = upper && isCasedScript(tok.text) ? tok.text.uppercased() : tok.text
+            str.append(NSAttributedString(string: text, attributes: attrs))
         }
 
         let maxWidth = CGFloat(max(0.05, min(1, dbl(st["maxWidthFraction"], 0.86)))) * canvas.width
