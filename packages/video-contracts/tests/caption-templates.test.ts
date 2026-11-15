@@ -39,6 +39,18 @@ test("every template id has a catalog entry and resolves by id, name and alias",
   assert.equal(findCaptionTemplateInText("add captions"), undefined);
 });
 
+test("personality rights: no real creator names appear in user-facing name or description", () => {
+  const FORBIDDEN_NAMES = ["mrbeast", "mr beast", "hormozi", "abdaal", "dan koe", "shamani", "mayya", "gadzhi"];
+  for (const t of CAPTION_TEMPLATES) {
+    const nameLower = t.name.toLowerCase();
+    const descLower = (t.description ?? "").toLowerCase();
+    for (const forbidden of FORBIDDEN_NAMES) {
+      assert.ok(!nameLower.includes(forbidden), `Template ${t.id} name "${t.name}" contains forbidden name "${forbidden}"`);
+      assert.ok(!descLower.includes(forbidden), `Template ${t.id} description "${t.description}" contains forbidden name "${forbidden}"`);
+    }
+  }
+});
+
 test("autoCaptions with a template: its font, outline and colours reach the phone; the spoken word highlights", () => {
   const op = AutoCaptionsOpSchema.parse({ type: "autoCaptions", template: "MRBEAST_HYPE" });
   const r = compile(PlanExpander.captionOps(words, op));

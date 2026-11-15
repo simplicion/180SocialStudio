@@ -3,7 +3,7 @@ import { MediaIntelligenceGraph, TranscriptWordIntelligence, ClassifiedSilence, 
 import { EditIR } from "./edit-ir.schema";
 import { RationalTimeMath } from "./time";
 import { resolveCaptionTemplate } from "./caption-templates";
-import { captionKeywordIndex } from "./caption-enhance";
+import { captionKeywordIndex, detectCaptionEmphasis, smoothWordTimestamps, groupWordsForCaptions } from "./caption-enhance";
 import { applyCaptionCase, joinWordsForScript } from "./caption-style-v2";
 import { MediaGraphBuilder } from "./media-graph";
 import { MobileMediaDescriptor, MobileFaceSample, mapSourceToTimeline, dominantFaceCenter, cropFor } from "./mobile-edit-ir";
@@ -114,7 +114,8 @@ export class PlanExpander {
             warnings.push("autoCaptions: no transcript supplied, so captions were skipped");
             break;
           }
-          out.push({ type: "clearCaptions" }, ...this.captionOps(graph.transcript, op));
+          const shotBoundaries = (graph.shots ?? []).map((s) => s.startSeconds).filter((s) => s > 0);
+          out.push({ type: "clearCaptions" }, ...this.captionOps(graph.transcript, op, shotBoundaries));
           break;
         }
         case "addZoom": {
@@ -247,23 +248,41 @@ export class PlanExpander {
     return ops;
   }
 
-  static captionOps(words: TranscriptWordIntelligence[], op: Extract<CreativeOperation, { type: "autoCaptions" }>): CreativeOperation[] {
+  static captionOps(
+    words: TranscriptWordIntelligence[],
+    op: Extract<CreativeOperation, { type: "autoCaptions" }>,
+    shotBoundariesSec: number[] = []
+  ): CreativeOperation[] {
     const ops: CreativeOperation[] = [];
-    let chunk: TranscriptWordIntelligence[] = [];
+    if (words.length === 0) return ops;
+
     // Explicit op values win, then the template's, then the classic defaults.
     const tpl = resolveCaptionTemplate(op.template);
     const textColor = op.textColor ?? tpl?.style.textColor ?? "#FFFFFF";
     const highlightColor = op.highlightColor ?? tpl?.style.highlightColor ?? "#FFE600";
     const uppercase = op.uppercase ?? tpl?.style.uppercase ?? false;
     const animation = op.animation ?? tpl?.style.animation ?? "word_pop";
-    const flush = () => {
-      if (chunk.length === 0) return;
+
+    // 1. Smooth timestamps: enforce min duration (80ms) and eliminate negative/overlapping ranges
+    const smoothed = smoothWordTimestamps(words);
+
+    // 2. Intelligent grouping by pauses, sentence terminals, shot cuts, line length and reading speed
+    const groups = groupWordsForCaptions(smoothed, {
+      wordsPerCaption: op.wordsPerCaption,
+      shotBoundariesSec,
+    });
+
+    for (const chunk of groups) {
+      if (chunk.length === 0) continue;
       const start = chunk[0].startSeconds;
       const end = Math.max(chunk[chunk.length - 1].endSeconds, start + 0.3);
+
       // Auto emphasis: one key word per caption, unless the transcript already marks one.
       const key = op.autoEmphasis !== false && !chunk.some((w) => w.isEmphasis) ? captionKeywordIndex(chunk.map((w) => w.word)) : null;
+
       const shown = chunk.map((w) => (uppercase ? applyCaptionCase(w.word, "upper") : w.word));
       const text = joinWordsForScript(shown);
+
       ops.push({
         type: "addCaption",
         startSec: round3(start),
@@ -289,16 +308,7 @@ export class PlanExpander {
         ...(op.strokeWidth !== undefined ? { strokeWidth: op.strokeWidth } : {}),
         ...(op.background ? { background: op.background } : {}),
       } as CreativeOperation);
-      chunk = [];
-    };
-    for (let i = 0; i < words.length; i++) {
-      const w = words[i];
-      const prev = chunk[chunk.length - 1];
-      if (prev && (w.startSeconds - prev.endSeconds > 0.6 || /[.!?。！？।؟]$/u.test(prev.word))) flush();
-      chunk.push(w);
-      if (chunk.length >= op.wordsPerCaption) flush();
     }
-    flush();
     return ops;
   }
 }

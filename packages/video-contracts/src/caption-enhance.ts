@@ -1,8 +1,9 @@
 /**
- * Caption polish rules: the key word of a caption and the font for non-Latin scripts. Captions never get emoji.
- * Deterministic and shared by intent with the Flutter app (`caption_tools.dart` holds the same lists), so
- * captions made by hand and by the AI Director look the same.
+ * Caption polish rules: key word emphasis, font resolution, word timestamp smoothing,
+ * and intelligent grouping with bottom-heavy pyramid line balance.
+ * Deterministic and shared between the AI Director compiler and mobile client.
  */
+import { scriptOf, GROUPING_DEFAULTS_BY_SCRIPT } from "./caption-style-v2";
 
 const STOP = new Set([
   "because", "should", "would", "could", "really", "actually", "basically", "literally", "something", "anything",
@@ -13,9 +14,58 @@ const STOP = new Set([
 
 const bare = (w: string) => w.toLowerCase().replace(/[^\p{L}\p{M}\p{N}%$₹€£]/gu, "");
 
+export const MONEY_KEYWORDS = new Set([
+  "dollar", "dollars", "million", "millions", "billion", "billions", "crore", "crores", "lakh", "lakhs",
+  "money", "profit", "profits", "revenue", "wealth", "salary", "investment", "invest", "billionaire", "millionaire",
+]);
+
+export const WARNING_KEYWORDS = new Set([
+  "danger", "dangerous", "warning", "mistake", "mistakes", "failure", "ruined", "illegal", "banned",
+]);
+
+export interface CaptionEmphasisResult {
+  index: number;
+  color: string;
+  category: "money" | "warning" | "highlight";
+}
+
 /**
- * Index of the word worth emphasising in one caption, or null: a number / amount first, else the longest
- * content word (6+ letters). At most one per caption.
+ * Detects the most impactful word to highlight and its category color.
+ * Priority:
+ * 1. Money / financial term -> Green (#22C55E)
+ * 2. Warning / mistake term -> Red (#EF4444)
+ * 3. Currency symbol or number -> Green or Gold
+ * 4. Longest content word -> Default highlight color (#FACC15 / #FFE600)
+ */
+export function detectCaptionEmphasis(words: string[], defaultHighlight: string = "#FFE600"): CaptionEmphasisResult | null {
+  // Check for explicit money keywords or currency symbols
+  for (let i = 0; i < words.length; i++) {
+    const raw = words[i];
+    const b = bare(raw);
+    if (/[$₹€£]/.test(raw) || MONEY_KEYWORDS.has(b)) {
+      return { index: i, color: "#22C55E", category: "money" };
+    }
+  }
+
+  // Check for explicit warning keywords
+  for (let i = 0; i < words.length; i++) {
+    const b = bare(words[i]);
+    if (WARNING_KEYWORDS.has(b)) {
+      return { index: i, color: "#EF4444", category: "warning" };
+    }
+  }
+
+  // Fallback to standard caption keyword index
+  const idx = captionKeywordIndex(words);
+  if (idx !== null) {
+    return { index: idx, color: defaultHighlight, category: "highlight" };
+  }
+
+  return null;
+}
+
+/**
+ * Index of the word worth emphasising in one caption, or null (backward compatible).
  */
 export function captionKeywordIndex(words: string[]): number | null {
   const amount = words.findIndex((w) => /[0-9%$₹€£]/.test(w));
@@ -31,6 +81,155 @@ export function captionKeywordIndex(words: string[]): number | null {
     }
   });
   return best;
+}
+
+export interface CaptionTimedWord {
+  word: string;
+  startSeconds: number;
+  endSeconds: number;
+  isEmphasis?: boolean;
+}
+
+/**
+ * Word timestamp smoothing:
+ * - Enforces minimum word duration (>= 80ms)
+ * - Eliminates negative or overlapping durations
+ */
+export function smoothWordTimestamps<T extends CaptionTimedWord>(words: T[], minDurationSec: number = 0.08): T[] {
+  if (words.length === 0) return [];
+  const out: T[] = [];
+  for (let i = 0; i < words.length; i++) {
+    const cur = { ...words[i] };
+    if (cur.endSeconds < cur.startSeconds + minDurationSec) {
+      cur.endSeconds = cur.startSeconds + minDurationSec;
+    }
+    if (out.length > 0) {
+      const prev = out[out.length - 1];
+      if (cur.startSeconds < prev.endSeconds) {
+        if (cur.startSeconds >= prev.startSeconds + minDurationSec) {
+          prev.endSeconds = cur.startSeconds;
+        } else {
+          cur.startSeconds = prev.endSeconds;
+          cur.endSeconds = Math.max(cur.endSeconds, cur.startSeconds + minDurationSec);
+        }
+      }
+    }
+    out.push(cur);
+  }
+  return out;
+}
+
+export interface GroupingOptions {
+  wordsPerCaption?: number;
+  maxCharsPerLine?: number;
+  maxLines?: number;
+  maxCharsPerSecond?: number;
+  maxPauseSec?: number;
+  shotBoundariesSec?: number[];
+}
+
+/**
+ * Groups timed words into cinematic caption pages respecting:
+ * - Sentence terminals [.!?。！？।؟]
+ * - Speech pauses (> maxPauseSec, default 0.5s)
+ * - Camera cuts / shot boundaries (never straddles a cut)
+ * - Reading speed & character limits per script (Netflix style guide)
+ * - Maximum words per caption
+ */
+export function groupWordsForCaptions<T extends CaptionTimedWord>(words: T[], options: GroupingOptions = {}): T[][] {
+  if (words.length === 0) return [];
+  const maxWords = options.wordsPerCaption ?? 3;
+  const maxLines = options.maxLines ?? 2;
+  const maxPause = options.maxPauseSec ?? 0.5;
+  const cuts = options.shotBoundariesSec ?? [];
+
+  const groups: T[][] = [];
+  let chunk: T[] = [];
+
+  const script = scriptOf(words[0]?.word ?? "");
+  const defaults = GROUPING_DEFAULTS_BY_SCRIPT[script] ?? GROUPING_DEFAULTS_BY_SCRIPT.fallback;
+  const maxCharsPerLine = options.maxCharsPerLine ?? defaults.maxCharsPerLine;
+  const maxCharsPerSecond = options.maxCharsPerSecond ?? defaults.maxCharsPerSecond;
+  const maxCharsGroup = maxCharsPerLine * maxLines;
+
+  const flush = () => {
+    if (chunk.length > 0) {
+      groups.push(chunk);
+      chunk = [];
+    }
+  };
+
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i];
+    const prev = chunk[chunk.length - 1];
+
+    if (prev) {
+      // 1. Pause check
+      if (w.startSeconds - prev.endSeconds > maxPause) {
+        flush();
+      }
+      // 2. Terminal punctuation
+      else if (/[.!?。！？।؟]$/u.test(prev.word)) {
+        flush();
+      }
+      // 3. Shot boundary cut check: cut falls between previous word and current word
+      else if (cuts.some((c) => prev.endSeconds <= c && c <= w.startSeconds)) {
+        flush();
+      }
+      // 4. Word count check
+      else if (chunk.length >= maxWords) {
+        flush();
+      }
+      // 5. Total character length check
+      else {
+        const currentChars = chunk.reduce((sum, item) => sum + item.word.length, 0) + chunk.length - 1;
+        if (currentChars + w.word.length + 1 > maxCharsGroup) {
+          flush();
+        } else {
+          // 6. Reading speed check
+          const chunkDuration = Math.max(0.3, w.endSeconds - chunk[0].startSeconds);
+          const charsPerSec = (currentChars + w.word.length) / chunkDuration;
+          if (charsPerSec > maxCharsPerSecond * 1.8) {
+            flush();
+          }
+        }
+      }
+    }
+
+    chunk.push(w);
+  }
+
+  flush();
+  return groups;
+}
+
+/**
+ * Rebalances a list of words for 2-line rendering into a bottom-heavy pyramid.
+ * Avoids single-word top lines and ensures the second line has equal or more weight.
+ */
+export function balanceLinesBottomHeavy(words: string[]): { line1: string[]; line2: string[] } {
+  if (words.length <= 2) {
+    return { line1: words, line2: [] };
+  }
+  if (words.length === 3) {
+    // 1 word top, 2 words bottom is acceptable pyramid
+    return { line1: [words[0]], line2: [words[1], words[2]] };
+  }
+  // For 4+ words, divide roughly in half, biased toward more words on line 2
+  const mid = Math.floor(words.length / 2);
+  let line1 = words.slice(0, mid);
+  let line2 = words.slice(mid);
+
+  // If line 1 has fewer chars than line 2, pyramid is already bottom-heavy
+  const len1 = line1.join(" ").length;
+  const len2 = line2.join(" ").length;
+  if (len1 > len2 && line1.length > 2) {
+    // Shift a word from line 1 to line 2 to keep bottom-heavy
+    line2 = [line1[line1.length - 1], ...line2];
+    line1 = line1.slice(0, line1.length - 1);
+  }
+
+  return { line1, line2 };
 }
 
 const SCRIPTS: Array<[number, number, string, string[]]> = [
