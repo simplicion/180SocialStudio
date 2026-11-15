@@ -503,6 +503,53 @@ test("captions: a named creator template with a named colour reaches the phone a
   }
 });
 
+test("captions v2: neutral presets and aliases resolve via AI Director tool calls and offline defaults", async () => {
+  // 1. LLM provides neutral preset name or alias in tool call
+  const { res: r1 } = await runLLM("editorial captions with sky blue highlights", [
+    tc("autoCaptions", { template: "editorial serif", highlightColor: "#38BDF8" }),
+  ]);
+  assertInvariants(r1.editIR);
+  const caps1 = r1.editIR.captions.filter((c) => c.kind === "caption");
+  assert.ok(caps1.length > 0);
+  for (const c of caps1) {
+    assert.equal(c.style.preset, "EDITORIAL_SERIF");
+    assert.equal(c.style.fontFamily, "Playfair Display");
+    assert.equal(c.style.highlightColor, "#38BDF8");
+  }
+
+  // 2. Offline / deterministic fallback recognizes template alias from prompt when adding captions
+  const req2 = MobileAIDirectRequestSchema.parse({
+    prompt: "add punchy bounce captions with gold highlights",
+    media: { durationMs: 10000, width: 1080, height: 1920, transcript: { words: [{ text: "hello", startMs: 1000, endMs: 2000 }] } },
+  });
+  const r2 = await director.directMobile(req2, { llmClient: null });
+  assertInvariants(r2.editIR);
+  const caps2 = r2.editIR.captions.filter((c) => c.kind === "caption");
+  assert.ok(caps2.length > 0);
+  for (const c of caps2) {
+    assert.equal(c.style.preset, "HORMOZI_BOUNCE");
+  }
+  // User-facing summary must not expose creator names
+  assert.ok(r2.summary.toLowerCase().includes("captions"));
+  assert.ok(!r2.summary.toLowerCase().includes("hormozi"));
+
+  // 3. Restyling existing captions with creator alias maps to neutral template
+  const req3 = MobileAIDirectRequestSchema.parse({
+    prompt: "make captions ali abdaal style",
+    media: { durationMs: 10000, width: 1080, height: 1920, transcript: { words: [{ text: "hello", startMs: 1000, endMs: 2000 }] } },
+    currentEditIR: r2.editIR,
+  });
+  const r3 = await director.directMobile(req3, { llmClient: null });
+  assertInvariants(r3.editIR);
+  const caps3 = r3.editIR.captions.filter((c) => c.kind === "caption");
+  assert.ok(caps3.length > 0);
+  for (const c of caps3) {
+    assert.equal(c.style.preset, "ALI_ABDAAL_CLEAN");
+    assert.equal(c.style.fontFamily, "Poppins");
+  }
+  assert.ok(!r3.summary.toLowerCase().includes("abdaal"));
+});
+
 test("captions without a transcript are skipped with a warning (no fake captions)", async () => {
   const { client } = mockClient([{ text: "", toolCalls: [tc("autoCaptions", {})] }]);
   const req = MobileAIDirectRequestSchema.parse({ prompt: "add captions", media: { durationMs: 10000, width: 1080, height: 1920 } });

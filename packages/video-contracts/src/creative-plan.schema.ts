@@ -1,7 +1,7 @@
 import { VIDEO_EFFECT_TYPES, TRANSITION_TYPES } from "./edit-ir.schema";
 import { z } from "zod";
 import { RationalTimeSchema, TimeRangeSchema } from "./time";
-import { CAPTION_TEMPLATE_IDS, CAPTION_ANIMATIONS } from "./caption-templates";
+import { CAPTION_TEMPLATE_IDS, CAPTION_ANIMATIONS, resolveCaptionTemplate } from "./caption-templates";
 import { SpringConfigSchema, TextEnterSchema, TextExitSchema, TextLoopSchema } from "./edit-ir.schema";
 
 /** Fonts the phone renders and exports (mirrors CaptionFonts.exportFamilies in the Flutter app). */
@@ -197,7 +197,13 @@ export const AddCaptionOpSchema = z.object({
 
 export const StyleCaptionOpSchema = z.object({
   type: z.literal("styleCaption"),
-  preset: z.string().optional().describe(`Caption template id (${CAPTION_TEMPLATE_IDS.join(", ")}) for a full restyle, or a basic preset name. Leave out to change only the fields given.`),
+  preset: z
+    .preprocess(
+      (val) => (typeof val === "string" ? resolveCaptionTemplate(val)?.id ?? val : val),
+      z.string()
+    )
+    .optional()
+    .describe(`Caption template id (${CAPTION_TEMPLATE_IDS.join(", ")}) or alias for a full restyle, or a basic preset name. Leave out to change only the fields given.`),
   highlightColor: z.string().regex(/^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$/).optional(),
   /** Partial patch (added 2026-11): only the fields given change; text, timing and positions stay. */
   textColor: z.string().regex(/^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$/).optional(),
@@ -535,10 +541,15 @@ export const AutoCaptionsOpSchema = z.object({
   type: z.literal("autoCaptions"),
   stylePreset: z.enum(["HORMOZI_BOUNCE", "ALI_ABDAAL_CLEAN", "MINIMAL_SUBTITLE", "BOLD_CENTER"]).default("HORMOZI_BOUNCE"),
   /**
-   * A creator look (font, outline, colours, motion). Colours, uppercase and animation given next to it
-   * override the template; left out, the template's own values apply (PlanExpander.captionOps).
+   * Caption template. Resolves canonical IDs or neutral/creator aliases.
    */
-  template: z.enum(CAPTION_TEMPLATE_IDS).optional().describe("Creator caption template. Set it when a look is named (MrBeast, Hormozi, Ali Abdaal, neon, cinematic ...)."),
+  template: z
+    .preprocess(
+      (val) => (typeof val === "string" ? resolveCaptionTemplate(val)?.id ?? val : val),
+      z.enum(CAPTION_TEMPLATE_IDS)
+    )
+    .optional()
+    .describe("Creator caption template or neutral preset. Accepts template IDs (e.g. HORMOZI_BOUNCE, MRBEAST_HYPE, EDITORIAL_SERIF, DOCUMENTARY_LOWER, NEON_PULSE) or aliases/names (Punchy Bounce, High Energy, Clean Frosted, etc.)."),
   textColor: z.string().regex(/^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$/).optional(),
   highlightColor: z.string().regex(/^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$/).optional(),
   wordsPerCaption: z.number().int().min(1).max(8).default(3),

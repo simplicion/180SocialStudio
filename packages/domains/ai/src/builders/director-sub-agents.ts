@@ -369,8 +369,39 @@ function joinSteps(steps: string[]): string {
 
 const round2 = (v: number) => Math.round(v * 100) / 100;
 
-const COLOUR_WORDS = /(#[0-9a-f]{3,8}\b|\b(red|orange|yellow|gold|green|lime|teal|cyan|blue|navy|purple|violet|pink|magenta|white|black|grey|gray|brown|neon)\b)/i;
+const COLOUR_WORDS = /(#[0-9a-f]{3,8}\b|\b(red|orange|yellow|gold|green|lime|teal|cyan|blue|sky blue|navy|purple|violet|pink|magenta|white|black|grey|gray|brown|neon)\b)/i;
 const PRESET_WORDS = /(hormozi|ali abdaal|abdaal|minimal|bold center|bold centre|preset|subtitle style)/i;
+
+const NAMED_HEX_COLORS: Record<string, string> = {
+  "sky blue": "#38BDF8",
+  red: "#EF4444",
+  orange: "#F97316",
+  yellow: "#FACC15",
+  gold: "#FFD700",
+  green: "#22C55E",
+  lime: "#84CC16",
+  teal: "#14B8A6",
+  cyan: "#06B6D4",
+  blue: "#3B82F6",
+  navy: "#1E3A8A",
+  purple: "#8B5CF6",
+  violet: "#7C3AED",
+  pink: "#EC4899",
+  magenta: "#D946EF",
+  white: "#FFFFFF",
+  black: "#000000",
+};
+
+export function extractNamedColor(text: string): string | undefined {
+  const hex = text.match(/#[0-9a-fA-F]{6}\b/);
+  if (hex) return hex[0].toUpperCase();
+  const lower = text.toLowerCase();
+  for (const [name, code] of Object.entries(NAMED_HEX_COLORS)) {
+    const rx = new RegExp(`\\b${name}\\b`, "i");
+    if (rx.test(lower)) return code;
+  }
+  return undefined;
+}
 
 /**
  * Brand defaults on planned operations: captions the creator did not colour/style explicitly
@@ -389,12 +420,20 @@ export function applyBrandDefaults(ops: CreativeOperation[], prompt: string, sty
       if (!namedColour) {
         delete o.textColor;
         delete o.highlightColor;
+      } else if (!o.highlightColor) {
+        const extracted = extractNamedColor(prompt);
+        if (extracted) o.highlightColor = extracted;
       }
-      applied.push(`captions in the ${resolveCaptionTemplate(o.template)!.name} template`);
+      applied.push(`captions in the ${resolveCaptionTemplate(o.template)!.name} template${o.highlightColor ? ` with ${o.highlightColor} highlight` : ""}`);
     } else if (o.type === "styleCaption" && (resolveCaptionTemplate(o.preset) || namedTemplate)) {
       o.preset = (resolveCaptionTemplate(o.preset) || namedTemplate)!.id;
-      if (!namedColour) delete o.highlightColor;
-      applied.push(`captions in the ${resolveCaptionTemplate(o.preset)!.name} template`);
+      if (!namedColour) {
+        delete o.highlightColor;
+      } else if (!o.highlightColor) {
+        const extracted = extractNamedColor(prompt);
+        if (extracted) o.highlightColor = extracted;
+      }
+      applied.push(`captions in the ${resolveCaptionTemplate(o.preset)!.name} template${o.highlightColor ? ` with ${o.highlightColor} highlight` : ""}`);
     } else if (o.type === "autoCaptions") {
       if (!namedColour) {
         o.textColor = style.textColor;

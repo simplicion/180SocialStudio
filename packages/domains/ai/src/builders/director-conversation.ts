@@ -301,6 +301,7 @@ const OP_LABELS: Record<string, (n: number) => string> = {
   removeRange: (n) => (n === 1 ? "trimmed a section" : `trimmed ${n} sections`),
   cleanFillers: () => "removed the filler words",
   autoCaptions: () => "added captions",
+  addCaption: () => "added captions",
   styleCaption: () => "restyled the captions",
   emphasizeWord: () => "highlighted key words",
   addText: (n) => (n === 1 ? "added a title" : `added ${n} text callouts`),
