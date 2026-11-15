@@ -580,8 +580,25 @@ public class EditIrAppleRenderer {
 
         let layer = CALayer()
         layer.contents = image.cgImage
-        let cx = CGFloat(dbl(st["positionX"], 0.5)) * canvas.width
-        let cy = CGFloat(dbl(st["positionY"], isTitle ? 0.25 : 0.72)) * canvas.height
+        let safeZone = st["safeZone"] as? String ?? "tiktok"
+        let safeMargins: (top: CGFloat, bottom: CGFloat, left: CGFloat, right: CGFloat) = {
+            switch safeZone {
+            case "tiktok": return (220, 480, 60, 140)
+            case "reels": return (270, 670, 65, 120)
+            case "shorts": return (240, 600, 60, 140)
+            default: return (0, 0, 0, 0)
+            }
+        }()
+        let sx = canvas.width / 1080.0
+        let sy = canvas.height / 1920.0
+        let safeL = safeMargins.left * sx
+        let safeR = canvas.width - safeMargins.right * sx
+        let safeT = safeMargins.top * sy
+        let safeB = canvas.height - safeMargins.bottom * sy
+        var cx = CGFloat(dbl(st["positionX"], 0.5)) * canvas.width
+        var cy = CGFloat(dbl(st["positionY"], isTitle ? 0.25 : 0.72)) * canvas.height
+        cx = min(max(cx, safeL + imgSize.width / 2), max(safeL + imgSize.width / 2, safeR - imgSize.width / 2))
+        cy = min(max(cy, safeT + imgSize.height / 2), max(safeT + imgSize.height / 2, safeB - imgSize.height / 2))
         layer.frame = flipped(CGRect(x: cx - imgSize.width / 2, y: cy - imgSize.height / 2, width: imgSize.width, height: imgSize.height), canvas)
         layer.opacity = 0
         let enter = st["enter"] as? [String: Any]

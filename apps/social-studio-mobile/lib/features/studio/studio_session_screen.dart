@@ -1802,13 +1802,17 @@ class _CaptionPreview extends StatelessWidget {
     final text = _contractColor(st['textColor'], Colors.white);
     final hi = _contractColor(st['highlightColor'], caption.kind == 'text' ? text : const Color(0xFFFFE600));
     final strokeColor = _contractColor(st['strokeColor'], Colors.black);
+    final stroke2Color = st['stroke2Color'] != null ? _contractColor(st['stroke2Color'], Colors.black) : null;
     final anim = (st['animation'] as String?) ?? (caption.kind == 'text' ? 'none' : 'word_pop');
+    final activeWordMotion = (st['activeWordMotion'] as String?) ?? (anim == 'word_pop' ? 'scale-spring' : 'none');
     final fontSize = math.max(1.0, ((st['fontSizePx'] as num?)?.toDouble() ?? 72) * scale);
     final strokeW = ((st['strokeWidthPx'] as num?)?.toDouble() ?? 0) * scale;
+    final stroke2W = stroke2Color != null ? strokeW + (((st['stroke2WidthPx'] as num?)?.toDouble() ?? 0) * scale) : 0.0;
     final bgSpec = st['background'];
     final bg = bgSpec is Map ? _contractColor(bgSpec['color'], const Color(0xB3000000)) : null;
     final bgPad = bgSpec is Map ? ((bgSpec['paddingPx'] as num?)?.toDouble() ?? 16) * scale : 0.0;
     final bgRadius = bgSpec is Map ? ((bgSpec['radiusPx'] as num?)?.toDouble() ?? 16) * scale : 0.0;
+    final bgMode = (st['backgroundMode'] as String?) ?? (bg != null ? 'pill' : 'none');
 
     // Typewriter (enter motion): the same character count as the renderer, cut at that point.
     var words = caption.displayWords;
@@ -1833,27 +1837,40 @@ class _CaptionPreview extends StatelessWidget {
     if (words.isEmpty) return const SizedBox.shrink();
 
     bool active(EditIrWord w) => t >= w.startMs && t < w.endMs;
-    // Same rules as the renderer's styleFor().
+    // Word states: active, spoken, emphasis, resting
+    final wordActiveColor = st['wordActiveColor'] != null ? _contractColor(st['wordActiveColor'], hi) : null;
+    final wordSpokenColor = st['wordSpokenColor'] != null ? _contractColor(st['wordSpokenColor'], hi) : null;
+    final wordEmphasisColor = st['wordEmphasisColor'] != null ? _contractColor(st['wordEmphasisColor'], hi) : null;
+
     Color wordColor(EditIrWord w) {
-      final activeColor = _contractColor(w.color, hi);
-      final resting = w.highlight ? activeColor : text;
+      final actColor = _contractColor(w.color, wordActiveColor ?? hi);
+      final resting = w.highlight ? (wordEmphasisColor ?? actColor) : text;
+      final spoken = wordSpokenColor ?? (anim == 'karaoke' ? hi : resting);
       return switch (anim) {
-        'word_pop' => active(w) ? activeColor : resting,
-        'karaoke' => active(w) ? activeColor : (t >= w.endMs ? hi : resting),
+        'word_pop' => active(w) ? actColor : resting,
+        'karaoke' => active(w) ? actColor : (t >= w.endMs ? spoken : resting),
         'word_box' => active(w) ? text : resting,
-        'word_reveal' => active(w) ? activeColor : resting,
-        _ => resting,
+        'word_reveal' => active(w) ? actColor : resting,
+        _ => active(w) ? actColor : (t >= w.endMs ? spoken : resting),
       };
     }
 
     double pop(EditIrWord w) {
-      if (anim != 'word_pop' || !active(w)) return 1;
-      final p = ((t - w.startMs) / 120).clamp(0.0, 1.0);
-      return 1 + (math.max(1.0, w.scale) - 1) * (1 - math.pow(1 - p, 3));
+      if (!active(w)) return w.highlight ? ((st['wordEmphasisScale'] as num?)?.toDouble() ?? 1.0) : 1.0;
+      if (activeWordMotion == 'scale-spring') {
+        final spr = easeSpring((t - w.startMs) / 1000.0, stiffness: 320.0, damping: 16.0);
+        final targetScale = (st['wordActiveScale'] as num?)?.toDouble() ?? math.max(1.15, w.scale);
+        return 1.0 + (targetScale - 1.0) * spr.clamp(0.0, 1.6);
+      }
+      if (anim == 'word_pop') {
+        final p = ((t - w.startMs) / 120).clamp(0.0, 1.0);
+        return 1 + (math.max(1.0, w.scale) - 1) * (1 - math.pow(1 - p, 3));
+      }
+      return 1.0;
     }
 
-    // The outline layer and the fill layer share one layout; only the paint differs.
-    List<InlineSpan> spans({required bool outline}) {
+    // strokeMode: 2 = outer stroke, 1 = inner stroke, 0 = text fill
+    List<InlineSpan> spans({required int strokeMode}) {
       final out = <InlineSpan>[];
       for (var i = 0; i < words.length; i++) {
         final w = words[i];
@@ -1865,22 +1882,28 @@ class _CaptionPreview extends StatelessWidget {
         final isCased = EditIrCaption.isCasedScript(w.text);
         final label = upper && isCased ? w.text.toUpperCase() : w.text;
         final size = fontSize * pop(w);
-        final boxed = anim == 'word_box' && active(w) && !outline;
-        final Paint? stroke = outline
+        final boxed = (anim == 'word_box' || bgMode == 'word') && active(w) && strokeMode == 0;
+        final Paint? stroke = strokeMode == 2
             ? (Paint()
               ..style = PaintingStyle.stroke
-              ..strokeWidth = strokeW * 2
+              ..strokeWidth = stroke2W * 2
               ..strokeJoin = StrokeJoin.round
-              ..color = hidden ? Colors.transparent : strokeColor)
-            : null;
+              ..color = hidden ? Colors.transparent : stroke2Color!)
+            : (strokeMode == 1
+                ? (Paint()
+                  ..style = PaintingStyle.stroke
+                  ..strokeWidth = strokeW * 2
+                  ..strokeJoin = StrokeJoin.round
+                  ..color = hidden ? Colors.transparent : strokeColor)
+                : null);
         out.add(TextSpan(
           text: label,
           style: TextStyle(
             fontSize: size,
-            color: outline ? null : (hidden ? Colors.transparent : wordColor(w)),
+            color: strokeMode > 0 ? null : (hidden ? Colors.transparent : wordColor(w)),
             foreground: stroke,
-            background: boxed ? (Paint()..color = _contractColor(w.color, hi)) : null,
-            shadows: outline || hidden ? const [] : null,
+            background: boxed ? (Paint()..color = _contractColor(w.color, wordActiveColor ?? hi)) : null,
+            shadows: strokeMode > 0 || hidden ? const [] : null,
           ),
         ));
         final next = i + 1 < words.length ? words[i + 1] : null;
@@ -1892,29 +1915,59 @@ class _CaptionPreview extends StatelessWidget {
       return out;
     }
 
+    final glowRadius = (st['glowRadiusPx'] as num?)?.toDouble() ?? 0.0;
+    final glowColor = st['glowColor'] != null ? _contractColor(st['glowColor'], hi) : hi;
+    final shadowBlur = ((st['shadowBlur'] as num?)?.toDouble() ?? 6.0) * scale;
+    final shadowX = ((st['shadowX'] as num?)?.toDouble() ?? 0.0) * scale;
+    final shadowY = ((st['shadowY'] as num?)?.toDouble() ?? 4.0) * scale;
+    final shadowColor = st['shadowColor'] != null ? _contractColor(st['shadowColor'], const Color(0xA0000000)) : const Color(0xA0000000);
+
     final shadows = <Shadow>[
-      if (st['glow'] == true)
-        Shadow(blurRadius: fontSize * 0.25, color: hi)
+      if (st['glow'] == true || glowRadius > 0)
+        Shadow(blurRadius: glowRadius > 0 ? glowRadius * scale : fontSize * 0.25, color: glowColor)
       else if (st['shadow'] != false)
-        Shadow(blurRadius: 6 * scale, offset: Offset(0, 4 * scale), color: const Color(0xA0000000)),
+        Shadow(blurRadius: shadowBlur, offset: Offset(shadowX, shadowY), color: shadowColor),
     ];
     final base = CaptionFonts.textStyle(st, fontSize: fontSize, shadows: shadows).copyWith(height: 1.1);
 
     final isRtl = EditIrCaption.hasRtl(caption.text);
-    Widget layer({required bool outline}) => Text.rich(
-          TextSpan(children: spans(outline: outline)),
+    Widget layer({required int strokeMode}) => Text.rich(
+          TextSpan(children: spans(strokeMode: strokeMode)),
           textAlign: TextAlign.center,
           textDirection: isRtl ? TextDirection.rtl : TextDirection.ltr,
-          style: outline ? base.copyWith(shadows: const []) : base,
+          style: strokeMode > 0 ? base.copyWith(shadows: const []) : base,
         );
+
+    Widget fillLayer = layer(strokeMode: 0);
+    // Vertical gradient fill if configured
+    final gradTop = st['gradientTopColor'] != null
+        ? _contractColor(st['gradientTopColor'], Colors.white)
+        : (st['gradient'] is Map ? _contractColor(st['gradient']['top'], Colors.white) : null);
+    final gradBottom = st['gradientBottomColor'] != null
+        ? _contractColor(st['gradientBottomColor'], Colors.white)
+        : (st['gradient'] is Map ? _contractColor(st['gradient']['bottom'], Colors.white) : null);
+    if (gradTop != null && gradBottom != null) {
+      fillLayer = ShaderMask(
+        shaderCallback: (bounds) => LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [gradTop, gradBottom],
+        ).createShader(bounds),
+        child: fillLayer,
+      );
+    }
+
+    final layers = <Widget>[
+      if (stroke2W > 0) layer(strokeMode: 2),
+      if (strokeW > 0) layer(strokeMode: 1),
+      fillLayer,
+    ];
 
     Widget textBlock = ConstrainedBox(
       constraints: BoxConstraints(maxWidth: math.max(fontSize, maxTextWidth)),
-      child: strokeW > 0
-          ? Stack(alignment: Alignment.center, children: [layer(outline: true), layer(outline: false)])
-          : layer(outline: false),
+      child: layers.length > 1 ? Stack(alignment: Alignment.center, children: layers) : fillLayer,
     );
-    if (bg != null) {
+    if (bg != null && bgMode != 'none') {
       textBlock = Container(
         padding: EdgeInsets.all(bgPad),
         decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(bgRadius)),

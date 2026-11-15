@@ -444,7 +444,29 @@ class CaptionOverlay(
         strokeJoin = Paint.Join.ROUND
         strokeMiter = 2f
     }
+    private val stroke2 = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeJoin = Paint.Join.ROUND
+        strokeMiter = 2f
+    }
     private val bg = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+
+    companion object {
+        val SAFE_ZONES: Map<String, CaptionSafeZone> get() = CAPTION_SAFE_ZONES
+    }
+
+    private data class CachedLayout(
+        val scaleFactor: Float,
+        val effectiveSize: Float,
+        val lines: List<List<Token>>,
+        val lineWidths: List<Float>,
+        val blockW: Float,
+        val blockH: Float,
+        val lineHeight: Float,
+        val fmDescent: Float,
+        val fmAscent: Float,
+    )
+    private val layoutCache = HashMap<String, CachedLayout>()
 
     /** [slot] = room the word takes in the line: its width, grown by its word_pop scale so a popping word never
      *  overlaps its neighbours (the line does not reflow while words pop). */
@@ -504,14 +526,9 @@ class CaptionOverlay(
         if (motion.opacity <= 0.0) return
         val effectiveFamily = fontForText(cap.text, st.fontFamily)
         val tf = typefaceFor(effectiveFamily, st.fontWeight)
-        val size = (st.fontSizePx * scaleFactor).toFloat()
-        val strokeWidth = (st.strokeWidthPx * scaleFactor).toFloat()
-        for (p in listOf(fill, stroke)) {
-            p.typeface = tf
-            p.textSize = size
-        }
+        val baseSize = (st.fontSizePx * scaleFactor).toFloat()
+
         val allWords = wordsCache.getOrPut(cap.id) { displayWords(cap) }
-        // Typewriter: the same number of characters as the preview (ceil(total * reveal)), cut at that point.
         val words = if (motion.reveal >= 1.0) allWords else {
             var left = kotlin.math.ceil(allWords.sumOf { if (it.text == LINE_BREAK) 0 else it.text.length } * motion.reveal).toInt()
             allWords.mapNotNull { wd ->
@@ -524,103 +541,182 @@ class CaptionOverlay(
             }
         }
         if (words.isEmpty()) return
-        // The outline is drawn centred on the glyph edge, so it eats strokeWidth into the gap on each side.
-        val space = fill.measureText(" ") + 2f * strokeWidth
-        val maxWidth = (st.maxWidthFraction * w).toFloat().coerceAtLeast(size)
-        val tokens = mutableListOf<Token>()
-        for (wd in words) {
-            if (wd.text == LINE_BREAK) {
-                tokens.add(Token(wd, LINE_BREAK, 0f, 0f))
-                continue
-            }
-            val pop = if (st.animation == "word_pop") wd.scale.coerceAtLeast(1.0).toFloat() else 1f
-            val formatted = if (st.uppercase && isCasedScript(wd.text)) {
-                if (cap.text.any { it.code in 0x0130..0x0131 }) wd.text.uppercase(java.util.Locale("tr"))
-                else wd.text.uppercase()
-            } else wd.text
-            // A single word wider than the line (a long title word, a URL) is broken across lines, never clipped.
-            for (piece in splitToWidth(formatted, maxWidth / pop)) {
-                val width = fill.measureText(piece)
-                tokens.add(Token(wd, piece, width, width * pop))
-            }
-        }
 
-        fun tokenGap(a: Token, b: Token): Float =
-            if (isNoSpaceScript(a.text) && isNoSpaceScript(b.text)) 0f else space
+        // Compute or retrieve cached layout with auto-fit downscaling for maxLines
+        val layout = layoutCache.getOrPut(cap.id + "_" + scaleFactor) {
+            var curSize = baseSize
+            var finalLines: List<List<Token>> = emptyList()
+            var finalLineWidths: List<Float> = emptyList()
+            var finalBlockW = 0f
+            var finalBlockH = 0f
+            var finalLineHeight = 0f
+            var finalDescent = 0f
+            var finalAscent = 0f
 
-        // Greedy word wrap; typed line breaks always start a new line.
-        val lines = mutableListOf<MutableList<Token>>()
-        var cur = mutableListOf<Token>()
-        var curW = 0f
-        for (tok in tokens) {
-            if (tok.text == LINE_BREAK) {
-                lines.add(cur)
-                cur = mutableListOf()
-                curW = 0f
-                continue
-            }
-            val gap = if (cur.isEmpty()) 0f else tokenGap(cur.last(), tok)
-            val add = curW + gap + tok.slot
-            if (cur.isNotEmpty() && add > maxWidth) {
-                lines.add(cur)
-                cur = mutableListOf(tok)
-                curW = tok.slot
-            } else {
-                cur.add(tok)
-                curW = add
-            }
-        }
-        if (cur.isNotEmpty()) lines.add(cur)
-
-        val fm = fill.fontMetrics
-        val lineHeight = (fm.descent - fm.ascent) * 1.1f
-        val blockH = lineHeight * lines.size
-        val lineWidths = lines.map { l ->
-            if (l.isEmpty()) 0f
-            else {
-                var w = 0f
-                for (i in l.indices) {
-                    if (i > 0) w += tokenGap(l[i - 1], l[i])
-                    w += l[i].slot
+            val maxAllowedLines = st.maxLines.coerceIn(1, 2)
+            for (attempt in 0..2) {
+                fill.typeface = tf
+                fill.textSize = curSize
+                val strokeWidth = (st.strokeWidthPx * scaleFactor).toFloat()
+                val space = fill.measureText(" ") + 2f * strokeWidth
+                val maxWidth = (st.maxWidthFraction * w).toFloat().coerceAtLeast(curSize)
+                val tokens = mutableListOf<Token>()
+                for (wd in allWords) {
+                    if (wd.text == LINE_BREAK) {
+                        tokens.add(Token(wd, LINE_BREAK, 0f, 0f))
+                        continue
+                    }
+                    val pop = if (st.animation == "word_pop" || st.activeWordMotion == "scale-spring") (wd.scale.coerceAtLeast(1.0).toFloat() * 1.15f) else 1f
+                    val formatted = if (st.uppercase && isCasedScript(wd.text)) {
+                        if (cap.text.any { it.code in 0x0130..0x0131 }) wd.text.uppercase(java.util.Locale("tr"))
+                        else wd.text.uppercase()
+                    } else wd.text
+                    for (piece in splitToWidth(formatted, maxWidth / pop)) {
+                        val width = fill.measureText(piece)
+                        tokens.add(Token(wd, piece, width, width * pop))
+                    }
                 }
-                w
+                fun tokenGap(a: Token, b: Token): Float =
+                    if (isNoSpaceScript(a.text) && isNoSpaceScript(b.text)) 0f else space
+
+                val lines = mutableListOf<MutableList<Token>>()
+                var cur = mutableListOf<Token>()
+                var curW = 0f
+                for (tok in tokens) {
+                    if (tok.text == LINE_BREAK) {
+                        lines.add(cur)
+                        cur = mutableListOf()
+                        curW = 0f
+                        continue
+                    }
+                    val gap = if (cur.isEmpty()) 0f else tokenGap(cur.last(), tok)
+                    val add = curW + gap + tok.slot
+                    if (cur.isNotEmpty() && add > maxWidth) {
+                        lines.add(cur)
+                        cur = mutableListOf(tok)
+                        curW = tok.slot
+                    } else {
+                        cur.add(tok)
+                        curW = add
+                    }
+                }
+                if (cur.isNotEmpty()) lines.add(cur)
+
+                val fm = fill.fontMetrics
+                val lineHeight = (fm.descent - fm.ascent) * 1.1f
+                val lineWidths = lines.map { l ->
+                    if (l.isEmpty()) 0f
+                    else {
+                        var lw = 0f
+                        for (i in l.indices) {
+                            if (i > 0) lw += tokenGap(l[i - 1], l[i])
+                            lw += l[i].slot
+                        }
+                        lw
+                    }
+                }
+                finalLines = lines
+                finalLineWidths = lineWidths
+                finalBlockW = lineWidths.maxOrNull() ?: 0f
+                finalBlockH = lineHeight * lines.size
+                finalLineHeight = lineHeight
+                finalDescent = fm.descent
+                finalAscent = fm.ascent
+
+                if (lines.size <= maxAllowedLines || attempt == 2) break
+                // Auto-fit size downscale when lines exceed maxLines
+                curSize *= (maxAllowedLines.toFloat() / lines.size.toFloat()).coerceIn(0.6f, 0.9f)
             }
+
+            CachedLayout(
+                scaleFactor = scaleFactor,
+                effectiveSize = curSize,
+                lines = finalLines,
+                lineWidths = finalLineWidths,
+                blockW = finalBlockW,
+                blockH = finalBlockH,
+                lineHeight = finalLineHeight,
+                fmDescent = finalDescent,
+                fmAscent = finalAscent,
+            )
         }
-        val blockW = lineWidths.maxOrNull() ?: 0f
-        // Text transform (rotationDeg / scale / transformKeyframes): its position replaces the style's, and its
-        // rotation and scale compose with the enter / exit / loop motion around the block centre.
+
+        val size = layout.effectiveSize
+        val strokeWidth = (st.strokeWidthPx * scaleFactor).toFloat()
+        val stroke2Width = ((st.strokeWidthPx + st.stroke2WidthPx) * scaleFactor).toFloat()
+        for (p in listOf(fill, stroke, stroke2)) {
+            p.typeface = tf
+            p.textSize = size
+        }
+
         val tr = TextTransform.at(st, cap.startMs, cap.endMs, t)
-        val cx = (tr.positionX * w).toFloat()
-        val cy = (tr.positionY * h).toFloat()
+        var cx = (tr.positionX * w).toFloat()
+        var cy = (tr.positionY * h).toFloat()
+        val blockW = layout.blockW
+        val blockH = layout.blockH
+
+        // Safe zone clamping (TikTok, Reels, Shorts margins)
+        val sz = CAPTION_SAFE_ZONES[st.safeZone] ?: CAPTION_SAFE_ZONES["none"]!!
+        val sx = w / 1080f
+        val sy = h / 1920f
+        val safeL = sz.left * sx
+        val safeR = w - sz.right * sx
+        val safeT = sz.top * sy
+        val safeB = h - sz.bottom * sy
+        cx = cx.coerceIn(safeL + blockW / 2f, (safeR - blockW / 2f).coerceAtLeast(safeL + blockW / 2f))
+        cy = cy.coerceIn(safeT + blockH / 2f, (safeB - blockH / 2f).coerceAtLeast(safeT + blockH / 2f))
+
         val rotation = tr.rotationDeg + motion.rotationDeg
         val blockScale = tr.scale * motion.scale
         val top = cy - blockH / 2f
 
-        // Motion: move, rotate and scale the whole block around its centre; fade through the paints' alpha.
         canvas.save()
         canvas.translate((motion.dx * w).toFloat(), (motion.dy * h).toFloat())
         if (rotation != 0.0) canvas.rotate(rotation.toFloat(), cx, cy)
         if (blockScale != 1.0) canvas.scale(blockScale.toFloat(), blockScale.toFloat(), cx, cy)
         val alpha = (motion.opacity * 255).toInt().coerceIn(0, 255)
 
+        // Background rendering (pill, line, word)
         st.background?.let { b ->
+            val bgAlpha = (Color.alpha(b.color) * st.backgroundOpacity * alpha / 255).toInt().coerceIn(0, 255)
             bg.color = b.color
-            bg.alpha = Color.alpha(b.color) * alpha / 255
+            bg.alpha = bgAlpha
             val pad = (b.paddingPx * scaleFactor).toFloat()
             val r = (b.radiusPx * scaleFactor).toFloat()
-            canvas.drawRoundRect(RectF(cx - blockW / 2 - pad, top - pad, cx + blockW / 2 + pad, top + blockH + pad), r, r, bg)
+            if (st.backgroundMode == "line") {
+                layout.lines.forEachIndexed { li, _ ->
+                    val lineTop = top + li * layout.lineHeight
+                    val lw = layout.lineWidths[li]
+                    canvas.drawRoundRect(RectF(cx - lw / 2 - pad, lineTop - pad, cx + lw / 2 + pad, lineTop + layout.lineHeight + pad), r, r, bg)
+                }
+            } else if (st.backgroundMode != "none") {
+                canvas.drawRoundRect(RectF(cx - blockW / 2 - pad, top - pad, cx + blockW / 2 + pad, top + blockH + pad), r, r, bg)
+            }
         }
 
-        stroke.strokeWidth = strokeWidth * 2f // stroke is centred on the glyph edge
-        stroke.color = st.strokeColor
-        stroke.alpha = Color.alpha(st.strokeColor) * alpha / 255
+        // Drop shadow / glow configuration
         when {
-            st.glow -> fill.setShadowLayer(size * 0.25f, 0f, 0f, st.highlightColor)
-            st.shadow -> fill.setShadowLayer(6f * scaleFactor, 0f, 4f * scaleFactor, 0xA0000000.toInt())
+            st.glowRadiusPx > 0 || st.glow -> {
+                val glowR = if (st.glowRadiusPx > 0) (st.glowRadiusPx * scaleFactor).toFloat() else size * 0.25f
+                val glowCol = st.glowColor ?: st.highlightColor
+                fill.setShadowLayer(glowR, 0f, 0f, glowCol)
+            }
+            st.shadow -> {
+                fill.setShadowLayer(
+                    (st.shadowBlur * scaleFactor).toFloat().coerceAtLeast(1f),
+                    (st.shadowX * scaleFactor).toFloat(),
+                    (st.shadowY * scaleFactor).toFloat(),
+                    st.shadowColor
+                )
+            }
             else -> fill.clearShadowLayer()
         }
 
-        lines.forEachIndexed { li, line ->
+        val space = fill.measureText(" ") + 2f * strokeWidth
+        fun tokenGap(a: Token, b: Token): Float =
+            if (isNoSpaceScript(a.text) && isNoSpaceScript(b.text)) 0f else space
+
+        layout.lines.forEachIndexed { li, line ->
             val visualTokens = if (line.any { hasRtl(it.text) }) {
                 val lineText = line.joinToString(" ") { it.text }
                 if (java.text.Bidi.requiresBidi(lineText.toCharArray(), 0, lineText.length)) {
@@ -641,14 +737,13 @@ class CaptionOverlay(
                 line
             }
 
-            var x = cx - lineWidths[li] / 2f
-            val baseline = top + li * lineHeight - fm.ascent + (lineHeight - (fm.descent - fm.ascent)) / 2f
+            var x = cx - layout.lineWidths[li] / 2f
+            val baseline = top + li * layout.lineHeight - layout.fmAscent + (layout.lineHeight - (layout.fmDescent - layout.fmAscent)) / 2f
             for (idx in visualTokens.indices) {
                 val tok = visualTokens[idx]
                 if (idx > 0) {
                     x += tokenGap(visualTokens[idx - 1], tok)
                 }
-                // word_reveal: a word is not drawn before it is spoken (its room in the line is kept).
                 if (st.animation == "word_reveal" && t < tok.word.startMs) {
                     x += tok.slot
                     continue
@@ -657,21 +752,48 @@ class CaptionOverlay(
                 canvas.save()
                 val textX = x + (tok.slot - tok.width) / 2f
                 val wordCx = x + tok.slot / 2f
-                val wordCy = baseline + (fm.ascent + fm.descent) / 2f
+                val wordCy = baseline + (layout.fmAscent + layout.fmDescent) / 2f
                 canvas.scale(scale, scale, wordCx, wordCy)
-                // word_box: a rounded box in the highlight colour behind the spoken word.
-                if (st.animation == "word_box" && t >= tok.word.startMs && t < tok.word.endMs) {
-                    val boxColor = tok.word.color ?: st.highlightColor
+
+                // Word box background
+                val isWordActive = t >= tok.word.startMs && t < tok.word.endMs
+                if ((st.animation == "word_box" || st.backgroundMode == "word" || st.wordActiveBgColor != null) && isWordActive) {
+                    val boxColor = st.wordActiveBgColor ?: tok.word.color ?: st.highlightColor
                     bg.color = boxColor
-                    bg.alpha = Color.alpha(boxColor) * alpha / 255
-                    val padX = size * 0.14f
-                    val r = size * 0.12f
-                    canvas.drawRoundRect(RectF(textX - padX, baseline + fm.ascent, textX + tok.width + padX, baseline + fm.descent), r, r, bg)
+                    bg.alpha = (Color.alpha(boxColor) * alpha / 255).coerceIn(0, 255)
+                    val padX = (st.wordActiveBgPadPx * scaleFactor).toFloat()
+                    val r = (st.wordActiveBgRadiusPx * scaleFactor).toFloat()
+                    canvas.drawRoundRect(RectF(textX - padX, baseline + layout.fmAscent, textX + tok.width + padX, baseline + layout.fmDescent), r, r, bg)
                 }
-                if (st.strokeWidthPx > 0) canvas.drawText(tok.text, textX, baseline, stroke)
-                fill.color = color
-                fill.alpha = Color.alpha(color) * alpha / 255
+
+                // Outermost stroke (stroke 2)
+                if (st.stroke2WidthPx > 0 && st.stroke2Color != null) {
+                    stroke2.strokeWidth = stroke2Width * 2f
+                    stroke2.color = st.stroke2Color
+                    stroke2.alpha = (Color.alpha(st.stroke2Color) * alpha / 255).coerceIn(0, 255)
+                    canvas.drawText(tok.text, textX, baseline, stroke2)
+                }
+                // Inner stroke (stroke 1)
+                if (st.strokeWidthPx > 0) {
+                    stroke.strokeWidth = strokeWidth * 2f
+                    stroke.color = st.strokeColor
+                    stroke.alpha = (Color.alpha(st.strokeColor) * alpha / 255).coerceIn(0, 255)
+                    canvas.drawText(tok.text, textX, baseline, stroke)
+                }
+
+                // Text fill (solid or vertical gradient)
+                if (st.gradientTopColor != null && st.gradientBottomColor != null) {
+                    fill.shader = android.graphics.LinearGradient(
+                        0f, baseline + layout.fmAscent, 0f, baseline + layout.fmDescent,
+                        st.gradientTopColor, st.gradientBottomColor, android.graphics.Shader.TileMode.CLAMP
+                    )
+                } else {
+                    fill.shader = null
+                    fill.color = color
+                    fill.alpha = (Color.alpha(color) * alpha / 255).coerceIn(0, 255)
+                }
                 canvas.drawText(tok.text, textX, baseline, fill)
+
                 canvas.restore()
                 x += tok.slot
             }
@@ -681,22 +803,29 @@ class CaptionOverlay(
 
     private fun styleFor(word: IrWord, st: IrCaptionStyle, t: Double): Pair<Int, Float> {
         val active = t >= word.startMs && t < word.endMs
-        val activeColor = word.color ?: st.highlightColor
-        val restingColor = if (word.highlight) (word.color ?: st.highlightColor) else st.textColor
-        return when (st.animation) {
-            "word_pop" -> if (active) {
-                val p = easeOut(((t - word.startMs) / 120.0).coerceIn(0.0, 1.0))
-                activeColor to (1.0 + (word.scale - 1.0) * p).toFloat()
-            } else restingColor to 1f
-            "karaoke" -> when {
-                active -> activeColor to 1f
-                t >= word.endMs -> st.highlightColor to 1f
-                else -> restingColor to 1f
+        val activeColor = st.wordActiveColor ?: word.color ?: st.highlightColor
+        val restingColor = if (word.highlight) (st.wordEmphasisColor ?: word.color ?: st.highlightColor) else st.textColor
+        val spokenColor = st.wordSpokenColor ?: if (st.animation == "karaoke") st.highlightColor else restingColor
+
+        return when {
+            active -> {
+                val baseScale = if (word.highlight) st.wordEmphasisScale.toFloat() else 1f
+                val activeScale = when {
+                    st.activeWordMotion == "scale-spring" -> {
+                        val spr = TextMotion.easeSpring((t - word.startMs) / 1000.0, st.springStiffness, st.springDamping)
+                        (1.0 + (st.wordActiveScale - 1.0) * spr.coerceIn(0.0, 1.6)).toFloat()
+                    }
+                    st.animation == "word_pop" -> {
+                        val p = easeOut(((t - word.startMs) / 120.0).coerceIn(0.0, 1.0))
+                        (1.0 + (word.scale - 1.0) * p).toFloat()
+                    }
+                    else -> baseScale
+                }
+                val col = if (st.animation == "word_box") st.textColor else activeColor
+                col to activeScale
             }
-            // The box carries the highlight, so the spoken word keeps the text colour.
-            "word_box" -> (if (active) st.textColor else restingColor) to 1f
-            "word_reveal" -> (if (active) activeColor else restingColor) to 1f
-            else -> restingColor to 1f
+            t >= word.endMs -> spokenColor to 1f
+            else -> restingColor to (if (word.highlight) st.wordEmphasisScale.toFloat() else 1f)
         }
     }
 }

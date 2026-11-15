@@ -23,8 +23,8 @@ class TextMotion {
   static const none = TextMotion();
 }
 
-const textEnterTypes = ['fade', 'slide_up', 'slide_down', 'slide_left', 'slide_right', 'pop', 'typewriter'];
-const textExitTypes = ['fade', 'slide_up', 'slide_down', 'slide_left', 'slide_right', 'pop'];
+const textEnterTypes = ['fade', 'slide_up', 'slide_down', 'slide_left', 'slide_right', 'pop', 'typewriter', 'spring-pop', 'scale-down-in', 'blur-in', 'mask-wipe'];
+const textExitTypes = ['fade', 'slide_up', 'slide_down', 'slide_left', 'slide_right', 'pop', 'spring-pop', 'scale-down-in', 'blur-in', 'mask-wipe'];
 const textLoopTypes = ['pulse', 'wiggle', 'bounce', 'float'];
 
 const textMotionLabels = {
@@ -48,6 +48,23 @@ double _easeOutCubic(double p) => 1 - math.pow(1 - p, 3).toDouble();
 double _easeOutBack(double p) {
   const c1 = 1.70158, c3 = c1 + 1;
   return 1 + c3 * math.pow(p - 1, 3) + c1 * math.pow(p - 1, 2);
+}
+
+/// Frame-rate independent damped spring easing (matches caption-style-v2.ts easeAt).
+double easeSpring(double tSec, {double stiffness = 300.0, double damping = 18.0}) {
+  if (tSec <= 0.0) return 0.0;
+  final w0 = math.sqrt(stiffness);
+  final zeta = damping / (2.0 * w0);
+  if (zeta < 1.0) {
+    final wd = w0 * math.sqrt(1.0 - zeta * zeta);
+    return 1.0 - math.exp(-zeta * w0 * tSec) * (math.cos(wd * tSec) + ((zeta * w0) / wd) * math.sin(wd * tSec));
+  } else if ((zeta - 1.0).abs() < 1e-6) {
+    return 1.0 - math.exp(-w0 * tSec) * (1.0 + w0 * tSec);
+  } else {
+    final r1 = -w0 * (zeta - math.sqrt(zeta * zeta - 1.0));
+    final r2 = -w0 * (zeta + math.sqrt(zeta * zeta - 1.0));
+    return 1.0 - (r2 * math.exp(r1 * tSec) - r1 * math.exp(r2 * tSec)) / (r2 - r1);
+  }
 }
 
 ({String type, int ms})? _motion(Object? raw, String durKey, List<String> allowed) {
@@ -95,6 +112,19 @@ TextMotion textMotionAt(Map<String, dynamic> style, int startMs, int endMs, int 
       case 'pop':
         scale *= 0.6 + 0.4 * _easeOutBack(p);
         opacity *= math.min(1.0, p * 2);
+      case 'spring-pop':
+        final spr = easeSpring(elapsed / 1000.0, stiffness: 320.0, damping: 16.0);
+        scale *= 0.4 + 0.6 * spr;
+        opacity *= math.min(1.0, p * 2.5);
+      case 'scale-down-in':
+        final spr = easeSpring(elapsed / 1000.0, stiffness: 300.0, damping: 18.0);
+        scale *= 1.4 - 0.4 * spr;
+        opacity *= e;
+      case 'blur-in':
+        dy += (1 - e) * _slideY * 0.5;
+        opacity *= e;
+      case 'mask-wipe':
+        reveal = e;
       case 'typewriter':
         reveal = p;
     }
@@ -121,6 +151,17 @@ TextMotion textMotionAt(Map<String, dynamic> style, int startMs, int endMs, int 
       case 'pop':
         scale *= 0.6 + 0.4 * e;
         opacity *= e;
+      case 'spring-pop':
+        scale *= 0.6 + 0.4 * e;
+        opacity *= e;
+      case 'scale-down-in':
+        scale *= 1.0 + 0.2 * (1 - e);
+        opacity *= e;
+      case 'blur-in':
+        opacity *= e;
+        dy -= (1 - e) * _slideY * 0.5;
+      case 'mask-wipe':
+        reveal = 1 - e;
     }
   }
 

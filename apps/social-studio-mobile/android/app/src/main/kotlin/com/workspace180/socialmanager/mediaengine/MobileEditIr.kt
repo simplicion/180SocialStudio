@@ -143,6 +143,38 @@ data class IrCaptionStyle(
     val rotationDeg: Double = 0.0,
     val scale: Double = 1.0,
     val transformKeyframes: List<IrTextTransformKeyframe> = emptyList(),
+    /** Caption Style Spec v2 enhancements (captions v2 Phase 3). */
+    val stroke2Color: Int? = null,
+    val stroke2WidthPx: Double = 0.0,
+    val gradientTopColor: Int? = null,
+    val gradientBottomColor: Int? = null,
+    val shadowX: Double = 0.0,
+    val shadowY: Double = 4.0,
+    val shadowBlur: Double = 6.0,
+    val shadowColor: Int = 0xA0000000.toInt(),
+    val glowRadiusPx: Double = 0.0,
+    val glowColor: Int? = null,
+    val glowStrength: Double = 0.8,
+    val backgroundMode: String = "pill",
+    val backgroundOpacity: Double = 1.0,
+    val safeZone: String = "tiktok",
+    val faceAvoid: Boolean = true,
+    val maxLines: Int = 2,
+    val align: String = "center",
+    val wordActiveColor: Int? = null,
+    val wordActiveScale: Double = 1.15,
+    val wordActiveBgColor: Int? = null,
+    val wordActiveBgPadPx: Double = 8.0,
+    val wordActiveBgRadiusPx: Double = 10.0,
+    val wordSpokenColor: Int? = null,
+    val wordEmphasisColor: Int? = null,
+    val wordEmphasisScale: Double = 1.0,
+    val activeWordMotion: String = "none",
+    val activeWordMotionMs: Long = 160L,
+    val activeWordEasing: String = "spring",
+    val springStiffness: Double = 300.0,
+    val springDamping: Double = 18.0,
+    val motionIntensity: Double = 1.0,
 )
 
 data class IrCaption(
@@ -356,6 +388,44 @@ data class MobileEditIr(
                 val legacyEnter = LEGACY_ENTER[rawAnimation]?.let { IrTextMotionSpec(it, if (rawAnimation == "typewriter") 1200L else 400L) }
                 val legacyLoop = if (rawAnimation == "pulse") IrTextMotionSpec("pulse", 1200L) else null
                 val animation = if (rawAnimation in CAPTION_ANIMATIONS) rawAnimation else "none"
+                val v2 = s.optJSONObject("styleV2")
+                val paintObj = v2?.optJSONObject("paint")
+                val strokesArr = paintObj?.optJSONArray("strokes") ?: s.optJSONArray("strokes")
+                var stroke1Col = parseColor(s.optNullableString("strokeColor") ?: "#000000")
+                var stroke1W = s.optDouble("strokeWidthPx", 0.0)
+                var stroke2Col: Int? = s.optNullableString("stroke2Color")?.let(::parseColor)
+                var stroke2W = s.optDouble("stroke2WidthPx", 0.0)
+                if (strokesArr != null && strokesArr.length() > 0) {
+                    val s1 = strokesArr.getJSONObject(0)
+                    stroke1Col = parseColor(s1.optString("color", "#000000"))
+                    stroke1W = s1.optDouble("widthPx", 0.0)
+                    if (strokesArr.length() > 1) {
+                        val s2 = strokesArr.getJSONObject(1)
+                        stroke2Col = parseColor(s2.optString("color", "#000000"))
+                        stroke2W = s2.optDouble("widthPx", 0.0)
+                    }
+                }
+                val fillObj = paintObj?.optJSONObject("fill") ?: s.optJSONObject("gradient")
+                var gradTop: Int? = null
+                var gradBottom: Int? = null
+                if (fillObj != null && fillObj.optString("type") == "gradient") {
+                    gradTop = parseColor(fillObj.getString("top"))
+                    gradBottom = parseColor(fillObj.getString("bottom"))
+                } else if (fillObj != null && fillObj.has("top") && fillObj.has("bottom")) {
+                    gradTop = parseColor(fillObj.getString("top"))
+                    gradBottom = parseColor(fillObj.getString("bottom"))
+                }
+                val shadowObj = paintObj?.optJSONObject("shadow") ?: s.optJSONObject("shadowObj")
+                val glowObj = paintObj?.optJSONObject("glow") ?: s.optJSONObject("glowObj")
+                val bgObj = paintObj?.optJSONObject("background") ?: s.optJSONObject("background")
+                val wStates = v2?.optJSONObject("words") ?: s.optJSONObject("words")
+                val wActive = wStates?.optJSONObject("active")
+                val wSpoken = wStates?.optJSONObject("spoken")
+                val wEmphasis = wStates?.optJSONObject("emphasis")
+                val motObj = v2?.optJSONObject("motion") ?: s.optJSONObject("motion")
+                val actMot = motObj?.optJSONObject("activeWord")
+                val layObj = v2?.optJSONObject("layout") ?: s.optJSONObject("layout")
+
                 IrCaption(
                     id = j.req("id"),
                     kind = kind,
@@ -380,10 +450,10 @@ data class MobileEditIr(
                         fontSizePx = s.optDouble("fontSizePx", 72.0),
                         textColor = textColor,
                         highlightColor = highlight,
-                        strokeColor = parseColor(s.optNullableString("strokeColor") ?: "#000000"),
-                        strokeWidthPx = s.optDouble("strokeWidthPx", 0.0),
+                        strokeColor = stroke1Col,
+                        strokeWidthPx = stroke1W,
                         shadow = s.optBoolean("shadow", true),
-                        background = s.optNullableObject("background")?.let {
+                        background = bgObj?.let {
                             IrCaptionBackground(
                                 parseColor(it.optNullableString("color") ?: "#000000B3"),
                                 it.optDouble("paddingPx", 16.0),
@@ -391,10 +461,10 @@ data class MobileEditIr(
                             )
                         },
                         uppercase = s.optBoolean("uppercase", false),
-                        positionX = s.optDouble("positionX", 0.5),
-                        positionY = s.optDouble("positionY", 0.72),
-                        maxWidthFraction = s.optDouble("maxWidthFraction", 0.86),
-                        glow = s.optBoolean("glow", false),
+                        positionX = layObj?.optDouble("x", s.optDouble("positionX", 0.5)) ?: s.optDouble("positionX", 0.5),
+                        positionY = layObj?.optDouble("y", s.optDouble("positionY", 0.72)) ?: s.optDouble("positionY", 0.72),
+                        maxWidthFraction = layObj?.optDouble("maxWidthFraction", s.optDouble("maxWidthFraction", 0.86)) ?: s.optDouble("maxWidthFraction", 0.86),
+                        glow = s.optBoolean("glow", glowObj != null),
                         enter = s.optNullableObject("enter")?.motion("durationMs", TextMotion.ENTER_TYPES) ?: legacyEnter,
                         exit = s.optNullableObject("exit")?.motion("durationMs", TextMotion.EXIT_TYPES),
                         loop = s.optNullableObject("loop")?.motion("periodMs", TextMotion.LOOP_TYPES) ?: legacyLoop,
@@ -409,6 +479,37 @@ data class MobileEditIr(
                                 positionY = k.optNullableDouble("positionY")?.coerceIn(0.0, 1.0),
                             )
                         }.sortedBy { it.atMs },
+                        stroke2Color = stroke2Col,
+                        stroke2WidthPx = stroke2W,
+                        gradientTopColor = gradTop,
+                        gradientBottomColor = gradBottom,
+                        shadowX = shadowObj?.optDouble("xPx", 0.0) ?: s.optDouble("shadowX", 0.0),
+                        shadowY = shadowObj?.optDouble("yPx", 4.0) ?: s.optDouble("shadowY", 4.0),
+                        shadowBlur = shadowObj?.optDouble("blurPx", 6.0) ?: s.optDouble("shadowBlur", 6.0),
+                        shadowColor = shadowObj?.optNullableString("color")?.let(::parseColor) ?: 0xA0000000.toInt(),
+                        glowRadiusPx = glowObj?.optDouble("radiusPx", 0.0) ?: s.optDouble("glowRadiusPx", 0.0),
+                        glowColor = glowObj?.optNullableString("color")?.let(::parseColor),
+                        glowStrength = glowObj?.optDouble("strength", 0.8) ?: 0.8,
+                        backgroundMode = bgObj?.optString("mode", "pill") ?: "pill",
+                        backgroundOpacity = bgObj?.optDouble("opacity", 1.0) ?: 1.0,
+                        safeZone = layObj?.optString("safeZone", s.optString("safeZone", "tiktok")) ?: s.optString("safeZone", "tiktok"),
+                        faceAvoid = layObj?.optBoolean("faceAvoid", s.optBoolean("faceAvoid", true)) ?: s.optBoolean("faceAvoid", true),
+                        maxLines = layObj?.optInt("maxLines", s.optInt("maxLines", 2)) ?: s.optInt("maxLines", 2),
+                        align = layObj?.optString("align", "center") ?: "center",
+                        wordActiveColor = wActive?.optNullableString("color")?.let(::parseColor),
+                        wordActiveScale = wActive?.optDouble("scale", 1.15) ?: 1.15,
+                        wordActiveBgColor = wActive?.optJSONObject("background")?.optNullableString("color")?.let(::parseColor),
+                        wordActiveBgPadPx = wActive?.optJSONObject("background")?.optDouble("paddingPx", 8.0) ?: 8.0,
+                        wordActiveBgRadiusPx = wActive?.optJSONObject("background")?.optDouble("radiusPx", 10.0) ?: 10.0,
+                        wordSpokenColor = wSpoken?.optNullableString("color")?.let(::parseColor),
+                        wordEmphasisColor = wEmphasis?.optNullableString("color")?.let(::parseColor),
+                        wordEmphasisScale = wEmphasis?.optDouble("scale", 1.0) ?: 1.0,
+                        activeWordMotion = actMot?.optString("type", "none") ?: "none",
+                        activeWordMotionMs = actMot?.optLong("durationMs", 160L) ?: 160L,
+                        activeWordEasing = actMot?.optJSONObject("easing")?.optString("type", "spring") ?: "spring",
+                        springStiffness = actMot?.optJSONObject("easing")?.optDouble("stiffness", 300.0) ?: 300.0,
+                        springDamping = actMot?.optJSONObject("easing")?.optDouble("damping", 18.0) ?: 18.0,
+                        motionIntensity = motObj?.optDouble("intensity", 1.0) ?: 1.0,
                     ),
                 )
             }

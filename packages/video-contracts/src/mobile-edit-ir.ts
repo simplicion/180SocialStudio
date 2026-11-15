@@ -1,4 +1,5 @@
 import { CAPTION_ANIMATIONS } from "./caption-templates";
+import { CaptionStyleV2Schema } from "./caption-style-v2";
 import { ShotLogSchema } from "./shot-log";
 import { z } from "zod";
 import {
@@ -200,6 +201,20 @@ export const MobileCaptionStyleSchema = z.object({
     }))
     .max(60)
     .optional(),
+  /** Caption Style Spec v2 schema payload & paint layers (captions v2, Phase 3). */
+  styleV2: CaptionStyleV2Schema.optional(),
+  strokes: z.array(z.object({ color: hex, widthPx: z.number().nonnegative(), join: z.literal("round").default("round") })).max(2).optional(),
+  stroke2Color: hex.optional(),
+  stroke2WidthPx: z.number().nonnegative().optional(),
+  gradient: z.object({ top: hex, bottom: hex }).optional(),
+  glowRadiusPx: z.number().nonnegative().optional(),
+  glowColor: hex.optional(),
+  glowStrength: z.number().min(0).max(1).optional(),
+  safeZone: z.enum(["tiktok", "reels", "shorts", "none"]).optional(),
+  faceAvoid: z.boolean().optional(),
+  maxLines: z.union([z.literal(1), z.literal(2)]).optional(),
+  backgroundMode: z.enum(["none", "line", "word", "pill"]).optional(),
+  backgroundOpacity: z.number().min(0).max(1).optional(),
 });
 
 export const MobileCaptionSchema = z.object({
