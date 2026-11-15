@@ -34,7 +34,12 @@ before(async () => {
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 });
-after(() => server.close());
+after(async () => {
+  server.close();
+  // The registry's client connects lazily (to 127.0.0.1:6379 without REDIS_URL); an open socket keeps the test process alive.
+  const { redis } = await import('../../../config/redis');
+  redis?.disconnect();
+});
 
 const call = (method: string, path: string, opts: { user?: string; company?: string; token?: string; body?: any } = {}) =>
   fetch(base + path, {

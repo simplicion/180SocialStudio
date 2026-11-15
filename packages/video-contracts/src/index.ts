@@ -40,5 +40,6 @@ export * from "./untrusted-content";
 export * from "./director-critic";
 export * from "./edit-style";
 export * from "./caption-templates";
+export * from "./caption-style-v2";
 export * from "./caption-translation";
 export * from "./caption-enhance";
