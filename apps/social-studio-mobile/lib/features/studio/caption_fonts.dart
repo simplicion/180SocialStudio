@@ -16,7 +16,19 @@ class CaptionFonts {
   CaptionFonts._();
 
   /// Families the caption presets use and that export fetches before rendering.
-  static const exportFamilies = {'Anton', 'Montserrat', 'Poppins', 'Syne', 'Outfit', 'Inter', 'Roboto', 'Bebas Neue', 'Baloo 2'};
+  static const exportFamilies = {
+    'Anton',
+    'Montserrat',
+    'Poppins',
+    'Syne',
+    'Outfit',
+    'Inter',
+    'Roboto',
+    'Bebas Neue',
+    'Baloo 2',
+    'Playfair Display',
+    'Space Grotesk',
+  };
 
   static FontWeight weightOf(Object? w) {
     final v = ((w as num?)?.toInt() ?? 800).clamp(100, 900);
@@ -24,13 +36,29 @@ class CaptionFonts {
   }
 
   /// Preview text style for a caption style map (family, weight, glow). Unknown families use Inter.
-  static TextStyle textStyle(Map<String, dynamic> st, {required double fontSize, Color? color, List<Shadow>? shadows}) {
+  static TextStyle textStyle(
+    Map<String, dynamic> st, {
+    required double fontSize,
+    Color? color,
+    List<Shadow>? shadows,
+  }) {
     final family = st['fontFamily'] as String? ?? 'Inter';
     final weight = weightOf(st['fontWeight']);
     try {
-      return GoogleFonts.getFont(family, fontSize: fontSize, fontWeight: weight, color: color, shadows: shadows);
+      return GoogleFonts.getFont(
+        family,
+        fontSize: fontSize,
+        fontWeight: weight,
+        color: color,
+        shadows: shadows,
+      );
     } catch (_) {
-      return GoogleFonts.inter(fontSize: fontSize, fontWeight: weight, color: color, shadows: shadows);
+      return GoogleFonts.inter(
+        fontSize: fontSize,
+        fontWeight: weight,
+        color: color,
+        shadows: shadows,
+      );
     }
   }
 
@@ -43,7 +71,10 @@ class CaptionFonts {
   }) async {
     final wanted = <(String, int)>{
       for (final c in ir.captions)
-        ((c.style['fontFamily'] as String?) ?? 'Inter', weightOf(c.style['fontWeight']).value),
+        (
+          (c.style['fontFamily'] as String?) ?? 'Inter',
+          weightOf(c.style['fontWeight']).value,
+        ),
     }.where((f) => f.$1.toLowerCase() != 'inter').toList();
     final paths = <String, String>{};
     final warnings = <String>[];
@@ -70,7 +101,9 @@ class CaptionFonts {
         }
       }
       if (path == null) {
-        warnings.add('The "$family" caption font could not be downloaded, so captions use Inter instead.');
+        warnings.add(
+          'The "$family" caption font could not be downloaded, so captions use Inter instead.',
+        );
         continue;
       }
       paths['$family:$weight'] = path;
@@ -93,11 +126,13 @@ class CaptionFonts {
       // A plain user agent makes the Google Fonts CSS API answer with TTF urls (renderers need TTF, not WOFF2).
       req.headers.set(HttpHeaders.userAgentHeader, 'Mozilla/5.0');
       final res = await req.close();
-      if (res.statusCode != 200) throw HttpException('HTTP ${res.statusCode}', uri: uri);
+      if (res.statusCode != 200)
+        throw HttpException('HTTP ${res.statusCode}', uri: uri);
       final bytes = <int>[];
       await for (final chunk in res) {
         bytes.addAll(chunk);
-        if (bytes.length > 5 * 1024 * 1024) throw HttpException('font too large');
+        if (bytes.length > 5 * 1024 * 1024)
+          throw HttpException('font too large');
       }
       return bytes;
     } finally {
@@ -107,12 +142,22 @@ class CaptionFonts {
 
   /// Downloads [family] at [weight] from the public Google Fonts CSS API into `<dir>/caption_fonts/`, cached.
   @visibleForTesting
-  static Future<String?> downloadTtf(Directory dir, String family, int weight) async {
-    final out = File('${dir.path}/caption_fonts/${family.replaceAll(' ', '')}_$weight.ttf');
+  static Future<String?> downloadTtf(
+    Directory dir,
+    String family,
+    int weight,
+  ) async {
+    final out = File(
+      '${dir.path}/caption_fonts/${family.replaceAll(' ', '')}_$weight.ttf',
+    );
     if (out.existsSync() && out.lengthSync() > 0) return out.path;
-    final css = String.fromCharCodes(await _get(
-      Uri.https('fonts.googleapis.com', '/css2', {'family': '$family:wght@$weight'}),
-    ));
+    final css = String.fromCharCodes(
+      await _get(
+        Uri.https('fonts.googleapis.com', '/css2', {
+          'family': '$family:wght@$weight',
+        }),
+      ),
+    );
     final m = RegExp(r"src:\s*url\((https://[^)]+\.ttf)\)").firstMatch(css);
     if (m == null) return null;
     final bytes = await _get(Uri.parse(m.group(1)!));
@@ -122,7 +167,11 @@ class CaptionFonts {
     return out.path;
   }
 
-  static Future<String?> _cachedFile(Directory dir, String family, int weight) async {
+  static Future<String?> _cachedFile(
+    Directory dir,
+    String family,
+    int weight,
+  ) async {
     final prefix = '${family.replaceAll(' ', '')}_';
     for (var attempt = 0; attempt < 15; attempt++) {
       final best = _closest(dir, prefix, weight);
@@ -139,7 +188,10 @@ class CaptionFonts {
     var bestD = 1 << 30;
     for (final f in dir.listSync().whereType<File>()) {
       final name = f.uri.pathSegments.last;
-      if (!name.startsWith(prefix) || !name.endsWith('.ttf') || f.lengthSync() == 0) continue;
+      if (!name.startsWith(prefix) ||
+          !name.endsWith('.ttf') ||
+          f.lengthSync() == 0)
+        continue;
       final variant = name.substring(prefix.length).split('_').first;
       final w = variant == 'regular' ? 400 : int.tryParse(variant);
       if (w == null) continue; // italic variants

@@ -503,7 +503,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 Divider(height: 16),
                 _updateItem(
                   '🎨 Brand Consciousness & Cloudflare R2',
-                  'Full brand DNA management with direct logo upload to Cloudflare R2, hex palettes, typography, and Hormozi/Ali Abdaal caption styles.',
+                  'Full brand DNA management with direct logo upload to Cloudflare R2, hex palettes, typography, and viral cinematic caption styles.',
                 ),
                 Divider(height: 16),
                 _updateItem(

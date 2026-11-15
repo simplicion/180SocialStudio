@@ -178,16 +178,22 @@ class TimelineOps {
     List<TranscriptWord> words,
     MobileEditIr ir, {
     String assetId = 'primary',
-  }) =>
-      speechRangesAll({assetId: words}, ir);
+  }) => speechRangesAll({assetId: words}, ir);
 
   /// Speech on the timeline from the words of every source (Phase 4: clips 2..N duck the music too).
-  static List<List<int>> speechRangesAll(Map<String, List<TranscriptWord>> wordsByAsset, MobileEditIr ir) {
+  static List<List<int>> speechRangesAll(
+    Map<String, List<TranscriptWord>> wordsByAsset,
+    MobileEditIr ir,
+  ) {
     final out = <List<int>>[];
     for (final entry in wordsByAsset.entries) {
       for (final w in entry.value) {
         final s = sourceToTimeline(ir, w.startMs, assetId: entry.key);
-        final e = sourceToTimeline(ir, math.max(w.startMs, w.endMs - 1), assetId: entry.key);
+        final e = sourceToTimeline(
+          ir,
+          math.max(w.startMs, w.endMs - 1),
+          assetId: entry.key,
+        );
         if (s == null || e == null || e < s) continue;
         out.add([s, e + 1]);
       }
@@ -214,16 +220,30 @@ class TimelineOps {
 
   /// Clip ends land on frame boundaries (Phase 6.7): an end that is not within 1.5 ms of a frame moves back to the
   /// previous one (at most one frame shorter). Already-snapped ends never move, so repeated edits are stable.
-  static ({int len, int sourceEndMs}) _snapToFrame(EditIrClip c, int t, int len, num? fps) {
-    if (fps == null || fps <= 0 || len <= 0) return (len: len, sourceEndMs: c.sourceEndMs);
+  static ({int len, int sourceEndMs}) _snapToFrame(
+    EditIrClip c,
+    int t,
+    int len,
+    num? fps,
+  ) {
+    if (fps == null || fps <= 0 || len <= 0)
+      return (len: len, sourceEndMs: c.sourceEndMs);
     final frame = 1000 / fps;
     final end = t + len;
     final frames = end / frame;
-    if ((end - frames.round() * frame).abs() <= 1.5) return (len: len, sourceEndMs: c.sourceEndMs);
+    if ((end - frames.round() * frame).abs() <= 1.5)
+      return (len: len, sourceEndMs: c.sourceEndMs);
     final snapped = (frames.floor() * frame).round();
-    if (snapped - t < frame) return (len: len, sourceEndMs: c.sourceEndMs); // shorter than a frame: left alone
+    if (snapped - t < frame)
+      return (
+        len: len,
+        sourceEndMs: c.sourceEndMs,
+      ); // shorter than a frame: left alone
     final srcEnd = c.sourceStartMs + ((snapped - t) * c.speed).round();
-    return (len: ((srcEnd - c.sourceStartMs) / c.speed).round(), sourceEndMs: srcEnd);
+    return (
+      len: ((srcEnd - c.sourceStartMs) / c.speed).round(),
+      sourceEndMs: srcEnd,
+    );
   }
 
   static List<EditIrClip> _relayout(List<EditIrClip> clips, {num? fps}) {
@@ -232,7 +252,12 @@ class TimelineOps {
       for (var i = 0; i < clips.length; i++)
         () {
           final c = clips[i];
-          final snap = _snapToFrame(c, t, ((c.sourceEndMs - c.sourceStartMs) / c.speed).round(), fps);
+          final snap = _snapToFrame(
+            c,
+            t,
+            ((c.sourceEndMs - c.sourceStartMs) / c.speed).round(),
+            fps,
+          );
           final len = snap.len;
           final out = EditIrClip(
             id: c.id,
@@ -277,9 +302,14 @@ class TimelineOps {
     final laid = _relayout(newClips, fps: ir.canvas.fps);
     final segs = <_Seg>[];
     for (final n in laid) {
-      bool covers(EditIrClip o) => o.assetId == n.assetId && n.sourceStartMs >= o.sourceStartMs && n.sourceEndMs <= o.sourceEndMs;
+      bool covers(EditIrClip o) =>
+          o.assetId == n.assetId &&
+          n.sourceStartMs >= o.sourceStartMs &&
+          n.sourceEndMs <= o.sourceEndMs;
       // Same clip id first: a duplicated clip shares its source with the original, so source alone is ambiguous.
-      final old = ir.clips.where((o) => o.id == n.id && covers(o)).firstOrNull ?? ir.clips.where(covers).firstOrNull;
+      final old =
+          ir.clips.where((o) => o.id == n.id && covers(o)).firstOrNull ??
+          ir.clips.where(covers).firstOrNull;
       if (old == null) {
         continue; // newly revealed source (trim extend): nothing to carry over
       }
@@ -323,7 +353,9 @@ class TimelineOps {
           startMs: r.$1,
           endMs: r.$2,
           text: c.kind == 'caption' && words.isNotEmpty
-              ? EditIrCaption.joinWordsForScript(words.map((w) => w.text).toList())
+              ? EditIrCaption.joinWordsForScript(
+                  words.map((w) => w.text).toList(),
+                )
               : c.text,
           words: c.kind == 'text'
               ? [EditIrWord(text: c.text, startMs: r.$1, endMs: r.$2)]
@@ -409,8 +441,12 @@ class TimelineOps {
         // Voiceovers stay where they start in the footage; one whose start was cut away is dropped.
         voiceovers: [
           for (final v in ir.audio.voiceovers)
-            if (map.range(v.timelineStartMs, v.timelineStartMs + 1) case final r?)
-              v.copyWith(timelineStartMs: r.$1, durationMs: math.min(v.durationMs, duration - r.$1)),
+            if (map.range(v.timelineStartMs, v.timelineStartMs + 1)
+                case final r?)
+              v.copyWith(
+                timelineStartMs: r.$1,
+                durationMs: math.min(v.durationMs, duration - r.$1),
+              ),
         ],
       ),
     );
@@ -419,22 +455,28 @@ class TimelineOps {
   }
 
   /// Points the music bed at a resolved file (a search phrase became a real track); everything else is kept.
-  static MobileEditIr setMusicSource(MobileEditIr ir, Map<String, dynamic> source) {
+  static MobileEditIr setMusicSource(
+    MobileEditIr ir,
+    Map<String, dynamic> source,
+  ) {
     final m = ir.audio.music.firstOrNull;
     if (m == null) return ir;
-    return _withAudio(ir, music: [
-      EditIrMusic(
-        id: m.id,
-        timelineStartMs: m.timelineStartMs,
-        timelineEndMs: m.timelineEndMs,
-        sourceStartMs: m.sourceStartMs,
-        source: source,
-        volumeDb: m.volumeDb,
-        fadeInMs: m.fadeInMs,
-        fadeOutMs: m.fadeOutMs,
-        duck: m.duck,
-      ),
-    ]);
+    return _withAudio(
+      ir,
+      music: [
+        EditIrMusic(
+          id: m.id,
+          timelineStartMs: m.timelineStartMs,
+          timelineEndMs: m.timelineEndMs,
+          sourceStartMs: m.sourceStartMs,
+          source: source,
+          volumeDb: m.volumeDb,
+          fadeInMs: m.fadeInMs,
+          fadeOutMs: m.fadeOutMs,
+          duck: m.duck,
+        ),
+      ],
+    );
   }
 
   static EditIrMusic _music(
@@ -537,7 +579,9 @@ class TimelineOps {
     voiceCleanup: voiceCleanup ?? c.voiceCleanup,
     process: c.process,
     // Framing set by hand replaces the moving framing (the path was made for the old window).
-    cropKeyframes: cropKeyframes ?? (crop != null || clearCrop ? const [] : c.cropKeyframes),
+    cropKeyframes:
+        cropKeyframes ??
+        (crop != null || clearCrop ? const [] : c.cropKeyframes),
     audioLeadMs: audioLeadMs ?? c.audioLeadMs,
     audioLagMs: audioLagMs ?? c.audioLagMs,
   );
@@ -574,7 +618,14 @@ class TimelineOps {
       ..replaceRange(i, i + 1, [
         // A split is seamless: the J-cut lead stays at the front, the L-cut lag at the back.
         _clip(c, sourceEndMs: at, audioFadeOutMs: 0, audioLagMs: 0),
-        _clip(c, id: _id('c'), sourceStartMs: at, clearTransition: true, audioFadeInMs: 0, audioLeadMs: 0),
+        _clip(
+          c,
+          id: _id('c'),
+          sourceStartMs: at,
+          clearTransition: true,
+          audioFadeInMs: 0,
+          audioLeadMs: 0,
+        ),
       ]);
     return _replaceClips(ir, clips);
   }
@@ -592,7 +643,11 @@ class TimelineOps {
     required int width,
     required int height,
   }) {
-    if (durationMs < 300) throw MediaEngineException('INVALID_EDIT', 'A freeze frame needs at least 0.3 s.');
+    if (durationMs < 300)
+      throw MediaEngineException(
+        'INVALID_EDIT',
+        'A freeze frame needs at least 0.3 s.',
+      );
     var i = clipIndexAt(ir, atMs);
     var clips = ir.clips;
     var insertAt = i + 1;
@@ -617,17 +672,31 @@ class TimelineOps {
     );
     final sources = [
       ...ir.sources,
-      if (!ir.sources.any((s) => s.assetId == assetId)) EditIrSource(assetId: assetId, durationMs: stillSourceMs, width: width, height: height),
+      if (!ir.sources.any((s) => s.assetId == assetId))
+        EditIrSource(
+          assetId: assetId,
+          durationMs: stillSourceMs,
+          width: width,
+          height: height,
+        ),
     ];
-    return _replaceClips(ir.copyWith(sources: sources), [...clips]..insert(insertAt, still));
+    return _replaceClips(
+      ir.copyWith(sources: sources),
+      [...clips]..insert(insertAt, still),
+    );
   }
 
   /// Inserts a copy of clip [index] right after it (same source, look and fades; no transition into the copy).
   /// Everything after moves later; captions and overlays stay with the original footage.
   static MobileEditIr duplicateClip(MobileEditIr ir, int index) {
-    if (index < 0 || index >= ir.clips.length) throw MediaEngineException('INVALID_EDIT', 'No clip to duplicate.');
+    if (index < 0 || index >= ir.clips.length)
+      throw MediaEngineException('INVALID_EDIT', 'No clip to duplicate.');
     final c = ir.clips[index];
-    return _replaceClips(ir, [...ir.clips]..insert(index + 1, _clip(c, id: _id('c'), clearTransition: true)));
+    return _replaceClips(
+      ir,
+      [...ir.clips]
+        ..insert(index + 1, _clip(c, id: _id('c'), clearTransition: true)),
+    );
   }
 
   /// Ripple-deletes clip [index]; everything after moves up.
@@ -683,32 +752,79 @@ class TimelineOps {
 
   /// Default filler words / phrases for [removeFillers] ("you know" / "I mean" are only cut where the
   /// transcript has them; every occurrence is cut).
-  static const defaultFillers = ['um', 'uh', 'uhm', 'umm', 'er', 'erm', 'ah', 'hmm', 'you know', 'i mean'];
+  static const defaultFillers = [
+    'um',
+    'uh',
+    'uhm',
+    'umm',
+    'er',
+    'erm',
+    'ah',
+    'hmm',
+    'you know',
+    'i mean',
+  ];
 
   /// Cuts every pause between words longer than [minGapMs] (plus the silence before the first and after the last
   /// word), keeping [padMs] of air next to the words. Source-time [words]; works after splits and re-orders.
-  static MobileEditIr removePauses(MobileEditIr ir, List<TranscriptWord> words, {int minGapMs = 500, int padMs = 100}) {
-    if (words.isEmpty) throw MediaEngineException('NO_TRANSCRIPT', 'Removing pauses needs a transcript. Transcribe the video first.');
+  static MobileEditIr removePauses(
+    MobileEditIr ir,
+    List<TranscriptWord> words, {
+    int minGapMs = 500,
+    int padMs = 100,
+  }) {
+    if (words.isEmpty)
+      throw MediaEngineException(
+        'NO_TRANSCRIPT',
+        'Removing pauses needs a transcript. Transcribe the video first.',
+      );
     final sorted = [...words]..sort((a, b) => a.startMs.compareTo(b.startMs));
     final cuts = <(int, int)>[];
-    final srcEnd = ir.sources.isEmpty ? ir.durationMs : ir.sources.first.durationMs;
-    if (sorted.first.startMs - padMs >= minGapMs ~/ 2) cuts.add((0, sorted.first.startMs - padMs));
+    final srcEnd = ir.sources.isEmpty
+        ? ir.durationMs
+        : ir.sources.first.durationMs;
+    if (sorted.first.startMs - padMs >= minGapMs ~/ 2)
+      cuts.add((0, sorted.first.startMs - padMs));
     for (var i = 1; i < sorted.length; i++) {
       final gap = sorted[i].startMs - sorted[i - 1].endMs;
-      if (gap >= minGapMs) cuts.add((sorted[i - 1].endMs + padMs, sorted[i].startMs - padMs));
+      if (gap >= minGapMs)
+        cuts.add((sorted[i - 1].endMs + padMs, sorted[i].startMs - padMs));
     }
-    if (srcEnd - sorted.last.endMs - padMs >= minGapMs ~/ 2) cuts.add((sorted.last.endMs + padMs, srcEnd));
+    if (srcEnd - sorted.last.endMs - padMs >= minGapMs ~/ 2)
+      cuts.add((sorted.last.endMs + padMs, srcEnd));
     return _cutSourceRanges(ir, cuts, 'pause');
   }
 
   /// Cuts filler words / phrases ([fillers], case and punctuation ignored) found in the source-time [words].
-  static MobileEditIr removeFillers(MobileEditIr ir, List<TranscriptWord> words, {List<String> fillers = defaultFillers}) {
-    if (words.isEmpty) throw MediaEngineException('NO_TRANSCRIPT', 'Removing filler words needs a transcript. Transcribe the video first.');
-    String norm(String w) => w.toLowerCase().replaceAll(RegExp(r"[^\p{L}\p{N}']", unicode: true), '');
+  static MobileEditIr removeFillers(
+    MobileEditIr ir,
+    List<TranscriptWord> words, {
+    List<String> fillers = defaultFillers,
+  }) {
+    if (words.isEmpty)
+      throw MediaEngineException(
+        'NO_TRANSCRIPT',
+        'Removing filler words needs a transcript. Transcribe the video first.',
+      );
+    String norm(String w) => w.toLowerCase().replaceAll(
+      RegExp(r"[^\p{L}\p{N}']", unicode: true),
+      '',
+    );
     final sorted = [...words]..sort((a, b) => a.startMs.compareTo(b.startMs));
-    final patterns = [for (final f in fillers) f.toLowerCase().split(RegExp(r'\s+')).map(norm).where((p) => p.isNotEmpty).toList()]
-      ..removeWhere((p) => p.isEmpty)
-      ..sort((a, b) => b.length.compareTo(a.length)); // longest phrase first
+    final patterns =
+        [
+            for (final f in fillers)
+              f
+                  .toLowerCase()
+                  .split(RegExp(r'\s+'))
+                  .map(norm)
+                  .where((p) => p.isNotEmpty)
+                  .toList(),
+          ]
+          ..removeWhere((p) => p.isEmpty)
+          ..sort(
+            (a, b) => b.length.compareTo(a.length),
+          ); // longest phrase first
     final cuts = <(int, int)>[];
     for (var i = 0; i < sorted.length; i++) {
       for (final p in patterns) {
@@ -719,24 +835,38 @@ class TimelineOps {
         }
         if (!ok) continue;
         final last = sorted[i + p.length - 1];
-        final next = i + p.length < sorted.length ? sorted[i + p.length].startMs : last.endMs;
+        final next = i + p.length < sorted.length
+            ? sorted[i + p.length].startMs
+            : last.endMs;
         cuts.add((sorted[i].startMs, math.min(next, last.endMs + 150)));
         i += p.length - 1;
         break;
       }
     }
-    if (cuts.isEmpty) throw MediaEngineException('NOTHING_TO_REMOVE', 'No filler words were found in the transcript.');
+    if (cuts.isEmpty)
+      throw MediaEngineException(
+        'NOTHING_TO_REMOVE',
+        'No filler words were found in the transcript.',
+      );
     return _cutSourceRanges(ir, cuts, 'filler');
   }
 
   /// Removes source-time ranges from the timeline wherever those moments play (any clip, any order). Cuts that
   /// leave less than 250 ms between them are joined so no sliver flashes on screen.
-  static MobileEditIr _cutSourceRanges(MobileEditIr ir, List<(int, int)> source, String what) {
-    final ranges = source.where((r) => r.$2 - r.$1 >= 40).toList()..sort((a, b) => a.$1.compareTo(b.$1));
+  static MobileEditIr _cutSourceRanges(
+    MobileEditIr ir,
+    List<(int, int)> source,
+    String what,
+  ) {
+    final ranges = source.where((r) => r.$2 - r.$1 >= 40).toList()
+      ..sort((a, b) => a.$1.compareTo(b.$1));
     final merged = <(int, int)>[];
     for (final r in ranges) {
       if (merged.isNotEmpty && r.$1 - merged.last.$2 < 250) {
-        merged[merged.length - 1] = (merged.last.$1, math.max(merged.last.$2, r.$2));
+        merged[merged.length - 1] = (
+          merged.last.$1,
+          math.max(merged.last.$2, r.$2),
+        );
       } else {
         merged.add(r);
       }
@@ -753,11 +883,21 @@ class TimelineOps {
         ));
       }
     }
-    if (timeline.isEmpty) throw MediaEngineException('NOTHING_TO_REMOVE', 'No ${what}s to remove in this edit.');
-    timeline.sort((a, b) => b.$1.compareTo(a.$1)); // from the end, so earlier times stay valid
+    if (timeline.isEmpty)
+      throw MediaEngineException(
+        'NOTHING_TO_REMOVE',
+        'No ${what}s to remove in this edit.',
+      );
+    timeline.sort(
+      (a, b) => b.$1.compareTo(a.$1),
+    ); // from the end, so earlier times stay valid
     var out = ir;
     final total = timeline.fold<int>(0, (s, r) => s + r.$2 - r.$1);
-    if (total >= ir.durationMs - minClipMs) throw MediaEngineException('INVALID_EDIT', 'That would remove the whole video.');
+    if (total >= ir.durationMs - minClipMs)
+      throw MediaEngineException(
+        'INVALID_EDIT',
+        'That would remove the whole video.',
+      );
     for (final r in timeline) {
       out = removeRange(out, r.$1, r.$2);
     }
@@ -830,12 +970,19 @@ class TimelineOps {
     final c = ir.clips[index];
     if (c.volumeDb <= -60 || ir.audio.originalVolumeDb <= -60) return 0;
     final dur = (c.timelineEndMs - c.timelineStartMs).toDouble();
-    double half(EditIrTransition? t) => t == null || t.type == 'CUT' ? 0 : t.durationMs / 2;
+    double half(EditIrTransition? t) =>
+        t == null || t.type == 'CUT' ? 0 : t.durationMs / 2;
     final fadeIn = math.max(half(c.transitionIn), c.audioFadeInMs.toDouble());
     final next = index + 1 < ir.clips.length ? ir.clips[index + 1] : null;
-    final fadeOut = math.max(half(next?.transitionIn), c.audioFadeOutMs.toDouble());
-    double ramp(double t, double a, double b) => b <= a ? (t >= a ? 1 : 0) : ((t - a) / (b - a)).clamp(0.0, 1.0);
-    var g = math.pow(10, (c.volumeDb + ir.audio.originalVolumeDb) / 20).toDouble();
+    final fadeOut = math.max(
+      half(next?.transitionIn),
+      c.audioFadeOutMs.toDouble(),
+    );
+    double ramp(double t, double a, double b) =>
+        b <= a ? (t >= a ? 1 : 0) : ((t - a) / (b - a)).clamp(0.0, 1.0);
+    var g = math
+        .pow(10, (c.volumeDb + ir.audio.originalVolumeDb) / 20)
+        .toDouble();
     if (fadeIn > 0) g *= ramp(relMs.toDouble(), 0, fadeIn);
     if (fadeOut > 0) g *= 1 - ramp(relMs.toDouble(), dur - fadeOut, dur);
     return g.clamp(0.0, 1.0);
@@ -843,12 +990,24 @@ class TimelineOps {
 
   /// Points clip [index] at a processed copy of its footage (reversed / background removed): same timeline slot,
   /// speed and look; only the file changes. The copy covers exactly the clip's old source range.
-  static MobileEditIr replaceClipSource(MobileEditIr ir, int index, {required String assetId, required int durationMs, required int width, required int height}) {
+  static MobileEditIr replaceClipSource(
+    MobileEditIr ir,
+    int index, {
+    required String assetId,
+    required int durationMs,
+    required int width,
+    required int height,
+  }) {
     final c = ir.clips[index];
     final len = math.min(c.sourceEndMs - c.sourceStartMs, durationMs);
     final sources = [
       ...ir.sources.where((s) => s.assetId != assetId),
-      EditIrSource(assetId: assetId, durationMs: durationMs, width: width, height: height),
+      EditIrSource(
+        assetId: assetId,
+        durationMs: durationMs,
+        width: width,
+        height: height,
+      ),
     ];
     final clip = EditIrClip(
       id: c.id,
@@ -872,37 +1031,70 @@ class TimelineOps {
     // Same length within a frame: everything else keeps its place.
     final clips = [...ir.clips]..[index] = clip;
     final laid = _relayout(clips, fps: ir.canvas.fps);
-    return ir.copyWith(sources: sources, clips: laid, durationMs: laid.last.timelineEndMs);
+    return ir.copyWith(
+      sources: sources,
+      clips: laid,
+      durationMs: laid.last.timelineEndMs,
+    );
   }
 
   /// The crossfade layer on screen at [tMs], mirroring `crossfades` in the Android renderer: the incoming clip's
   /// footage from before its in-point fades in during [cut - d, cut]; without such footage the outgoing clip's
   /// footage after its out-point fades out during [cut, cut + d]. [isStill] tells photo clips apart (always enough
   /// footage). Null when no crossfade is drawn at [tMs].
-  static ({int clipIndex, int sourceMs, double opacity})? crossfadeAt(MobileEditIr ir, int tMs, {bool Function(String assetId)? isStill}) {
+  static ({int clipIndex, int sourceMs, double opacity})? crossfadeAt(
+    MobileEditIr ir,
+    int tMs, {
+    bool Function(String assetId)? isStill,
+  }) {
     for (var i = 1; i < ir.clips.length; i++) {
       final a = ir.clips[i - 1], b = ir.clips[i];
       final tr = b.transitionIn;
-      if (tr == null || !(tr.type == 'CROSSFADE' || tr.type == 'DISSOLVE' || !EditIrTransition.types.containsKey(tr.type))) continue;
+      if (tr == null ||
+          !(tr.type == 'CROSSFADE' ||
+              tr.type == 'DISSOLVE' ||
+              !EditIrTransition.types.containsKey(tr.type)))
+        continue;
       final cut = b.timelineStartMs;
-      final d = math.min(tr.durationMs, math.min(a.timelineEndMs - a.timelineStartMs, b.timelineEndMs - b.timelineStartMs));
+      final d = math.min(
+        tr.durationMs,
+        math.min(
+          a.timelineEndMs - a.timelineStartMs,
+          b.timelineEndMs - b.timelineStartMs,
+        ),
+      );
       if (d < 100 || tMs < cut - d || tMs >= cut + d) continue;
       final bStill = isStill?.call(b.assetId) ?? false;
       final aStill = isStill?.call(a.assetId) ?? false;
       final pre = bStill ? d : (b.sourceStartMs / b.speed).floor();
-      final aDur = ir.sources.where((s) => s.assetId == a.assetId).firstOrNull?.durationMs ?? a.sourceEndMs;
+      final aDur =
+          ir.sources
+              .where((s) => s.assetId == a.assetId)
+              .firstOrNull
+              ?.durationMs ??
+          a.sourceEndMs;
       final post = aStill ? d : ((aDur - a.sourceEndMs) / a.speed).floor();
       if (pre >= 100) {
         final w = math.min(d, pre);
         if (tMs < cut - w || tMs >= cut) continue;
         final rel = tMs - (cut - w);
-        return (clipIndex: i, sourceMs: bStill ? 0 : b.sourceStartMs - ((w - rel) * b.speed).round(), opacity: rel / w);
+        return (
+          clipIndex: i,
+          sourceMs: bStill
+              ? 0
+              : b.sourceStartMs - ((w - rel) * b.speed).round(),
+          opacity: rel / w,
+        );
       }
       if (post >= 100) {
         final w = math.min(d, post);
         if (tMs < cut || tMs >= cut + w) continue;
         final rel = tMs - cut;
-        return (clipIndex: i - 1, sourceMs: aStill ? 0 : a.sourceEndMs + (rel * a.speed).round(), opacity: 1 - rel / w);
+        return (
+          clipIndex: i - 1,
+          sourceMs: aStill ? 0 : a.sourceEndMs + (rel * a.speed).round(),
+          opacity: 1 - rel / w,
+        );
       }
     }
     return null;
@@ -920,52 +1112,111 @@ class TimelineOps {
   /// Splits clip [index] into the preset's parts, each at its own speed (relative to the clip's current speed).
   static MobileEditIr speedRamp(MobileEditIr ir, int index, String preset) {
     final shape = speedRampPresets[preset];
-    if (shape == null) throw MediaEngineException('INVALID_EDIT', 'Unknown speed ramp "$preset".');
+    if (shape == null)
+      throw MediaEngineException(
+        'INVALID_EDIT',
+        'Unknown speed ramp "$preset".',
+      );
     final c = ir.clips[index];
     final len = c.sourceEndMs - c.sourceStartMs;
-    if (len < shape.length * 400) throw MediaEngineException('INVALID_EDIT', 'This clip is too short for a speed ramp.');
+    if (len < shape.length * 400)
+      throw MediaEngineException(
+        'INVALID_EDIT',
+        'This clip is too short for a speed ramp.',
+      );
     final parts = <EditIrClip>[];
     var at = c.sourceStartMs;
     for (var i = 0; i < shape.length; i++) {
-      final end = i == shape.length - 1 ? c.sourceEndMs : at + (len * shape[i].$1).round();
-      parts.add(_clip(
-        c,
-        id: i == 0 ? c.id : _id('c'),
-        sourceStartMs: at,
-        sourceEndMs: end,
-        speed: (c.speed * shape[i].$2).clamp(0.25, 4.0),
-        clearTransition: i > 0,
-        audioFadeInMs: i == 0 ? c.audioFadeInMs : 0,
-        audioFadeOutMs: i == shape.length - 1 ? c.audioFadeOutMs : 0,
-      ));
+      final end = i == shape.length - 1
+          ? c.sourceEndMs
+          : at + (len * shape[i].$1).round();
+      parts.add(
+        _clip(
+          c,
+          id: i == 0 ? c.id : _id('c'),
+          sourceStartMs: at,
+          sourceEndMs: end,
+          speed: (c.speed * shape[i].$2).clamp(0.25, 4.0),
+          clearTransition: i > 0,
+          audioFadeInMs: i == 0 ? c.audioFadeInMs : 0,
+          audioFadeOutMs: i == shape.length - 1 ? c.audioFadeOutMs : 0,
+        ),
+      );
       at = end;
     }
-    return _replaceClips(ir, [...ir.clips]..replaceRange(index, index + 1, parts));
+    return _replaceClips(
+      ir,
+      [...ir.clips]..replaceRange(index, index + 1, parts),
+    );
   }
 
   /// Turns "Reduce background noise" on or off for the clip(s)' own sound.
   static MobileEditIr setVoiceCleanup(MobileEditIr ir, bool on, {int? index}) {
     final targets = _targets(ir, index).toSet();
-    return _copy(ir, clips: [for (var i = 0; i < ir.clips.length; i++) targets.contains(i) ? _clip(ir.clips[i], voiceCleanup: on) : ir.clips[i]]);
+    return _copy(
+      ir,
+      clips: [
+        for (var i = 0; i < ir.clips.length; i++)
+          targets.contains(i)
+              ? _clip(ir.clips[i], voiceCleanup: on)
+              : ir.clips[i],
+      ],
+    );
   }
 
   /// Fades the clip's own sound in / out (0 = off). Each fade is at most half the clip.
   /// J-cut / L-cut on clip [index] (Phase 6.2): [leadMs] = its sound starts that early, over the previous clip;
   /// [lagMs] = its sound carries on over the next clip. Clamped to the footage before / after the clip and to half of
   /// the neighbouring clip (the renderer plays the extra source sound).
-  static MobileEditIr setJLCut(MobileEditIr ir, int index, {int? leadMs, int? lagMs}) {
-    if (index < 0 || index >= ir.clips.length) throw MediaEngineException('INVALID_EDIT', 'That clip is no longer on the timeline.');
+  static MobileEditIr setJLCut(
+    MobileEditIr ir,
+    int index, {
+    int? leadMs,
+    int? lagMs,
+  }) {
+    if (index < 0 || index >= ir.clips.length)
+      throw MediaEngineException(
+        'INVALID_EDIT',
+        'That clip is no longer on the timeline.',
+      );
     final c = ir.clips[index];
     final src = ir.sources.where((s) => s.assetId == c.assetId).firstOrNull;
-    int half(int i) => i < 0 || i >= ir.clips.length ? 0 : (ir.clips[i].timelineEndMs - ir.clips[i].timelineStartMs) ~/ 2;
-    final lead = leadMs == null ? c.audioLeadMs : math.min(leadMs, math.min(half(index - 1), (c.sourceStartMs / c.speed).floor())).clamp(0, 2000).toInt();
-    final after = src == null ? 0 : ((src.durationMs - c.sourceEndMs) / c.speed).floor();
-    final lag = lagMs == null ? c.audioLagMs : math.min(lagMs, math.min(half(index + 1), after)).clamp(0, 2000).toInt();
-    return _copy(ir, clips: [...ir.clips]..[index] = _clip(c, audioLeadMs: lead, audioLagMs: lag));
+    int half(int i) => i < 0 || i >= ir.clips.length
+        ? 0
+        : (ir.clips[i].timelineEndMs - ir.clips[i].timelineStartMs) ~/ 2;
+    final lead = leadMs == null
+        ? c.audioLeadMs
+        : math
+              .min(
+                leadMs,
+                math.min(half(index - 1), (c.sourceStartMs / c.speed).floor()),
+              )
+              .clamp(0, 2000)
+              .toInt();
+    final after = src == null
+        ? 0
+        : ((src.durationMs - c.sourceEndMs) / c.speed).floor();
+    final lag = lagMs == null
+        ? c.audioLagMs
+        : math
+              .min(lagMs, math.min(half(index + 1), after))
+              .clamp(0, 2000)
+              .toInt();
+    return _copy(
+      ir,
+      clips: [...ir.clips]
+        ..[index] = _clip(c, audioLeadMs: lead, audioLagMs: lag),
+    );
   }
 
-  static MobileEditIr setClipAudioFades(MobileEditIr ir, {required int fadeInMs, required int fadeOutMs, int? index}) {
-    if (fadeInMs < 0 || fadeOutMs < 0) throw MediaEngineException('INVALID_EDIT', 'Fades cannot be negative.');
+  static MobileEditIr setClipAudioFades(
+    MobileEditIr ir, {
+    required int fadeInMs,
+    required int fadeOutMs,
+    int? index,
+  }) {
+    if (fadeInMs < 0 || fadeOutMs < 0)
+      throw MediaEngineException('INVALID_EDIT', 'Fades cannot be negative.');
     final targets = _targets(ir, index).toSet();
     return _copy(
       ir,
@@ -975,7 +1226,11 @@ class TimelineOps {
             () {
               final c = ir.clips[i];
               final half = (c.timelineEndMs - c.timelineStartMs) ~/ 2;
-              return _clip(c, audioFadeInMs: math.min(fadeInMs, half), audioFadeOutMs: math.min(fadeOutMs, half));
+              return _clip(
+                c,
+                audioFadeInMs: math.min(fadeInMs, half),
+                audioFadeOutMs: math.min(fadeOutMs, half),
+              );
             }()
           else
             ir.clips[i],
@@ -1167,7 +1422,12 @@ class TimelineOps {
         'fontWeight': 600,
         'background': {'color': '#000000B3', 'paddingPx': 16, 'radiusPx': 16},
       },
-      'TITLE' => {...base, 'fontSizePx': 88, 'positionY': positionY, 'positionX': positionX},
+      'TITLE' => {
+        ...base,
+        'fontSizePx': 88,
+        'positionY': positionY,
+        'positionX': positionX,
+      },
       _ when viralCaptionPresets.containsKey(preset) => {
         ...base,
         ...viralCaptionPresets[preset]!.style,
@@ -1186,132 +1446,376 @@ class TimelineOps {
   /// packages/video-contracts/src/caption-templates.ts (what the AI Director applies by name). The first
   /// eight also match `CAPTION_STYLE_PRESETS` in the desktop CaptionStudioModal.tsx. Font sizes and stroke
   /// widths are canvas pixels. `glow` is an optional style key: renderers that do not know it ignore it.
-  static const viralCaptionPresets = <String, ({String name, String subtitle, Map<String, dynamic> style})>{
-    'HORMOZI_BOUNCE': (
-      name: 'Hormozi Viral',
-      subtitle: 'Yellow / green bold',
-      style: {
-        'animation': 'word_pop', 'fontFamily': 'Anton', 'fontWeight': 400, 'fontSizePx': 52,
-        'textColor': '#FACC15', 'highlightColor': '#22C55E', 'strokeWidthPx': 3, 'strokeColor': '#000000',
-        'shadow': true, 'uppercase': true,
-      },
-    ),
-    'MRBEAST_HYPE': (
-      name: 'MrBeast Punch',
-      subtitle: 'Red / white impact',
-      style: {
-        'animation': 'word_pop', 'fontFamily': 'Montserrat', 'fontWeight': 900, 'fontSizePx': 54,
-        'textColor': '#FFFFFF', 'highlightColor': '#EF4444', 'strokeWidthPx': 4, 'strokeColor': '#000000',
-        'shadow': true, 'uppercase': true,
-      },
-    ),
-    'ALI_ABDAAL_CLEAN': (
-      name: 'Abdaal Aesthetic',
-      subtitle: 'Clean teal & white',
-      style: {
-        'animation': 'karaoke', 'fontFamily': 'Poppins', 'fontWeight': 600, 'fontSizePx': 44,
-        'textColor': '#FFFFFF', 'highlightColor': '#14B8A6', 'strokeWidthPx': 0, 'shadow': true,
-        'background': {'color': '#00000073', 'paddingPx': 6, 'radiusPx': 14},
-      },
-    ),
-    'DAN_KOE_MINIMAL': (
-      name: 'Dan Koe Clean',
-      subtitle: 'Minimalist grotesque',
-      style: {
-        'animation': 'none', 'fontFamily': 'Syne', 'fontWeight': 700, 'fontSizePx': 40,
-        'textColor': '#FFFFFF', 'highlightColor': '#94A3B8', 'strokeWidthPx': 0, 'shadow': false,
-      },
-    ),
-    'CYBER_NEON': (
-      name: 'Cyber Neon',
-      subtitle: 'Cyan & magenta glow',
-      style: {
-        'animation': 'word_pop', 'fontFamily': 'Outfit', 'fontWeight': 800, 'fontSizePx': 48,
-        'textColor': '#38BDF8', 'highlightColor': '#EC4899', 'strokeWidthPx': 1, 'strokeColor': '#0284C7',
-        'shadow': false, 'glow': true,
-      },
-    ),
-    'KARAOKE_FROSTED': (
-      name: 'Frosted Pill',
-      subtitle: 'Dark pill backdrop',
-      style: {
-        'animation': 'karaoke', 'fontFamily': 'Inter', 'fontWeight': 800, 'fontSizePx': 46,
-        'textColor': '#FFFFFF', 'highlightColor': '#FBBF24', 'strokeWidthPx': 0, 'shadow': true,
-        'background': {'color': '#0F172AD9', 'paddingPx': 10, 'radiusPx': 20},
-      },
-    ),
-    'VOX_EXPLAINER': (
-      name: 'Vox Explainer',
-      subtitle: 'Yellow highlighter',
-      style: {
-        'animation': 'none', 'fontFamily': 'Roboto', 'fontWeight': 700, 'fontSizePx': 42,
-        'textColor': '#0F172A', 'highlightColor': '#000000', 'strokeWidthPx': 0, 'shadow': false,
-        'background': {'color': '#FACC15', 'paddingPx': 6, 'radiusPx': 6},
-      },
-    ),
-    'CINEMATIC_SUBTITLE': (
-      name: 'Cinema Subtitle',
-      subtitle: 'Bebas Neue sans',
-      style: {
-        'animation': 'none', 'fontFamily': 'Bebas Neue', 'fontWeight': 400, 'fontSizePx': 48,
-        'textColor': '#F8FAFC', 'highlightColor': '#F59E0B', 'strokeWidthPx': 1, 'strokeColor': '#0F172A',
-        'shadow': true, 'uppercase': true,
-      },
-    ),
-    'RAJ_SHAMANI_BOLD': (
-      name: 'Shamani Bold',
-      subtitle: 'White / yellow pop',
-      style: {
-        'animation': 'word_pop', 'fontFamily': 'Montserrat', 'fontWeight': 800, 'fontSizePx': 50,
-        'textColor': '#FFFFFF', 'highlightColor': '#FFD60A', 'strokeWidthPx': 3, 'strokeColor': '#000000',
-        'shadow': true,
-      },
-    ),
-    'VARUN_MAYYA_BOX': (
-      name: 'Mayya Box',
-      subtitle: 'Box behind the spoken word',
-      style: {
-        'animation': 'word_box', 'fontFamily': 'Inter', 'fontWeight': 700, 'fontSizePx': 46,
-        'textColor': '#FFFFFF', 'highlightColor': '#7C3AED', 'strokeWidthPx': 0, 'shadow': true,
-      },
-    ),
-    'IMAN_GADZHI_LUXE': (
-      name: 'Gadzhi Luxe',
-      subtitle: 'Words appear as spoken',
-      style: {
-        'animation': 'word_reveal', 'fontFamily': 'Inter', 'fontWeight': 500, 'fontSizePx': 38,
-        'textColor': '#FFFFFF', 'highlightColor': '#D4AF37', 'strokeWidthPx': 0, 'shadow': true,
-      },
-    ),
-    'MUMBAI_BUBBLE': (
-      name: 'Mumbai Bubble',
-      subtitle: 'Rounded pill, orange box',
-      style: {
-        'animation': 'word_box', 'fontFamily': 'Baloo 2', 'fontWeight': 800, 'fontSizePx': 48,
-        'textColor': '#FFFFFF', 'highlightColor': '#FF5A1F', 'strokeWidthPx': 0, 'shadow': false,
-        'background': {'color': '#111827E6', 'paddingPx': 10, 'radiusPx': 22},
-      },
-    ),
-    'ONE_WORD_PUNCH': (
-      name: '1-Word Punch',
-      subtitle: 'Big viral punch word',
-      style: {
-        'animation': 'word_pop', 'fontFamily': 'Montserrat', 'fontWeight': 900, 'fontSizePx': 60,
-        'textColor': '#FFFFFF', 'highlightColor': '#F59E0B', 'strokeWidthPx': 5, 'strokeColor': '#000000',
-        'shadow': true, 'uppercase': true,
-      },
-    ),
-    'GOLDEN_LUXURY': (
-      name: 'Golden Luxury',
-      subtitle: 'Champagne gold high-end',
-      style: {
-        'animation': 'karaoke', 'fontFamily': 'Playfair Display', 'fontWeight': 700, 'fontSizePx': 46,
-        'textColor': '#FFFBEB', 'highlightColor': '#F59E0B', 'strokeWidthPx': 2, 'strokeColor': '#78350F',
-        'shadow': true,
-        'background': {'color': '#1C1917E6', 'paddingPx': 8, 'radiusPx': 12},
-      },
-    ),
-  };
+  static const viralCaptionPresets =
+      <String, ({String name, String subtitle, Map<String, dynamic> style})>{
+        'HORMOZI_BOUNCE': (
+          name: 'Punchy Bounce',
+          subtitle: 'Yellow / green spring',
+          style: {
+            'animation': 'word_pop',
+            'fontFamily': 'Anton',
+            'fontWeight': 400,
+            'fontSizePx': 52,
+            'textColor': '#FACC15',
+            'highlightColor': '#22C55E',
+            'strokeWidthPx': 3,
+            'strokeColor': '#000000',
+            'shadow': true,
+            'uppercase': true,
+          },
+        ),
+        'MRBEAST_HYPE': (
+          name: 'High Energy',
+          subtitle: 'Red / white impact',
+          style: {
+            'animation': 'word_pop',
+            'fontFamily': 'Montserrat',
+            'fontWeight': 900,
+            'fontSizePx': 54,
+            'textColor': '#FFFFFF',
+            'highlightColor': '#EF4444',
+            'strokeWidthPx': 4,
+            'strokeColor': '#000000',
+            'shadow': true,
+            'uppercase': true,
+          },
+        ),
+        'ALI_ABDAAL_CLEAN': (
+          name: 'Clean Frosted',
+          subtitle: 'Clean teal frosted pill',
+          style: {
+            'animation': 'karaoke',
+            'fontFamily': 'Poppins',
+            'fontWeight': 600,
+            'fontSizePx': 44,
+            'textColor': '#FFFFFF',
+            'highlightColor': '#14B8A6',
+            'strokeWidthPx': 0,
+            'shadow': true,
+            'background': {
+              'color': '#00000073',
+              'paddingPx': 6,
+              'radiusPx': 14,
+            },
+          },
+        ),
+        'DAN_KOE_MINIMAL': (
+          name: 'Minimal Clean',
+          subtitle: 'Minimalist geometric',
+          style: {
+            'animation': 'none',
+            'fontFamily': 'Syne',
+            'fontWeight': 700,
+            'fontSizePx': 40,
+            'textColor': '#FFFFFF',
+            'highlightColor': '#94A3B8',
+            'strokeWidthPx': 0,
+            'shadow': false,
+          },
+        ),
+        'CYBER_NEON': (
+          name: 'Cyber Neon',
+          subtitle: 'Cyan & magenta glow',
+          style: {
+            'animation': 'word_pop',
+            'fontFamily': 'Outfit',
+            'fontWeight': 800,
+            'fontSizePx': 48,
+            'textColor': '#38BDF8',
+            'highlightColor': '#EC4899',
+            'strokeWidthPx': 1,
+            'strokeColor': '#0284C7',
+            'shadow': false,
+            'glow': true,
+          },
+        ),
+        'KARAOKE_FROSTED': (
+          name: 'Frosted Karaoke',
+          subtitle: 'Dark rounded pill',
+          style: {
+            'animation': 'karaoke',
+            'fontFamily': 'Inter',
+            'fontWeight': 800,
+            'fontSizePx': 46,
+            'textColor': '#FFFFFF',
+            'highlightColor': '#FBBF24',
+            'strokeWidthPx': 0,
+            'shadow': true,
+            'background': {
+              'color': '#0F172AD9',
+              'paddingPx': 10,
+              'radiusPx': 20,
+            },
+          },
+        ),
+        'VOX_EXPLAINER': (
+          name: 'Highlighter Tag',
+          subtitle: 'Yellow marker tag',
+          style: {
+            'animation': 'none',
+            'fontFamily': 'Roboto',
+            'fontWeight': 700,
+            'fontSizePx': 42,
+            'textColor': '#0F172A',
+            'highlightColor': '#000000',
+            'strokeWidthPx': 0,
+            'shadow': false,
+            'background': {'color': '#FACC15', 'paddingPx': 6, 'radiusPx': 6},
+          },
+        ),
+        'CINEMATIC_SUBTITLE': (
+          name: 'Cinema Classic',
+          subtitle: 'Condensed film subtitle',
+          style: {
+            'animation': 'none',
+            'fontFamily': 'Bebas Neue',
+            'fontWeight': 400,
+            'fontSizePx': 48,
+            'textColor': '#F8FAFC',
+            'highlightColor': '#F59E0B',
+            'strokeWidthPx': 1,
+            'strokeColor': '#0F172A',
+            'shadow': true,
+            'uppercase': true,
+          },
+        ),
+        'RAJ_SHAMANI_BOLD': (
+          name: 'Podcast Punch',
+          subtitle: 'Bold podcast punch',
+          style: {
+            'animation': 'word_pop',
+            'fontFamily': 'Montserrat',
+            'fontWeight': 800,
+            'fontSizePx': 50,
+            'textColor': '#FFFFFF',
+            'highlightColor': '#FFD60A',
+            'strokeWidthPx': 3,
+            'strokeColor': '#000000',
+            'shadow': true,
+          },
+        ),
+        'VARUN_MAYYA_BOX': (
+          name: 'Electric Box',
+          subtitle: 'Sliding purple word box',
+          style: {
+            'animation': 'word_box',
+            'fontFamily': 'Inter',
+            'fontWeight': 700,
+            'fontSizePx': 46,
+            'textColor': '#FFFFFF',
+            'highlightColor': '#7C3AED',
+            'strokeWidthPx': 0,
+            'shadow': true,
+          },
+        ),
+        'IMAN_GADZHI_LUXE': (
+          name: 'Luxe Minimal',
+          subtitle: 'Word reveal in gold',
+          style: {
+            'animation': 'word_reveal',
+            'fontFamily': 'Inter',
+            'fontWeight': 500,
+            'fontSizePx': 38,
+            'textColor': '#FFFFFF',
+            'highlightColor': '#D4AF37',
+            'strokeWidthPx': 0,
+            'shadow': true,
+          },
+        ),
+        'MUMBAI_BUBBLE': (
+          name: 'Vibrant Bubble',
+          subtitle: 'Rounded pill, orange box',
+          style: {
+            'animation': 'word_box',
+            'fontFamily': 'Baloo 2',
+            'fontWeight': 800,
+            'fontSizePx': 48,
+            'textColor': '#FFFFFF',
+            'highlightColor': '#FF5A1F',
+            'strokeWidthPx': 0,
+            'shadow': false,
+            'background': {
+              'color': '#111827E6',
+              'paddingPx': 10,
+              'radiusPx': 22,
+            },
+          },
+        ),
+        'EDITORIAL_SERIF': (
+          name: 'Editorial Serif',
+          subtitle: 'Playfair Display gold serif',
+          style: {
+            'animation': 'none',
+            'fontFamily': 'Playfair Display',
+            'fontWeight': 700,
+            'fontSizePx': 44,
+            'textColor': '#FFFFFF',
+            'highlightColor': '#E2BA65',
+            'strokeWidthPx': 1,
+            'strokeColor': '#1E293B',
+            'shadow': true,
+          },
+        ),
+        'DOCUMENTARY_LOWER': (
+          name: 'Documentary Lower',
+          subtitle: 'Translucent pill, sky blue',
+          style: {
+            'animation': 'karaoke',
+            'fontFamily': 'Roboto',
+            'fontWeight': 500,
+            'fontSizePx': 40,
+            'textColor': '#F1F5F9',
+            'highlightColor': '#38BDF8',
+            'strokeWidthPx': 0,
+            'shadow': false,
+            'background': {
+              'color': '#020617CC',
+              'paddingPx': 8,
+              'radiusPx': 10,
+            },
+          },
+        ),
+        'NEON_PULSE': (
+          name: 'Neon Pulse',
+          subtitle: 'Violet cyan glow pulse',
+          style: {
+            'animation': 'word_pop',
+            'fontFamily': 'Outfit',
+            'fontWeight': 900,
+            'fontSizePx': 50,
+            'textColor': '#F0ABFC',
+            'highlightColor': '#22D3EE',
+            'strokeWidthPx': 2,
+            'strokeColor': '#701A75',
+            'shadow': false,
+            'uppercase': true,
+            'glow': true,
+          },
+        ),
+        'STREET_IMPACT': (
+          name: 'Street Impact',
+          subtitle: 'Urban heavy double stroke',
+          style: {
+            'animation': 'word_pop',
+            'fontFamily': 'Bebas Neue',
+            'fontWeight': 400,
+            'fontSizePx': 58,
+            'textColor': '#F97316',
+            'highlightColor': '#FEF08A',
+            'strokeWidthPx': 4,
+            'strokeColor': '#000000',
+            'shadow': true,
+            'uppercase': true,
+          },
+        ),
+        'PASTEL_CREATOR': (
+          name: 'Soft Pastel',
+          subtitle: 'Cream & lilac pastel pill',
+          style: {
+            'animation': 'karaoke',
+            'fontFamily': 'Poppins',
+            'fontWeight': 600,
+            'fontSizePx': 42,
+            'textColor': '#FEF3C7',
+            'highlightColor': '#C084FC',
+            'strokeWidthPx': 0,
+            'shadow': false,
+            'background': {
+              'color': '#1E1B4BD9',
+              'paddingPx': 8,
+              'radiusPx': 16,
+            },
+          },
+        ),
+        'MONOCHROME_BOLD': (
+          name: 'Monochrome Bold',
+          subtitle: 'Swiss black & white',
+          style: {
+            'animation': 'none',
+            'fontFamily': 'Inter',
+            'fontWeight': 900,
+            'fontSizePx': 48,
+            'textColor': '#FFFFFF',
+            'highlightColor': '#000000',
+            'strokeWidthPx': 0,
+            'shadow': false,
+            'uppercase': true,
+            'background': {
+              'color': '#000000EE',
+              'paddingPx': 10,
+              'radiusPx': 8,
+            },
+          },
+        ),
+        'NIGHT_RETRO': (
+          name: 'Night Retro',
+          subtitle: 'Warm amber arcade glow',
+          style: {
+            'animation': 'word_reveal',
+            'fontFamily': 'Space Grotesk',
+            'fontWeight': 700,
+            'fontSizePx': 44,
+            'textColor': '#FDE047',
+            'highlightColor': '#FB923C',
+            'strokeWidthPx': 1,
+            'strokeColor': '#78350F',
+            'shadow': true,
+            'uppercase': true,
+          },
+        ),
+        'DYNAMIC_DUO': (
+          name: 'Dual Gradient',
+          subtitle: 'Rose-coral pop over white',
+          style: {
+            'animation': 'word_pop',
+            'fontFamily': 'Montserrat',
+            'fontWeight': 800,
+            'fontSizePx': 52,
+            'textColor': '#F8FAFC',
+            'highlightColor': '#F43F5E',
+            'strokeWidthPx': 3,
+            'strokeColor': '#0F172A',
+            'shadow': true,
+            'uppercase': true,
+          },
+        ),
+        'ONE_WORD_PUNCH': (
+          name: '1-Word Punch',
+          subtitle: 'Big viral punch word',
+          style: {
+            'animation': 'word_pop',
+            'fontFamily': 'Montserrat',
+            'fontWeight': 900,
+            'fontSizePx': 60,
+            'textColor': '#FFFFFF',
+            'highlightColor': '#F59E0B',
+            'strokeWidthPx': 5,
+            'strokeColor': '#000000',
+            'shadow': true,
+            'uppercase': true,
+          },
+        ),
+        'GOLDEN_LUXURY': (
+          name: 'Golden Luxury',
+          subtitle: 'Champagne gold high-end',
+          style: {
+            'animation': 'karaoke',
+            'fontFamily': 'Playfair Display',
+            'fontWeight': 700,
+            'fontSizePx': 46,
+            'textColor': '#FFFBEB',
+            'highlightColor': '#F59E0B',
+            'strokeWidthPx': 2,
+            'strokeColor': '#78350F',
+            'shadow': true,
+            'background': {
+              'color': '#1C1917E6',
+              'paddingPx': 8,
+              'radiusPx': 12,
+            },
+          },
+        ),
+      };
 
   /// Every caption preset offered in the Captions sheet: the 4 classic ones, then the viral ones.
   static final captionPresets = <String, String>{
@@ -1328,7 +1832,10 @@ class TimelineOps {
   /// Replaces the text of speech captions ([textById]: caption id → new text), e.g. after a translation.
   /// The new words share the caption's own time range in proportion to their length; its range, style and
   /// position do not change. Captions missing from [textById] are kept as they are.
-  static MobileEditIr retextCaptions(MobileEditIr ir, Map<String, String> textById) {
+  static MobileEditIr retextCaptions(
+    MobileEditIr ir,
+    Map<String, String> textById,
+  ) {
     EditIrCaption retext(EditIrCaption c, String text) {
       final parts = text.trim().split(RegExp(r'\s+'));
       final pop = c.words.isEmpty
@@ -1341,31 +1848,64 @@ class TimelineOps {
       // A correction with the same number of words keeps every word's own timing and emphasis.
       if (parts.length == c.words.length) {
         for (final (i, w) in c.words.indexed) {
-          words.add(EditIrWord(text: parts[i], startMs: w.startMs, endMs: w.endMs, highlight: w.highlight, color: w.color, scale: w.scale));
+          words.add(
+            EditIrWord(
+              text: parts[i],
+              startMs: w.startMs,
+              endMs: w.endMs,
+              highlight: w.highlight,
+              color: w.color,
+              scale: w.scale,
+            ),
+          );
         }
         parts.clear();
       }
       for (final p in parts) {
-        final s = math.min(c.startMs + (span * done / total).round(), c.endMs - 1);
+        final s = math.min(
+          c.startMs + (span * done / total).round(),
+          c.endMs - 1,
+        );
         done += p.runes.length;
         final e = c.startMs + (span * done / total).round();
-        words.add(EditIrWord(text: p, startMs: s, endMs: e.clamp(s + 1, c.endMs), scale: pop));
+        words.add(
+          EditIrWord(
+            text: p,
+            startMs: s,
+            endMs: e.clamp(s + 1, c.endMs),
+            scale: pop,
+          ),
+        );
       }
-      final newText = EditIrCaption.joinWordsForScript(words.map((w) => w.text).toList());
-      return EditIrCaption(id: c.id, startMs: c.startMs, endMs: c.endMs, text: newText, words: words, style: _fontFitted(c.style, newText));
+      final newText = EditIrCaption.joinWordsForScript(
+        words.map((w) => w.text).toList(),
+      );
+      return EditIrCaption(
+        id: c.id,
+        startMs: c.startMs,
+        endMs: c.endMs,
+        text: newText,
+        words: words,
+        style: _fontFitted(c.style, newText),
+      );
     }
 
     return _copy(
       ir,
       captions: [
         for (final c in ir.captions)
-          c.kind == 'caption' && (textById[c.id]?.trim().isNotEmpty ?? false) ? retext(c, textById[c.id]!) : c,
+          c.kind == 'caption' && (textById[c.id]?.trim().isNotEmpty ?? false)
+              ? retext(c, textById[c.id]!)
+              : c,
       ],
     );
   }
 
   /// [style] with a font family that covers the script of [text] (Hindi, Tamil, … get their Noto Sans family).
-  static Map<String, dynamic> _fontFitted(Map<String, dynamic> style, String text) {
+  static Map<String, dynamic> _fontFitted(
+    Map<String, dynamic> style,
+    String text,
+  ) {
     final current = style['fontFamily'] as String? ?? 'Inter';
     final fitted = CaptionTools.fontFor(text, current);
     return fitted == current ? style : {...style, 'fontFamily': fitted};
@@ -1382,15 +1922,74 @@ class TimelineOps {
         if (k != null) {
           words = [
             for (final (i, w) in words.indexed)
-              i == k ? EditIrWord(text: w.text, startMs: w.startMs, endMs: w.endMs, highlight: true, color: w.color, scale: w.scale) : w,
+              i == k
+                  ? EditIrWord(
+                      text: w.text,
+                      startMs: w.startMs,
+                      endMs: w.endMs,
+                      highlight: true,
+                      color: w.color,
+                      scale: w.scale,
+                    )
+                  : w,
           ];
         }
       }
       if (identical(words, c.words)) return c;
-      return EditIrCaption(id: c.id, startMs: c.startMs, endMs: c.endMs, text: EditIrCaption.joinWordsForScript(words.map((w) => w.text).toList()), words: words, style: c.style);
+      return EditIrCaption(
+        id: c.id,
+        startMs: c.startMs,
+        endMs: c.endMs,
+        text: EditIrCaption.joinWordsForScript(
+          words.map((w) => w.text).toList(),
+        ),
+        words: words,
+        style: c.style,
+      );
     }
 
     return _copy(ir, captions: [for (final c in ir.captions) enhance(c)]);
+  }
+
+  /// Toggles keyword highlight for word at [wordIndex] in caption [captionId].
+  ///
+  /// Preserves timings, scale, and other word properties. Pure edit on [ir].
+  static MobileEditIr toggleWordHighlight(
+    MobileEditIr ir,
+    String captionId,
+    int wordIndex,
+  ) {
+    return _copy(
+      ir,
+      captions: [
+        for (final c in ir.captions)
+          if (c.id == captionId && wordIndex >= 0 && wordIndex < c.words.length)
+            EditIrCaption(
+              id: c.id,
+              kind: c.kind,
+              startMs: c.startMs,
+              endMs: c.endMs,
+              text: c.text,
+              style: c.style,
+              words: [
+                for (final (i, w) in c.words.indexed)
+                  if (i == wordIndex)
+                    EditIrWord(
+                      text: w.text,
+                      startMs: w.startMs,
+                      endMs: w.endMs,
+                      highlight: !w.highlight,
+                      color: w.color,
+                      scale: w.scale,
+                    )
+                  else
+                    w,
+              ],
+            )
+          else
+            c,
+      ],
+    );
   }
 
   /// Word-synced captions from a source-time transcript, [wordsPerCaption] words each, breaking
@@ -1411,7 +2010,12 @@ class TimelineOps {
       );
     }
     final style = _fontFitted(
-      captionStyle(preset, highlightColor: highlightColor, positionY: positionY, fontSizePx: fontSizePx),
+      captionStyle(
+        preset,
+        highlightColor: highlightColor,
+        positionY: positionY,
+        fontSizePx: fontSizePx,
+      ),
       words.map((w) => w.text).join(' '),
     );
     // The spoken word grows a little in word_pop styles (same 1.15 as the AI Director's captions).
@@ -1424,10 +2028,18 @@ class TimelineOps {
       // A word that straddles a cut (or a re-ordered clip) ends where its own clip ends.
       if (e < s || e - s > w.endMs - w.startMs + 50) {
         final clip = ir.clips[clipIndexAt(ir, s)];
-        e = math.min(clip.timelineEndMs - 1, s + math.max(1, w.endMs - w.startMs));
+        e = math.min(
+          clip.timelineEndMs - 1,
+          s + math.max(1, w.endMs - w.startMs),
+        );
       }
       mapped.add(
-        EditIrWord(text: w.text, startMs: s, endMs: math.max(e + 1, s + 1), scale: pop),
+        EditIrWord(
+          text: w.text,
+          startMs: s,
+          endMs: math.max(e + 1, s + 1),
+          scale: pop,
+        ),
       );
     }
     // Clips can be re-ordered, so source order is not timeline order.
@@ -1441,7 +2053,9 @@ class TimelineOps {
           id: _id('cap'),
           startMs: group.first.startMs,
           endMs: group.last.endMs,
-          text: EditIrCaption.joinWordsForScript(group.map((w) => w.text).toList()),
+          text: EditIrCaption.joinWordsForScript(
+            group.map((w) => w.text).toList(),
+          ),
           words: group,
           style: style,
         ),
@@ -1482,8 +2096,10 @@ class TimelineOps {
     }
     return _copy(
       ir,
-      captions: [...ir.captions.where((c) => c.kind == 'text'), ...captions.where((c) => c.endMs > c.startMs)]
-        ..sort((a, b) => a.startMs.compareTo(b.startMs)),
+      captions: [
+        ...ir.captions.where((c) => c.kind == 'text'),
+        ...captions.where((c) => c.endMs > c.startMs),
+      ]..sort((a, b) => a.startMs.compareTo(b.startMs)),
     );
   }
 
@@ -1496,8 +2112,16 @@ class TimelineOps {
     double? fontSizePx,
   }) {
     final style = _fontFitted(
-      captionStyle(preset, highlightColor: highlightColor, positionY: positionY ?? 0.72, fontSizePx: fontSizePx),
-      [for (final c in ir.captions) if (c.kind == 'caption') c.text].join(' '),
+      captionStyle(
+        preset,
+        highlightColor: highlightColor,
+        positionY: positionY ?? 0.72,
+        fontSizePx: fontSizePx,
+      ),
+      [
+        for (final c in ir.captions)
+          if (c.kind == 'caption') c.text,
+      ].join(' '),
     );
     return _copy(
       ir,
@@ -1512,8 +2136,16 @@ class TimelineOps {
                   // Switching to / from a word_pop style turns the spoken-word pop on / off.
                   words: [
                     for (final w in c.words)
-                      EditIrWord(text: w.text, startMs: w.startMs, endMs: w.endMs, highlight: w.highlight, color: w.color,
-                          scale: style['animation'] == 'word_pop' ? (w.scale > 1 ? w.scale : 1.15) : 1.0),
+                      EditIrWord(
+                        text: w.text,
+                        startMs: w.startMs,
+                        endMs: w.endMs,
+                        highlight: w.highlight,
+                        color: w.color,
+                        scale: style['animation'] == 'word_pop'
+                            ? (w.scale > 1 ? w.scale : 1.15)
+                            : 1.0,
+                      ),
                   ],
                   style: style,
                 )
@@ -1548,7 +2180,9 @@ class TimelineOps {
       endMs: e,
       text: t,
       words: [EditIrWord(text: t, startMs: s, endMs: e)],
-      style: style ?? captionStyle('TITLE', positionY: positionY, positionX: positionX),
+      style:
+          style ??
+          captionStyle('TITLE', positionY: positionY, positionX: positionX),
     );
     return _copy(
       ir,
@@ -1569,15 +2203,34 @@ class TimelineOps {
     Map<String, dynamic>? style,
   }) {
     final t = text.trim();
-    if (t.isEmpty) throw MediaEngineException('INVALID_EDIT', 'Type the caption first.');
-    final speech = [for (final c in ir.captions) if (c.kind == 'caption') c];
+    if (t.isEmpty)
+      throw MediaEngineException('INVALID_EDIT', 'Type the caption first.');
+    final speech = [
+      for (final c in ir.captions)
+        if (c.kind == 'caption') c,
+    ];
     final s = startMs.clamp(0, math.max(0, ir.durationMs - 300)).toInt();
     if (speech.any((c) => s >= c.startMs && s < c.endMs)) {
-      throw MediaEngineException('INVALID_EDIT', 'There is already a caption here. Tap it to edit it, or move the playhead.');
+      throw MediaEngineException(
+        'INVALID_EDIT',
+        'There is already a caption here. Tap it to edit it, or move the playhead.',
+      );
     }
-    final next = speech.where((c) => c.startMs > s).map((c) => c.startMs).fold<int?>(null, (a, b) => a == null ? b : math.min(a, b));
-    final e = math.min(math.min(ir.durationMs, s + math.max(durationMs, 300)), next ?? ir.durationMs).toInt();
-    if (e - s < 300) throw MediaEngineException('INVALID_EDIT', 'Not enough room before the next caption. Move the playhead.');
+    final next = speech
+        .where((c) => c.startMs > s)
+        .map((c) => c.startMs)
+        .fold<int?>(null, (a, b) => a == null ? b : math.min(a, b));
+    final e = math
+        .min(
+          math.min(ir.durationMs, s + math.max(durationMs, 300)),
+          next ?? ir.durationMs,
+        )
+        .toInt();
+    if (e - s < 300)
+      throw MediaEngineException(
+        'INVALID_EDIT',
+        'Not enough room before the next caption. Move the playhead.',
+      );
     final look = style ?? speech.firstOrNull?.style ?? captionStyle('BOLD_POP');
     final pop = look['animation'] == 'word_pop' ? 1.15 : 1.0;
     final parts = t.split(RegExp(r'\s+'));
@@ -1588,10 +2241,28 @@ class TimelineOps {
       final ws = math.min(s + ((e - s) * done / total).round(), e - 1);
       done += p.runes.length;
       final we = s + ((e - s) * done / total).round();
-      words.add(EditIrWord(text: p, startMs: ws, endMs: we.clamp(ws + 1, e), scale: pop));
+      words.add(
+        EditIrWord(
+          text: p,
+          startMs: ws,
+          endMs: we.clamp(ws + 1, e),
+          scale: pop,
+        ),
+      );
     }
-    final cap = EditIrCaption(id: _id('cap'), startMs: s, endMs: e, text: parts.join(' '), words: words, style: _fontFitted(look, t));
-    return _copy(ir, captions: [...ir.captions, cap]..sort((a, b) => a.startMs.compareTo(b.startMs)));
+    final cap = EditIrCaption(
+      id: _id('cap'),
+      startMs: s,
+      endMs: e,
+      text: parts.join(' '),
+      words: words,
+      style: _fontFitted(look, t),
+    );
+    return _copy(
+      ir,
+      captions: [...ir.captions, cap]
+        ..sort((a, b) => a.startMs.compareTo(b.startMs)),
+    );
   }
 
   static MobileEditIr removeCaption(MobileEditIr ir, String id) =>
@@ -1665,10 +2336,17 @@ class TimelineOps {
 
   /// Sticker spots (canvas fractions): upper corners, then mid sides (captions sit lower). Same as the contracts'
   /// `STICKER_SPOTS`, so manual and Director stickers land in the same places.
-  static const stickerSpots = [(x: 0.74, y: 0.22), (x: 0.26, y: 0.22), (x: 0.78, y: 0.46), (x: 0.22, y: 0.46)];
+  static const stickerSpots = [
+    (x: 0.74, y: 0.22),
+    (x: 0.26, y: 0.22),
+    (x: 0.78, y: 0.46),
+    (x: 0.22, y: 0.46),
+  ];
 
   /// The sticker spot farthest from [face] (canvas fractions); the upper right without a face.
-  static ({double x, double y}) stickerSpotAwayFrom(({double x, double y})? face) {
+  static ({double x, double y}) stickerSpotAwayFrom(
+    ({double x, double y})? face,
+  ) {
     if (face == null) return stickerSpots.first;
     var best = stickerSpots.first;
     var bestD = -1.0;
@@ -1684,13 +2362,20 @@ class TimelineOps {
 
   /// Where the speaker's face is on the canvas at [timelineMs] (canvas fractions), from the face track (source
   /// fractions) mapped through that clip's crop. Null without a face sample within 1.5 s or off-canvas.
-  static ({double x, double y})? faceOnCanvas(MobileEditIr ir, List<FaceSample>? faces, int timelineMs) {
+  static ({double x, double y})? faceOnCanvas(
+    MobileEditIr ir,
+    List<FaceSample>? faces,
+    int timelineMs,
+  ) {
     if (faces == null || faces.isEmpty || ir.clips.isEmpty) return null;
     final c = ir.clips[clipIndexAt(ir, timelineMs)];
-    final srcMs = c.sourceStartMs + ((timelineMs - c.timelineStartMs) * c.speed).round();
+    final srcMs =
+        c.sourceStartMs + ((timelineMs - c.timelineStartMs) * c.speed).round();
     FaceSample? near;
     for (final f in faces) {
-      if ((f.tMs - srcMs).abs() <= 1500 && (near == null || (f.tMs - srcMs).abs() < (near.tMs - srcMs).abs())) near = f;
+      if ((f.tMs - srcMs).abs() <= 1500 &&
+          (near == null || (f.tMs - srcMs).abs() < (near.tMs - srcMs).abs()))
+        near = f;
     }
     if (near == null) return null;
     final crop = c.crop;
@@ -1702,8 +2387,13 @@ class TimelineOps {
 
   /// A sticker: a transparent image floating above the video (a quarter size, pops in), in the spot farthest from
   /// the speaker's face ([avoidFace], canvas fractions; upper right without one).
-  static MobileEditIr addSticker(MobileEditIr ir, Map<String, dynamic> source,
-      {required int startMs, int durationMs = 2500, ({double x, double y})? avoidFace}) {
+  static MobileEditIr addSticker(
+    MobileEditIr ir,
+    Map<String, dynamic> source, {
+    required int startMs,
+    int durationMs = 2500,
+    ({double x, double y})? avoidFace,
+  }) {
     final s = startMs.clamp(0, math.max(0, ir.durationMs - 300)).toInt();
     final e = math.min(ir.durationMs, s + math.max(durationMs, 300)).toInt();
     final spot = stickerSpotAwayFrom(avoidFace);
@@ -1715,13 +2405,24 @@ class TimelineOps {
       source: source,
       mediaType: 'image',
       fit: 'contain',
-      layer: base.copyWith(keyframes: layerEntrance(base, 'zoom_in', durationMs: 300)),
+      layer: base.copyWith(
+        keyframes: layerEntrance(base, 'zoom_in', durationMs: 300),
+      ),
     );
-    return _copy(ir, overlays: [...ir.overlays, o]..sort((a, b) => a.timelineStartMs.compareTo(b.timelineStartMs)));
+    return _copy(
+      ir,
+      overlays: [...ir.overlays, o]
+        ..sort((a, b) => a.timelineStartMs.compareTo(b.timelineStartMs)),
+    );
   }
 
-  static MobileEditIr clearOverlayProcess(MobileEditIr ir, String id) =>
-      _copy(ir, overlays: [for (final o in ir.overlays) o.id == id ? o.copyWith(clearProcess: true) : o]);
+  static MobileEditIr clearOverlayProcess(MobileEditIr ir, String id) => _copy(
+    ir,
+    overlays: [
+      for (final o in ir.overlays)
+        o.id == id ? o.copyWith(clearProcess: true) : o,
+    ],
+  );
 
   static MobileEditIr clearClipProcess(MobileEditIr ir, int index) {
     final c = ir.clips[index];
@@ -1730,8 +2431,16 @@ class TimelineOps {
   }
 
   /// Replaces an overlay's whole source (a processed copy) — unlike `sourceUpdates`, old keys are not kept.
-  static MobileEditIr replaceOverlaySource(MobileEditIr ir, String id, Map<String, dynamic> source) =>
-      _copy(ir, overlays: [for (final o in ir.overlays) o.id == id ? o.copyWith(source: source) : o]);
+  static MobileEditIr replaceOverlaySource(
+    MobileEditIr ir,
+    String id,
+    Map<String, dynamic> source,
+  ) => _copy(
+    ir,
+    overlays: [
+      for (final o in ir.overlays) o.id == id ? o.copyWith(source: source) : o,
+    ],
+  );
 
   static MobileEditIr removeOverlay(MobileEditIr ir, String id) =>
       _copy(ir, overlays: ir.overlays.where((o) => o.id != id).toList());
@@ -1752,9 +2461,18 @@ class TimelineOps {
     EditIrMask? mask,
     bool clearMask = false,
   }) {
-    if (!ir.overlays.any((o) => o.id == id)) throw MediaEngineException('INVALID_EDIT', 'That overlay no longer exists.');
-    if (opacity != null && (opacity < 0 || opacity > 1)) throw MediaEngineException('INVALID_EDIT', 'Opacity must be between 0 and 100%.');
-    if (fit != null && fit != 'cover' && fit != 'contain') throw MediaEngineException('INVALID_EDIT', 'Unknown fit "$fit".');
+    if (!ir.overlays.any((o) => o.id == id))
+      throw MediaEngineException(
+        'INVALID_EDIT',
+        'That overlay no longer exists.',
+      );
+    if (opacity != null && (opacity < 0 || opacity > 1))
+      throw MediaEngineException(
+        'INVALID_EDIT',
+        'Opacity must be between 0 and 100%.',
+      );
+    if (fit != null && fit != 'cover' && fit != 'contain')
+      throw MediaEngineException('INVALID_EDIT', 'Unknown fit "$fit".');
     final overlays = ir.overlays.map((o) {
       if (o.id != id) return o;
       return o.copyWith(
@@ -1780,7 +2498,8 @@ class TimelineOps {
   static const keyframeSnapMs = 40;
 
   /// [layer] with [k] added, replacing any keyframe within [keyframeSnapMs] of it.
-  static EditIrLayer withKeyframe(EditIrLayer layer, LayerKeyframe k) => layer.copyWith(
+  static EditIrLayer withKeyframe(EditIrLayer layer, LayerKeyframe k) =>
+      layer.copyWith(
         keyframes: [
           for (final e in layer.keyframes)
             if ((e.atMs - k.atMs).abs() > keyframeSnapMs) e,
@@ -1789,12 +2508,29 @@ class TimelineOps {
       );
 
   /// CapCut "add keyframe": records the layer's current pose (position, size, rotation, opacity) at the playhead.
-  static MobileEditIr setLayerKeyframe(MobileEditIr ir, String id, int playheadMs, {double? x, double? y, double? scale, double? rotation, double? opacity}) {
+  static MobileEditIr setLayerKeyframe(
+    MobileEditIr ir,
+    String id,
+    int playheadMs, {
+    double? x,
+    double? y,
+    double? scale,
+    double? rotation,
+    double? opacity,
+  }) {
     final o = ir.overlays.where((o) => o.id == id).firstOrNull;
     final layer = o?.layer;
-    if (o == null || layer == null) throw MediaEngineException('INVALID_EDIT', 'Keyframes need a picture-in-picture or sticker layer.');
+    if (o == null || layer == null)
+      throw MediaEngineException(
+        'INVALID_EDIT',
+        'Keyframes need a picture-in-picture or sticker layer.',
+      );
     final rel = playheadMs - o.timelineStartMs;
-    if (rel < 0 || playheadMs > o.timelineEndMs) throw MediaEngineException('INVALID_EDIT', 'Move the playhead inside this overlay to add a keyframe.');
+    if (rel < 0 || playheadMs > o.timelineEndMs)
+      throw MediaEngineException(
+        'INVALID_EDIT',
+        'Move the playhead inside this overlay to add a keyframe.',
+      );
     final pose = layerAt(layer, rel, o.opacity);
     final k = LayerKeyframe(
       atMs: rel,
@@ -1807,25 +2543,65 @@ class TimelineOps {
     return updateOverlay(ir, id, layer: withKeyframe(layer, k));
   }
 
-  static MobileEditIr removeLayerKeyframe(MobileEditIr ir, String id, int atMs) {
+  static MobileEditIr removeLayerKeyframe(
+    MobileEditIr ir,
+    String id,
+    int atMs,
+  ) {
     final layer = ir.overlays.where((o) => o.id == id).firstOrNull?.layer;
     if (layer == null) return ir;
-    return updateOverlay(ir, id, layer: layer.copyWith(keyframes: [for (final k in layer.keyframes) if (k.atMs != atMs) k]));
+    return updateOverlay(
+      ir,
+      id,
+      layer: layer.copyWith(
+        keyframes: [
+          for (final k in layer.keyframes)
+            if (k.atMs != atMs) k,
+        ],
+      ),
+    );
   }
 
   /// Entrance animations for a layer, as keyframes relative to the overlay start (CapCut "In" animations).
-  static List<LayerKeyframe> layerEntrance(EditIrLayer layer, String kind, {int durationMs = 400}) {
+  static List<LayerKeyframe> layerEntrance(
+    EditIrLayer layer,
+    String kind, {
+    int durationMs = 400,
+  }) {
     switch (kind) {
       case 'zoom_in':
-        return [LayerKeyframe(atMs: 0, scale: layer.scale * 0.2, opacity: 0), LayerKeyframe(atMs: durationMs, scale: layer.scale, opacity: 1)];
+        return [
+          LayerKeyframe(atMs: 0, scale: layer.scale * 0.2, opacity: 0),
+          LayerKeyframe(atMs: durationMs, scale: layer.scale, opacity: 1),
+        ];
       case 'slide_left':
-        return [LayerKeyframe(atMs: 0, x: layer.x + 0.6), LayerKeyframe(atMs: durationMs, x: layer.x)];
+        return [
+          LayerKeyframe(atMs: 0, x: layer.x + 0.6),
+          LayerKeyframe(atMs: durationMs, x: layer.x),
+        ];
       case 'slide_up':
-        return [LayerKeyframe(atMs: 0, y: layer.y + 0.5), LayerKeyframe(atMs: durationMs, y: layer.y)];
+        return [
+          LayerKeyframe(atMs: 0, y: layer.y + 0.5),
+          LayerKeyframe(atMs: durationMs, y: layer.y),
+        ];
       case 'fade':
-        return [LayerKeyframe(atMs: 0, opacity: 0), LayerKeyframe(atMs: durationMs, opacity: 1)];
+        return [
+          LayerKeyframe(atMs: 0, opacity: 0),
+          LayerKeyframe(atMs: durationMs, opacity: 1),
+        ];
       case 'spin':
-        return [LayerKeyframe(atMs: 0, rotation: layer.rotation - 180, scale: layer.scale * 0.3), LayerKeyframe(atMs: durationMs, rotation: layer.rotation, scale: layer.scale)];
+        return [
+          LayerKeyframe(
+            atMs: 0,
+            rotation: layer.rotation - 180,
+            scale: layer.scale * 0.3,
+          ),
+          LayerKeyframe(
+            atMs: durationMs,
+            rotation: layer.rotation,
+            scale: layer.scale,
+          ),
+        ];
       default:
         return const [];
     }
@@ -1863,12 +2639,14 @@ class TimelineOps {
     }
     final sources = [...ir.sources];
     if (!sources.any((s) => s.assetId == assetId)) {
-      sources.add(EditIrSource(
-        assetId: assetId,
-        durationMs: durationMs,
-        width: width,
-        height: height,
-      ));
+      sources.add(
+        EditIrSource(
+          assetId: assetId,
+          durationMs: durationMs,
+          width: width,
+          height: height,
+        ),
+      );
     }
     final nextIr = ir.copyWith(sources: sources);
     return _replaceClips(nextIr, clips);
@@ -1907,10 +2685,18 @@ class TimelineOps {
   /// Source of an audio file for music / SFX: a device-asset reference ([source], from
   /// `StudioController.localMediaSource`), an HTTPS [url], or (legacy) a raw local path.
   /// Plain-http links are refused: the server and the renderers only fetch HTTPS (F-05).
-  static Map<String, dynamic> _audioSource({String? url, Map<String, dynamic>? source, String? title, required String what}) {
+  static Map<String, dynamic> _audioSource({
+    String? url,
+    Map<String, dynamic>? source,
+    String? title,
+    required String what,
+  }) {
     if (source != null) {
       if (source['kind'] != 'asset' || '${source['assetId'] ?? ''}'.isEmpty) {
-        throw MediaEngineException('INVALID_EDIT', '$what must be a file on this phone or an HTTPS link.');
+        throw MediaEngineException(
+          'INVALID_EDIT',
+          '$what must be a file on this phone or an HTTPS link.',
+        );
       }
       return {...source, 'query': ?title, 'title': ?title};
     }
@@ -1919,9 +2705,15 @@ class TimelineOps {
     if (uri != null && uri.isScheme('http')) {
       throw MediaEngineException('INVALID_EDIT', '$what links must be HTTPS.');
     }
-    if (uri != null && uri.isScheme('https')) return {'kind': 'url', 'url': u, 'query': ?title, 'title': ?title};
-    final isLocal = u.startsWith('/') || u.contains(':\\') || u.startsWith('file://');
-    if (!isLocal) throw MediaEngineException('INVALID_EDIT', '$what must be a valid file or HTTPS link.');
+    if (uri != null && uri.isScheme('https'))
+      return {'kind': 'url', 'url': u, 'query': ?title, 'title': ?title};
+    final isLocal =
+        u.startsWith('/') || u.contains(':\\') || u.startsWith('file://');
+    if (!isLocal)
+      throw MediaEngineException(
+        'INVALID_EDIT',
+        '$what must be a valid file or HTTPS link.',
+      );
     return {'kind': 'file', 'path': u, 'query': ?title, 'title': ?title};
   }
 
@@ -1937,7 +2729,12 @@ class TimelineOps {
     int fadeOutMs = 1000,
     bool duckUnderSpeech = true,
   }) {
-    final src = _audioSource(url: url, source: source, title: title, what: 'Music');
+    final src = _audioSource(
+      url: url,
+      source: source,
+      title: title,
+      what: 'Music',
+    );
     final m = EditIrMusic(
       id: ir.audio.music.firstOrNull?.id ?? _id('m'),
       timelineStartMs: 0,
@@ -1962,9 +2759,16 @@ class TimelineOps {
     int? fadeOutMs,
     bool? duck,
   }) {
-    final m = id == null ? ir.audio.music.firstOrNull : ir.audio.music.where((x) => x.id == id).firstOrNull;
+    final m = id == null
+        ? ir.audio.music.firstOrNull
+        : ir.audio.music.where((x) => x.id == id).firstOrNull;
     if (m == null) {
-      throw MediaEngineException('INVALID_EDIT', id == null ? 'Add music first.' : 'That music is no longer on the timeline.');
+      throw MediaEngineException(
+        'INVALID_EDIT',
+        id == null
+            ? 'Add music first.'
+            : 'That music is no longer on the timeline.',
+      );
     }
     return _withAudio(
       ir,
@@ -1976,7 +2780,11 @@ class TimelineOps {
                   volumeDb: volumeDb,
                   fadeInMs: fadeInMs,
                   fadeOutMs: fadeOutMs,
-                  duck: duck == null ? null : EditIrDuck(enabled: duck && ir.audio.speechRangesMs.isNotEmpty),
+                  duck: duck == null
+                      ? null
+                      : EditIrDuck(
+                          enabled: duck && ir.audio.speechRangesMs.isNotEmpty,
+                        ),
                 )
               : x,
       ],
@@ -1984,8 +2792,10 @@ class TimelineOps {
   }
 
   /// Removes one music bed ([id]), or all of them.
-  static MobileEditIr removeMusic(MobileEditIr ir, {String? id}) =>
-      _withAudio(ir, music: id == null ? [] : ir.audio.music.where((m) => m.id != id).toList());
+  static MobileEditIr removeMusic(MobileEditIr ir, {String? id}) => _withAudio(
+    ir,
+    music: id == null ? [] : ir.audio.music.where((m) => m.id != id).toList(),
+  );
 
   /// Most music beds a video may have (contract `audio.music`, Phase 6.6).
   static const maxMusicBeds = 4;
@@ -2005,23 +2815,47 @@ class TimelineOps {
   }) {
     final s = startMs.clamp(0, math.max(0, ir.durationMs - 300)).toInt();
     final e = math.min(endMs, ir.durationMs);
-    if (e - s < 300) throw MediaEngineException('INVALID_EDIT', 'A music bed needs at least 0.3 s.');
-    if (ir.audio.music.length >= maxMusicBeds) throw MediaEngineException('INVALID_EDIT', 'A video has at most $maxMusicBeds music beds.');
-    if (ir.audio.music.any((m) => s < m.timelineEndMs && e > m.timelineStartMs)) {
-      throw MediaEngineException('INVALID_EDIT', 'That part already has music. Shorten it first: beds play one after another.');
+    if (e - s < 300)
+      throw MediaEngineException(
+        'INVALID_EDIT',
+        'A music bed needs at least 0.3 s.',
+      );
+    if (ir.audio.music.length >= maxMusicBeds)
+      throw MediaEngineException(
+        'INVALID_EDIT',
+        'A video has at most $maxMusicBeds music beds.',
+      );
+    if (ir.audio.music.any(
+      (m) => s < m.timelineEndMs && e > m.timelineStartMs,
+    )) {
+      throw MediaEngineException(
+        'INVALID_EDIT',
+        'That part already has music. Shorten it first: beds play one after another.',
+      );
     }
     final half = (e - s) ~/ 2;
     final m = EditIrMusic(
       id: _id('m'),
       timelineStartMs: s,
       timelineEndMs: e,
-      source: _audioSource(url: url, source: source, title: title, what: 'Music'),
+      source: _audioSource(
+        url: url,
+        source: source,
+        title: title,
+        what: 'Music',
+      ),
       volumeDb: volumeDb,
       fadeInMs: math.min(fadeInMs, half),
       fadeOutMs: math.min(fadeOutMs, half),
-      duck: EditIrDuck(enabled: duckUnderSpeech && ir.audio.speechRangesMs.isNotEmpty),
+      duck: EditIrDuck(
+        enabled: duckUnderSpeech && ir.audio.speechRangesMs.isNotEmpty,
+      ),
     );
-    return _withAudio(ir, music: [...ir.audio.music, m]..sort((a, b) => a.timelineStartMs.compareTo(b.timelineStartMs)));
+    return _withAudio(
+      ir,
+      music: [...ir.audio.music, m]
+        ..sort((a, b) => a.timelineStartMs.compareTo(b.timelineStartMs)),
+    );
   }
 
   // ── Sound effects ──────────────────────────────────────────────────────────
@@ -2044,81 +2878,148 @@ class TimelineOps {
     src.remove('query');
     src.remove('title');
     if (ir.audio.sfx.length >= maxSfx) {
-      throw MediaEngineException('INVALID_EDIT', 'This video already has $maxSfx sound effects.');
+      throw MediaEngineException(
+        'INVALID_EDIT',
+        'This video already has $maxSfx sound effects.',
+      );
     }
     final s = startMs.clamp(0, math.max(0, ir.durationMs - 100)).toInt();
     final e = EditIrSfx(
       id: _id('sfx'),
       timelineStartMs: s,
-      durationMs: durationMs == null ? null : math.max(100, math.min(durationMs, ir.durationMs - s)),
+      durationMs: durationMs == null
+          ? null
+          : math.max(100, math.min(durationMs, ir.durationMs - s)),
       source: src,
       volumeDb: volumeDb.clamp(-60.0, 12.0),
       credit: credit ?? name,
     );
-    return _withSfx(ir, [...ir.audio.sfx, e]..sort((a, b) => a.timelineStartMs.compareTo(b.timelineStartMs)));
+    return _withSfx(
+      ir,
+      [...ir.audio.sfx, e]
+        ..sort((a, b) => a.timelineStartMs.compareTo(b.timelineStartMs)),
+    );
   }
 
-  static MobileEditIr setSfxVolume(MobileEditIr ir, String id, double db) => _withSfx(ir, [
+  static MobileEditIr setSfxVolume(MobileEditIr ir, String id, double db) =>
+      _withSfx(ir, [
         for (final e in ir.audio.sfx)
           e.id == id
-              ? EditIrSfx(id: e.id, timelineStartMs: e.timelineStartMs, durationMs: e.durationMs, source: e.source, volumeDb: db.clamp(-60.0, 12.0), credit: e.credit)
+              ? EditIrSfx(
+                  id: e.id,
+                  timelineStartMs: e.timelineStartMs,
+                  durationMs: e.durationMs,
+                  source: e.source,
+                  volumeDb: db.clamp(-60.0, 12.0),
+                  credit: e.credit,
+                )
               : e,
       ]);
 
   /// Points sound effect [id] at another file (same timing, level and credit).
-  static MobileEditIr setSfxSource(MobileEditIr ir, String id, Map<String, dynamic> source) => _withSfx(ir, [
-        for (final e in ir.audio.sfx)
-          e.id == id
-              ? EditIrSfx(id: e.id, timelineStartMs: e.timelineStartMs, durationMs: e.durationMs, source: source, volumeDb: e.volumeDb, credit: e.credit)
-              : e,
-      ]);
+  static MobileEditIr setSfxSource(
+    MobileEditIr ir,
+    String id,
+    Map<String, dynamic> source,
+  ) => _withSfx(ir, [
+    for (final e in ir.audio.sfx)
+      e.id == id
+          ? EditIrSfx(
+              id: e.id,
+              timelineStartMs: e.timelineStartMs,
+              durationMs: e.durationMs,
+              source: source,
+              volumeDb: e.volumeDb,
+              credit: e.credit,
+            )
+          : e,
+  ]);
 
   static MobileEditIr removeSfx(MobileEditIr ir, String id) =>
       _withSfx(ir, ir.audio.sfx.where((e) => e.id != id).toList());
 
   static MobileEditIr _withSfx(MobileEditIr ir, List<EditIrSfx> sfx) => _copy(
-        ir,
-        audio: EditIrAudio(
-          originalVolumeDb: ir.audio.originalVolumeDb,
-          music: ir.audio.music,
-          speechRangesMs: ir.audio.speechRangesMs,
-          sfx: sfx,
-          voiceovers: ir.audio.voiceovers,
-        ),
-      );
+    ir,
+    audio: EditIrAudio(
+      originalVolumeDb: ir.audio.originalVolumeDb,
+      music: ir.audio.music,
+      speechRangesMs: ir.audio.speechRangesMs,
+      sfx: sfx,
+      voiceovers: ir.audio.voiceovers,
+    ),
+  );
 
-  static MobileEditIr _withVoiceovers(MobileEditIr ir, List<EditIrVoiceover> voiceovers) => _copy(
-        ir,
-        audio: EditIrAudio(
-          originalVolumeDb: ir.audio.originalVolumeDb,
-          music: ir.audio.music,
-          speechRangesMs: ir.audio.speechRangesMs,
-          sfx: ir.audio.sfx,
-          voiceovers: [...voiceovers]..sort((a, b) => a.timelineStartMs.compareTo(b.timelineStartMs)),
-        ),
-      );
+  static MobileEditIr _withVoiceovers(
+    MobileEditIr ir,
+    List<EditIrVoiceover> voiceovers,
+  ) => _copy(
+    ir,
+    audio: EditIrAudio(
+      originalVolumeDb: ir.audio.originalVolumeDb,
+      music: ir.audio.music,
+      speechRangesMs: ir.audio.speechRangesMs,
+      sfx: ir.audio.sfx,
+      voiceovers: [...voiceovers]
+        ..sort((a, b) => a.timelineStartMs.compareTo(b.timelineStartMs)),
+    ),
+  );
 
   /// Places a recording at [atMs] (clipped to the video end). Voiceovers may overlap each other.
-  static MobileEditIr addVoiceover(MobileEditIr ir, {required String assetId, required int atMs, required int durationMs}) {
+  static MobileEditIr addVoiceover(
+    MobileEditIr ir, {
+    required String assetId,
+    required int atMs,
+    required int durationMs,
+  }) {
     final start = atMs.clamp(0, math.max(0, ir.durationMs - minClipMs)).toInt();
     final len = math.min(durationMs, ir.durationMs - start);
-    if (len < 300) throw MediaEngineException('INVALID_EDIT', 'Move the playhead earlier: the voiceover needs at least 0.3 s before the end.');
+    if (len < 300)
+      throw MediaEngineException(
+        'INVALID_EDIT',
+        'Move the playhead earlier: the voiceover needs at least 0.3 s before the end.',
+      );
     return _withVoiceovers(ir, [
       ...ir.audio.voiceovers,
-      EditIrVoiceover(id: _id('vo'), assetId: assetId, timelineStartMs: start, durationMs: len, fadeInMs: 80, fadeOutMs: 120),
+      EditIrVoiceover(
+        id: _id('vo'),
+        assetId: assetId,
+        timelineStartMs: start,
+        durationMs: len,
+        fadeInMs: 80,
+        fadeOutMs: 120,
+      ),
     ]);
   }
 
-  static MobileEditIr updateVoiceover(MobileEditIr ir, String id, {double? volumeDb, int? fadeInMs, int? fadeOutMs}) {
-    if (!ir.audio.voiceovers.any((v) => v.id == id)) throw MediaEngineException('INVALID_EDIT', 'That voiceover is no longer on the timeline.');
+  static MobileEditIr updateVoiceover(
+    MobileEditIr ir,
+    String id, {
+    double? volumeDb,
+    int? fadeInMs,
+    int? fadeOutMs,
+  }) {
+    if (!ir.audio.voiceovers.any((v) => v.id == id))
+      throw MediaEngineException(
+        'INVALID_EDIT',
+        'That voiceover is no longer on the timeline.',
+      );
     return _withVoiceovers(ir, [
       for (final v in ir.audio.voiceovers)
-        v.id == id ? v.copyWith(volumeDb: volumeDb?.clamp(-60.0, 12.0), fadeInMs: fadeInMs, fadeOutMs: fadeOutMs) : v,
+        v.id == id
+            ? v.copyWith(
+                volumeDb: volumeDb?.clamp(-60.0, 12.0),
+                fadeInMs: fadeInMs,
+                fadeOutMs: fadeOutMs,
+              )
+            : v,
     ]);
   }
 
   static MobileEditIr removeVoiceover(MobileEditIr ir, String id) =>
-      _withVoiceovers(ir, [for (final v in ir.audio.voiceovers) if (v.id != id) v]);
+      _withVoiceovers(ir, [
+        for (final v in ir.audio.voiceovers)
+          if (v.id != id) v,
+      ]);
 
   // ── Track mute (Voice = original audio, Music, Sound FX) ───────────────────
 
@@ -2126,10 +3027,15 @@ class TimelineOps {
   static const mutedDb = -60.0;
 
   /// Tracks that have a mute toggle on the timeline.
-  static const mutableTracks = {TrackKind.voice, TrackKind.music, TrackKind.sfx};
+  static const mutableTracks = {
+    TrackKind.voice,
+    TrackKind.music,
+    TrackKind.sfx,
+  };
 
   /// Current gain of every item on an audio track, keyed by item id (`original` for the voice track).
-  static Map<String, double> trackVolumes(MobileEditIr ir, TrackKind kind) => switch (kind) {
+  static Map<String, double> trackVolumes(MobileEditIr ir, TrackKind kind) =>
+      switch (kind) {
         TrackKind.voice => {'original': ir.audio.originalVolumeDb},
         TrackKind.music => {for (final m in ir.audio.music) m.id: m.volumeDb},
         TrackKind.sfx => {for (final e in ir.audio.sfx) e.id: e.volumeDb},
@@ -2160,7 +3066,13 @@ class TimelineOps {
       case TrackKind.voice:
         return setOriginalVolume(ir, target('original', 0));
       case TrackKind.music:
-        return _withAudio(ir, music: [for (final m in ir.audio.music) _music(m, volumeDb: target(m.id, -16))]);
+        return _withAudio(
+          ir,
+          music: [
+            for (final m in ir.audio.music)
+              _music(m, volumeDb: target(m.id, -16)),
+          ],
+        );
       case TrackKind.sfx:
         return _withSfx(ir, [
           for (final e in ir.audio.sfx)
@@ -2174,7 +3086,10 @@ class TimelineOps {
             ),
         ]);
       default:
-        throw MediaEngineException('INVALID_EDIT', '${kind.label} has no audio to mute.');
+        throw MediaEngineException(
+          'INVALID_EDIT',
+          '${kind.label} has no audio to mute.',
+        );
     }
   }
 
@@ -2182,15 +3097,18 @@ class TimelineOps {
 
   /// Every placed item, per track, in timeline order. Clips are the video track.
   /// Edges a dragged item can snap to: 0, the end, every clip cut, the playhead and the other items' edges.
-  static List<int> snapPoints(MobileEditIr ir, {int? playheadMs, String? excludeId}) => {
-        0,
-        ir.durationMs,
-        for (final c in ir.clips) ...[c.timelineStartMs, c.timelineEndMs],
-        ?playheadMs,
-        for (final it in items(ir))
-          if (it.id != excludeId) ...[it.startMs, it.endMs],
-      }.toList()
-        ..sort();
+  static List<int> snapPoints(
+    MobileEditIr ir, {
+    int? playheadMs,
+    String? excludeId,
+  }) => {
+    0,
+    ir.durationMs,
+    for (final c in ir.clips) ...[c.timelineStartMs, c.timelineEndMs],
+    ?playheadMs,
+    for (final it in items(ir))
+      if (it.id != excludeId) ...[it.startMs, it.endMs],
+  }.toList()..sort();
 
   /// The nearest of [points] within [thresholdMs] of [ms], or null.
   static int? snapMs(int ms, Iterable<int> points, int thresholdMs) {
@@ -2203,149 +3121,302 @@ class TimelineOps {
   }
 
   static List<TimelineItem> items(MobileEditIr ir) => [
-        for (var i = 0; i < ir.clips.length; i++)
-          TimelineItem(
-            TrackKind.video,
-            ir.clips[i].id,
-            ir.clips[i].timelineStartMs,
-            ir.clips[i].timelineEndMs,
-            'Clip ${i + 1}',
-          ),
-        for (final o in ir.overlays)
-          TimelineItem(
-            TrackKind.broll,
-            o.id,
-            o.timelineStartMs,
-            o.timelineEndMs,
-            '${o.isImage ? 'Photo' : 'B-roll'}: ${o.source['title'] ?? o.source['query'] ?? 'Overlay'}',
-            mediaUrl: (o.source['url'] ?? o.source['downloadUrl'] ?? o.source['path']) as String?,
-            thumbnailUrl: (o.source['thumbnailUrl'] ?? o.source['previewUrl'] ?? (o.isImage ? o.source['url'] : null)) as String?,
-            isImage: o.isImage,
-          ),
-        for (final e in ir.effects) TimelineItem(TrackKind.effect, e.id, e.startMs, e.endMs, e.label),
-        for (final c in ir.captions)
-          TimelineItem(c.kind == 'text' ? TrackKind.text : TrackKind.captions, c.id, c.startMs, c.endMs, c.text),
-        for (final z in ir.zooms) TimelineItem(TrackKind.zoom, z.id, z.startMs, z.endMs, '${z.scale.toStringAsFixed(1)}x'),
-        for (final (i, r) in ir.audio.speechRangesMs.indexed)
-          if (r.length == 2) TimelineItem(TrackKind.voice, 'speech_$i', r[0], r[1], 'Speech'),
-        for (final m in ir.audio.music)
-          TimelineItem(TrackKind.music, m.id, m.timelineStartMs, m.timelineEndMs, '${m.source['title'] ?? m.source['query'] ?? 'Music'}'),
-        for (final e in ir.audio.sfx)
-          TimelineItem(TrackKind.sfx, e.id, e.timelineStartMs, e.timelineStartMs + (e.durationMs ?? 1000), e.credit ?? 'Sound effect'),
-        for (final (i, v) in ir.audio.voiceovers.indexed)
-          TimelineItem(TrackKind.voiceover, v.id, v.timelineStartMs, v.timelineEndMs, 'Voiceover ${i + 1}'),
-      ];
+    for (var i = 0; i < ir.clips.length; i++)
+      TimelineItem(
+        TrackKind.video,
+        ir.clips[i].id,
+        ir.clips[i].timelineStartMs,
+        ir.clips[i].timelineEndMs,
+        'Clip ${i + 1}',
+      ),
+    for (final o in ir.overlays)
+      TimelineItem(
+        TrackKind.broll,
+        o.id,
+        o.timelineStartMs,
+        o.timelineEndMs,
+        '${o.isImage ? 'Photo' : 'B-roll'}: ${o.source['title'] ?? o.source['query'] ?? 'Overlay'}',
+        mediaUrl:
+            (o.source['url'] ?? o.source['downloadUrl'] ?? o.source['path'])
+                as String?,
+        thumbnailUrl:
+            (o.source['thumbnailUrl'] ??
+                    o.source['previewUrl'] ??
+                    (o.isImage ? o.source['url'] : null))
+                as String?,
+        isImage: o.isImage,
+      ),
+    for (final e in ir.effects)
+      TimelineItem(TrackKind.effect, e.id, e.startMs, e.endMs, e.label),
+    for (final c in ir.captions)
+      TimelineItem(
+        c.kind == 'text' ? TrackKind.text : TrackKind.captions,
+        c.id,
+        c.startMs,
+        c.endMs,
+        c.text,
+      ),
+    for (final z in ir.zooms)
+      TimelineItem(
+        TrackKind.zoom,
+        z.id,
+        z.startMs,
+        z.endMs,
+        '${z.scale.toStringAsFixed(1)}x',
+      ),
+    for (final (i, r) in ir.audio.speechRangesMs.indexed)
+      if (r.length == 2)
+        TimelineItem(TrackKind.voice, 'speech_$i', r[0], r[1], 'Speech'),
+    for (final m in ir.audio.music)
+      TimelineItem(
+        TrackKind.music,
+        m.id,
+        m.timelineStartMs,
+        m.timelineEndMs,
+        '${m.source['title'] ?? m.source['query'] ?? 'Music'}',
+      ),
+    for (final e in ir.audio.sfx)
+      TimelineItem(
+        TrackKind.sfx,
+        e.id,
+        e.timelineStartMs,
+        e.timelineStartMs + (e.durationMs ?? 1000),
+        e.credit ?? 'Sound effect',
+      ),
+    for (final (i, v) in ir.audio.voiceovers.indexed)
+      TimelineItem(
+        TrackKind.voiceover,
+        v.id,
+        v.timelineStartMs,
+        v.timelineEndMs,
+        'Voiceover ${i + 1}',
+      ),
+  ];
 
   /// Moves an item so it starts at [startMs], keeping its length (clamped to the video). Captions keep their
   /// word timing relative to the caption. Video clips move with [moveClip] instead.
-  static MobileEditIr moveItem(MobileEditIr ir, TrackKind kind, String id, int startMs) {
-    int clampStart(int len) => startMs.clamp(0, math.max(0, ir.durationMs - len)).toInt();
+  static MobileEditIr moveItem(
+    MobileEditIr ir,
+    TrackKind kind,
+    String id,
+    int startMs,
+  ) {
+    int clampStart(int len) =>
+        startMs.clamp(0, math.max(0, ir.durationMs - len)).toInt();
     switch (kind) {
       case TrackKind.broll:
-        return _copy(ir, overlays: [
-          for (final o in ir.overlays)
-            if (o.id != id)
-              o
-            else
-              () {
-                final len = o.timelineEndMs - o.timelineStartMs;
-                final s = clampStart(len);
-                return o.copyWith(timelineStartMs: s, timelineEndMs: s + len);
-              }(),
-        ]);
+        return _copy(
+          ir,
+          overlays: [
+            for (final o in ir.overlays)
+              if (o.id != id)
+                o
+              else
+                () {
+                  final len = o.timelineEndMs - o.timelineStartMs;
+                  final s = clampStart(len);
+                  return o.copyWith(timelineStartMs: s, timelineEndMs: s + len);
+                }(),
+          ],
+        );
       case TrackKind.text:
       case TrackKind.captions:
-        return _copy(ir, captions: [
-          for (final c in ir.captions)
-            if (c.id != id) c else _shiftCaption(c, clampStart(c.endMs - c.startMs) - c.startMs),
-        ]..sort((a, b) => a.startMs.compareTo(b.startMs)));
+        return _copy(
+          ir,
+          captions: [
+            for (final c in ir.captions)
+              if (c.id != id)
+                c
+              else
+                _shiftCaption(c, clampStart(c.endMs - c.startMs) - c.startMs),
+          ]..sort((a, b) => a.startMs.compareTo(b.startMs)),
+        );
       case TrackKind.zoom:
         final z = ir.zooms.firstWhere((z) => z.id == id);
         final s = clampStart(z.endMs - z.startMs);
-        final moved = EditIrZoom(id: z.id, startMs: s, endMs: s + z.endMs - z.startMs, scale: z.scale, centerX: z.centerX, centerY: z.centerY, rampMs: z.rampMs);
-        if (ir.zooms.any((o) => o.id != id && o.startMs < moved.endMs && moved.startMs < o.endMs)) {
-          throw MediaEngineException('INVALID_EDIT', 'Zooms cannot overlap. Move the other zoom first.');
+        final moved = EditIrZoom(
+          id: z.id,
+          startMs: s,
+          endMs: s + z.endMs - z.startMs,
+          scale: z.scale,
+          centerX: z.centerX,
+          centerY: z.centerY,
+          rampMs: z.rampMs,
+        );
+        if (ir.zooms.any(
+          (o) =>
+              o.id != id && o.startMs < moved.endMs && moved.startMs < o.endMs,
+        )) {
+          throw MediaEngineException(
+            'INVALID_EDIT',
+            'Zooms cannot overlap. Move the other zoom first.',
+          );
         }
-        return _copy(ir, zooms: [for (final o in ir.zooms) o.id == id ? moved : o]..sort((a, b) => a.startMs.compareTo(b.startMs)));
+        return _copy(
+          ir,
+          zooms: [for (final o in ir.zooms) o.id == id ? moved : o]
+            ..sort((a, b) => a.startMs.compareTo(b.startMs)),
+        );
       case TrackKind.sfx:
-        return _withSfx(ir, [
-          for (final e in ir.audio.sfx) e.id == id ? e.moved(clampStart(e.durationMs ?? 100)) : e,
-        ]..sort((a, b) => a.timelineStartMs.compareTo(b.timelineStartMs)));
+        return _withSfx(
+          ir,
+          [
+            for (final e in ir.audio.sfx)
+              e.id == id ? e.moved(clampStart(e.durationMs ?? 100)) : e,
+          ]..sort((a, b) => a.timelineStartMs.compareTo(b.timelineStartMs)),
+        );
       case TrackKind.effect:
-        return _copy(ir, effects: [
-          for (final e in ir.effects)
-            if (e.id != id) e else () {
-              final s = clampStart(e.endMs - e.startMs);
-              return e.copyWith(startMs: s, endMs: s + e.endMs - e.startMs);
-            }(),
-        ]..sort((a, b) => a.startMs.compareTo(b.startMs)));
+        return _copy(
+          ir,
+          effects: [
+            for (final e in ir.effects)
+              if (e.id != id)
+                e
+              else
+                () {
+                  final s = clampStart(e.endMs - e.startMs);
+                  return e.copyWith(startMs: s, endMs: s + e.endMs - e.startMs);
+                }(),
+          ]..sort((a, b) => a.startMs.compareTo(b.startMs)),
+        );
       case TrackKind.voiceover:
         return _withVoiceovers(ir, [
           for (final v in ir.audio.voiceovers)
-            if (v.id != id) v else () {
-              final s = clampStart(math.min(v.durationMs, ir.durationMs));
-              return v.copyWith(timelineStartMs: s, durationMs: math.min(v.durationMs, ir.durationMs - s));
-            }(),
+            if (v.id != id)
+              v
+            else
+              () {
+                final s = clampStart(math.min(v.durationMs, ir.durationMs));
+                return v.copyWith(
+                  timelineStartMs: s,
+                  durationMs: math.min(v.durationMs, ir.durationMs - s),
+                );
+              }(),
         ]);
       case TrackKind.music:
       case TrackKind.video:
       case TrackKind.voice:
-        throw MediaEngineException('INVALID_EDIT', 'Use Trim for ${kind.label.toLowerCase()}.');
+        throw MediaEngineException(
+          'INVALID_EDIT',
+          'Use Trim for ${kind.label.toLowerCase()}.',
+        );
     }
   }
 
   /// Sets an item's start/end on the timeline (trim). Minimum 300 ms.
-  static MobileEditIr setItemRange(MobileEditIr ir, TrackKind kind, String id, int startMs, int endMs) {
+  static MobileEditIr setItemRange(
+    MobileEditIr ir,
+    TrackKind kind,
+    String id,
+    int startMs,
+    int endMs,
+  ) {
     if (kind == TrackKind.effect) {
       final s = startMs.clamp(0, math.max(0, ir.durationMs - 100)).toInt();
       final e = endMs.clamp(s + 100, ir.durationMs).toInt();
-      return _copy(ir, effects: [for (final x in ir.effects) x.id == id ? x.copyWith(startMs: s, endMs: e) : x]);
+      return _copy(
+        ir,
+        effects: [
+          for (final x in ir.effects)
+            x.id == id ? x.copyWith(startMs: s, endMs: e) : x,
+        ],
+      );
     }
     final s = startMs.clamp(0, math.max(0, ir.durationMs - 300)).toInt();
     final e = endMs.clamp(s + 300, ir.durationMs).toInt();
     switch (kind) {
       case TrackKind.broll:
-        return _copy(ir, overlays: [
-          for (final o in ir.overlays)
-            o.id != id
-                ? o
-                : o.copyWith(timelineStartMs: s, timelineEndMs: e, sourceStartMs: o.isImage ? 0 : o.sourceStartMs + math.max(0, s - o.timelineStartMs)),
-        ]);
+        return _copy(
+          ir,
+          overlays: [
+            for (final o in ir.overlays)
+              o.id != id
+                  ? o
+                  : o.copyWith(
+                      timelineStartMs: s,
+                      timelineEndMs: e,
+                      sourceStartMs: o.isImage
+                          ? 0
+                          : o.sourceStartMs +
+                                math.max(0, s - o.timelineStartMs),
+                    ),
+          ],
+        );
       case TrackKind.text:
       case TrackKind.captions:
-        return _copy(ir, captions: [
-          for (final c in ir.captions)
-            c.id != id
-                ? c
-                : EditIrCaption(
-                    id: c.id,
-                    kind: c.kind,
-                    startMs: s,
-                    endMs: e,
-                    text: c.text,
-                    words: c.kind == 'text'
-                        ? [EditIrWord(text: c.text, startMs: s, endMs: e)]
-                        : [for (final w in c.words) if (w.endMs > s && w.startMs < e) EditIrWord(text: w.text, startMs: math.max(w.startMs, s), endMs: math.min(w.endMs, e), highlight: w.highlight, color: w.color, scale: w.scale)],
-                    style: c.style,
-                  ),
-        ]..sort((a, b) => a.startMs.compareTo(b.startMs)));
+        return _copy(
+          ir,
+          captions: [
+            for (final c in ir.captions)
+              c.id != id
+                  ? c
+                  : EditIrCaption(
+                      id: c.id,
+                      kind: c.kind,
+                      startMs: s,
+                      endMs: e,
+                      text: c.text,
+                      words: c.kind == 'text'
+                          ? [EditIrWord(text: c.text, startMs: s, endMs: e)]
+                          : [
+                              for (final w in c.words)
+                                if (w.endMs > s && w.startMs < e)
+                                  EditIrWord(
+                                    text: w.text,
+                                    startMs: math.max(w.startMs, s),
+                                    endMs: math.min(w.endMs, e),
+                                    highlight: w.highlight,
+                                    color: w.color,
+                                    scale: w.scale,
+                                  ),
+                            ],
+                      style: c.style,
+                    ),
+          ]..sort((a, b) => a.startMs.compareTo(b.startMs)),
+        );
       case TrackKind.zoom:
         final z = ir.zooms.firstWhere((z) => z.id == id);
         if (ir.zooms.any((o) => o.id != id && o.startMs < e && s < o.endMs)) {
           throw MediaEngineException('INVALID_EDIT', 'Zooms cannot overlap.');
         }
-        return _copy(ir, zooms: [
-          for (final o in ir.zooms)
-            o.id == id ? EditIrZoom(id: z.id, startMs: s, endMs: e, scale: z.scale, centerX: z.centerX, centerY: z.centerY, rampMs: math.min(z.rampMs, (e - s) ~/ 2)) : o,
-        ]);
+        return _copy(
+          ir,
+          zooms: [
+            for (final o in ir.zooms)
+              o.id == id
+                  ? EditIrZoom(
+                      id: z.id,
+                      startMs: s,
+                      endMs: e,
+                      scale: z.scale,
+                      centerX: z.centerX,
+                      centerY: z.centerY,
+                      rampMs: math.min(z.rampMs, (e - s) ~/ 2),
+                    )
+                  : o,
+          ],
+        );
       case TrackKind.music:
         final m = ir.audio.music.firstOrNull;
-        if (m == null) throw MediaEngineException('INVALID_EDIT', 'Add music first.');
-        return _withAudio(ir, music: [_music(m, start: s, end: e)]);
+        if (m == null)
+          throw MediaEngineException('INVALID_EDIT', 'Add music first.');
+        return _withAudio(
+          ir,
+          music: [_music(m, start: s, end: e)],
+        );
       case TrackKind.sfx:
         return _withSfx(ir, [
           for (final x in ir.audio.sfx)
-            x.id == id ? EditIrSfx(id: x.id, timelineStartMs: s, durationMs: e - s, source: x.source, volumeDb: x.volumeDb, credit: x.credit) : x,
+            x.id == id
+                ? EditIrSfx(
+                    id: x.id,
+                    timelineStartMs: s,
+                    durationMs: e - s,
+                    source: x.source,
+                    volumeDb: x.volumeDb,
+                    credit: x.credit,
+                  )
+                : x,
         ]);
       case TrackKind.voiceover:
         // A recording cannot be stretched: the start can reach back to the recording's beginning, the end no further
@@ -2353,10 +3424,20 @@ class TimelineOps {
         final v = ir.audio.voiceovers.firstWhere((v) => v.id == id);
         final ns = math.max(s, v.timelineStartMs - v.sourceStartMs);
         final ne = math.min(e, v.timelineEndMs);
-        if (ne - ns < 300) throw MediaEngineException('INVALID_EDIT', 'A voiceover needs at least 0.3 s.');
+        if (ne - ns < 300)
+          throw MediaEngineException(
+            'INVALID_EDIT',
+            'A voiceover needs at least 0.3 s.',
+          );
         return _withVoiceovers(ir, [
           for (final x in ir.audio.voiceovers)
-            x.id == id ? x.copyWith(timelineStartMs: ns, durationMs: ne - ns, sourceStartMs: x.sourceStartMs + (ns - x.timelineStartMs)) : x,
+            x.id == id
+                ? x.copyWith(
+                    timelineStartMs: ns,
+                    durationMs: ne - ns,
+                    sourceStartMs: x.sourceStartMs + (ns - x.timelineStartMs),
+                  )
+                : x,
         ]);
       case TrackKind.effect:
       case TrackKind.video:
@@ -2366,7 +3447,8 @@ class TimelineOps {
   }
 
   /// Removes any non-video item.
-  static MobileEditIr deleteItem(MobileEditIr ir, TrackKind kind, String id) => switch (kind) {
+  static MobileEditIr deleteItem(MobileEditIr ir, TrackKind kind, String id) =>
+      switch (kind) {
         TrackKind.broll => removeOverlay(ir, id),
         TrackKind.text || TrackKind.captions => removeCaption(ir, id),
         TrackKind.zoom => removeZoom(ir, id),
@@ -2374,53 +3456,90 @@ class TimelineOps {
         TrackKind.sfx => removeSfx(ir, id),
         TrackKind.voiceover => removeVoiceover(ir, id),
         TrackKind.effect => removeEffect(ir, id),
-        TrackKind.video => deleteClip(ir, ir.clips.indexWhere((c) => c.id == id)),
-        TrackKind.voice => throw MediaEngineException('INVALID_EDIT', 'Mute the voice track instead.'),
+        TrackKind.video => deleteClip(
+          ir,
+          ir.clips.indexWhere((c) => c.id == id),
+        ),
+        TrackKind.voice => throw MediaEngineException(
+          'INVALID_EDIT',
+          'Mute the voice track instead.',
+        ),
       };
 
   /// Replaces a text item's words and/or style (text templates, font, colours). On a speech caption the new words
   /// keep the caption's word timing (see [retextCaptions]) instead of collapsing into one static word.
-  static MobileEditIr editText(MobileEditIr ir, String id, {String? text, Map<String, dynamic>? style}) {
+  static MobileEditIr editText(
+    MobileEditIr ir,
+    String id, {
+    String? text,
+    Map<String, dynamic>? style,
+  }) {
     final t = text?.trim();
-    if (t != null && t.isEmpty) throw MediaEngineException('INVALID_EDIT', 'Type some text first.');
+    if (t != null && t.isEmpty)
+      throw MediaEngineException('INVALID_EDIT', 'Type some text first.');
     final target = ir.captions.where((c) => c.id == id).firstOrNull;
-    if (target == null) throw MediaEngineException('INVALID_EDIT', 'That text is no longer on the video.');
+    if (target == null)
+      throw MediaEngineException(
+        'INVALID_EDIT',
+        'That text is no longer on the video.',
+      );
     final speech = target.kind == 'caption';
-    final base = speech && t != null && t != target.text ? retextCaptions(ir, {id: t}) : ir;
-    return _copy(base, captions: [
-      for (final c in base.captions)
-        c.id != id
-            ? c
-            : EditIrCaption(
-                id: c.id,
-                kind: c.kind,
-                startMs: c.startMs,
-                endMs: c.endMs,
-                text: speech ? c.text : (t ?? c.text),
-                words: speech || t == null ? c.words : [EditIrWord(text: t, startMs: c.startMs, endMs: c.endMs)],
-                style: style ?? c.style,
-              ),
-    ]);
+    final base = speech && t != null && t != target.text
+        ? retextCaptions(ir, {id: t})
+        : ir;
+    return _copy(
+      base,
+      captions: [
+        for (final c in base.captions)
+          c.id != id
+              ? c
+              : EditIrCaption(
+                  id: c.id,
+                  kind: c.kind,
+                  startMs: c.startMs,
+                  endMs: c.endMs,
+                  text: speech ? c.text : (t ?? c.text),
+                  words: speech || t == null
+                      ? c.words
+                      : [
+                          EditIrWord(
+                            text: t,
+                            startMs: c.startMs,
+                            endMs: c.endMs,
+                          ),
+                        ],
+                  style: style ?? c.style,
+                ),
+      ],
+    );
   }
 
   /// Full-screen cutaways replace the picture, so the renderer rejects two that overlap (layers may stack). Each
   /// cutaway that runs into the next one is cut short where the next begins (dropped when under 100 ms). Returns the
   /// timeline and how many cutaways were shortened or dropped.
   static (MobileEditIr, int) resolveCutawayOverlaps(MobileEditIr ir) {
-    final cut = [for (final o in ir.overlays) if (!o.isLayer) o]..sort((a, b) => a.timelineStartMs.compareTo(b.timelineStartMs));
+    final cut = [
+      for (final o in ir.overlays)
+        if (!o.isLayer) o,
+    ]..sort((a, b) => a.timelineStartMs.compareTo(b.timelineStartMs));
     final changed = <String, EditIrOverlay?>{};
     for (var i = 0; i < cut.length - 1; i++) {
       final a = changed.containsKey(cut[i].id) ? changed[cut[i].id] : cut[i];
       final b = cut[i + 1];
       if (a == null || b.timelineStartMs >= a.timelineEndMs) continue;
-      changed[a.id] = b.timelineStartMs - a.timelineStartMs < 100 ? null : a.copyWith(timelineEndMs: b.timelineStartMs);
+      changed[a.id] = b.timelineStartMs - a.timelineStartMs < 100
+          ? null
+          : a.copyWith(timelineEndMs: b.timelineStartMs);
     }
     if (changed.isEmpty) return (ir, 0);
     return (
-      _copy(ir, overlays: [
-        for (final o in ir.overlays)
-          if (!changed.containsKey(o.id)) o else ?changed[o.id],
-      ]),
+      _copy(
+        ir,
+        overlays: [
+          for (final o in ir.overlays)
+            if (!changed.containsKey(o.id)) o else ?changed[o.id],
+        ],
+      ),
       changed.length,
     );
   }
@@ -2430,32 +3549,72 @@ class TimelineOps {
   static const maxEffects = 60;
 
   /// Adds a [type] effect (see [EditIrEffect.types]) at [startMs]; default length per type.
-  static MobileEditIr addEffect(MobileEditIr ir, String type, {required int startMs, int? durationMs, double intensity = 0.6}) {
+  static MobileEditIr addEffect(
+    MobileEditIr ir,
+    String type, {
+    required int startMs,
+    int? durationMs,
+    double intensity = 0.6,
+  }) {
     final spec = EditIrEffect.types[type];
-    if (spec == null) throw MediaEngineException('INVALID_EDIT', 'Unknown effect "$type".');
-    if (ir.effects.length >= maxEffects) throw MediaEngineException('INVALID_EDIT', 'This video already has $maxEffects effects.');
+    if (spec == null)
+      throw MediaEngineException('INVALID_EDIT', 'Unknown effect "$type".');
+    if (ir.effects.length >= maxEffects)
+      throw MediaEngineException(
+        'INVALID_EDIT',
+        'This video already has $maxEffects effects.',
+      );
     final len = math.max(100, durationMs ?? spec.$3);
     final s = startMs.clamp(0, math.max(0, ir.durationMs - 100)).toInt();
     final e = math.min(ir.durationMs, s + len).toInt();
-    final fx = EditIrEffect(id: _id('fx'), type: type, startMs: s, endMs: e, intensity: intensity.clamp(0.0, 1.0));
-    return _copy(ir, effects: [...ir.effects, fx]..sort((a, b) => a.startMs.compareTo(b.startMs)));
+    final fx = EditIrEffect(
+      id: _id('fx'),
+      type: type,
+      startMs: s,
+      endMs: e,
+      intensity: intensity.clamp(0.0, 1.0),
+    );
+    return _copy(
+      ir,
+      effects: [...ir.effects, fx]
+        ..sort((a, b) => a.startMs.compareTo(b.startMs)),
+    );
   }
 
-  static MobileEditIr setEffectIntensity(MobileEditIr ir, String id, double intensity) =>
-      _copy(ir, effects: [for (final e in ir.effects) e.id == id ? e.copyWith(intensity: intensity.clamp(0.0, 1.0)) : e]);
+  static MobileEditIr setEffectIntensity(
+    MobileEditIr ir,
+    String id,
+    double intensity,
+  ) => _copy(
+    ir,
+    effects: [
+      for (final e in ir.effects)
+        e.id == id ? e.copyWith(intensity: intensity.clamp(0.0, 1.0)) : e,
+    ],
+  );
 
   static MobileEditIr removeEffect(MobileEditIr ir, String id) =>
       _copy(ir, effects: ir.effects.where((e) => e.id != id).toList());
 
   static EditIrCaption _shiftCaption(EditIrCaption c, int d) => EditIrCaption(
-        id: c.id,
-        kind: c.kind,
-        startMs: c.startMs + d,
-        endMs: c.endMs + d,
-        text: c.text,
-        words: [for (final w in c.words) EditIrWord(text: w.text, startMs: w.startMs + d, endMs: w.endMs + d, highlight: w.highlight, color: w.color, scale: w.scale)],
-        style: c.style,
-      );
+    id: c.id,
+    kind: c.kind,
+    startMs: c.startMs + d,
+    endMs: c.endMs + d,
+    text: c.text,
+    words: [
+      for (final w in c.words)
+        EditIrWord(
+          text: w.text,
+          startMs: w.startMs + d,
+          endMs: w.endMs + d,
+          highlight: w.highlight,
+          color: w.color,
+          scale: w.scale,
+        ),
+    ],
+    style: c.style,
+  );
 }
 
 /// Timeline tracks, top to bottom.

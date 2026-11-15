@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -60,49 +61,141 @@ enum StudioTool {
   final IconData icon;
 }
 
-typedef EditFn = void Function(MobileEditIr Function(MobileEditIr) op, {String? done});
+typedef EditFn = void Function(
+  MobileEditIr Function(MobileEditIr) op, {
+  String? done,
+});
 
 /// Filter looks the renderer supports (contract §3.2) with their colour multipliers.
 final filterLooks = <String, EditIrFilter>{
-  'Vivid': EditIrFilter(preset: 'VIVID', brightness: 1.03, contrast: 1.1, saturation: 1.3),
-  'Cinematic': EditIrFilter(preset: 'CINEMATIC_TEAL_ORANGE', brightness: 0.98, contrast: 1.15, saturation: 1.05),
-  'Warm': EditIrFilter(preset: 'VINTAGE_WARM', brightness: 1.02, contrast: 0.95, saturation: 0.9),
-  'Mono': EditIrFilter(preset: 'NOIR_BW', brightness: 1.0, contrast: 1.2, saturation: 0),
-  'Neon': EditIrFilter(preset: 'CYBER_NEON', brightness: 1.0, contrast: 1.15, saturation: 1.45),
-  'Glow': EditIrFilter(preset: 'GLOW', brightness: 1.08, contrast: 0.92, saturation: 1.05),
-  'Retro': EditIrFilter(preset: 'VINTAGE_WARM', brightness: 1.04, contrast: 0.88, saturation: 0.8),
-  'Cool': EditIrFilter(preset: 'CYBER_NEON', brightness: 0.98, contrast: 1.08, temperature: -0.3, saturation: 0.95),
+  'Vivid': EditIrFilter(
+    preset: 'VIVID',
+    brightness: 1.03,
+    contrast: 1.1,
+    saturation: 1.3,
+  ),
+  'Cinematic': EditIrFilter(
+    preset: 'CINEMATIC_TEAL_ORANGE',
+    brightness: 0.98,
+    contrast: 1.15,
+    saturation: 1.05,
+  ),
+  'Warm': EditIrFilter(
+    preset: 'VINTAGE_WARM',
+    brightness: 1.02,
+    contrast: 0.95,
+    saturation: 0.9,
+  ),
+  'Mono': EditIrFilter(
+    preset: 'NOIR_BW',
+    brightness: 1.0,
+    contrast: 1.2,
+    saturation: 0,
+  ),
+  'Neon': EditIrFilter(
+    preset: 'CYBER_NEON',
+    brightness: 1.0,
+    contrast: 1.15,
+    saturation: 1.45,
+  ),
+  'Glow': EditIrFilter(
+    preset: 'GLOW',
+    brightness: 1.08,
+    contrast: 0.92,
+    saturation: 1.05,
+  ),
+  'Retro': EditIrFilter(
+    preset: 'VINTAGE_WARM',
+    brightness: 1.04,
+    contrast: 0.88,
+    saturation: 0.8,
+  ),
+  'Cool': EditIrFilter(
+    preset: 'CYBER_NEON',
+    brightness: 0.98,
+    contrast: 1.08,
+    temperature: -0.3,
+    saturation: 0.95,
+  ),
 };
 
-Future<void> showStudioTool(BuildContext context, StudioTool tool, StudioController c, {required EditFn onEdit}) {
+Future<void> showStudioTool(
+  BuildContext context,
+  StudioTool tool,
+  StudioController c, {
+  required EditFn onEdit,
+}) {
   if (c.ir == null) return Future.value();
   final ir = c.ir!;
   final selected = c.selectedClip;
-  final rawIndex = selected ?? (ir.clips.isNotEmpty ? TimelineOps.clipIndexAt(ir, c.playheadMs) : 0);
-  final clipIndex = ir.clips.isEmpty ? 0 : rawIndex.clamp(0, ir.clips.length - 1);
+  final rawIndex =
+      selected ??
+      (ir.clips.isNotEmpty ? TimelineOps.clipIndexAt(ir, c.playheadMs) : 0);
+  final clipIndex = ir.clips.isEmpty
+      ? 0
+      : rawIndex.clamp(0, ir.clips.length - 1);
   return showModalBottomSheet<void>(
     context: context,
     useRootNavigator: true,
     isScrollControlled: true,
     backgroundColor: AppTheme.surface,
-    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
     builder: (ctx) => Padding(
-      padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(ctx).viewInsets.bottom + 16),
+      padding: EdgeInsets.fromLTRB(
+        16,
+        16,
+        16,
+        MediaQuery.of(ctx).viewInsets.bottom + 16,
+      ),
       child: SafeArea(
         child: switch (tool) {
           StudioTool.trim => _TrimSheet(c: c, index: clipIndex, onEdit: onEdit),
-          StudioTool.delete => _DeleteSheet(c: c, index: clipIndex, onEdit: onEdit),
+          StudioTool.delete => _DeleteSheet(
+            c: c,
+            index: clipIndex,
+            onEdit: onEdit,
+          ),
           StudioTool.cleanup => _CleanupSheet(c: c, onEdit: onEdit),
-          StudioTool.duplicate => _DuplicateSheet(c: c, index: clipIndex, onEdit: onEdit),
+          StudioTool.duplicate => _DuplicateSheet(
+            c: c,
+            index: clipIndex,
+            onEdit: onEdit,
+          ),
           StudioTool.freeze => _FreezeSheet(c: c),
           StudioTool.stabilize => _StabilizeSheet(c: c, index: clipIndex),
-          StudioTool.order => _OrderSheet(c: c, index: clipIndex, onEdit: onEdit),
-          StudioTool.speed => _SpeedSheet(c: c, index: clipIndex, onEdit: onEdit),
-          StudioTool.volume => _VolumeSheet(c: c, index: clipIndex, onEdit: onEdit),
+          StudioTool.order => _OrderSheet(
+            c: c,
+            index: clipIndex,
+            onEdit: onEdit,
+          ),
+          StudioTool.speed => _SpeedSheet(
+            c: c,
+            index: clipIndex,
+            onEdit: onEdit,
+          ),
+          StudioTool.volume => _VolumeSheet(
+            c: c,
+            index: clipIndex,
+            onEdit: onEdit,
+          ),
           StudioTool.canvas => _CanvasSheet(c: c, onEdit: onEdit),
-          StudioTool.rotate => _RotateSheet(c: c, index: clipIndex, onEdit: onEdit),
-          StudioTool.filter => _FilterSheet(c: c, index: clipIndex, onEdit: onEdit),
-          StudioTool.adjust => _AdjustSheet(c: c, index: clipIndex, onEdit: onEdit),
+          StudioTool.rotate => _RotateSheet(
+            c: c,
+            index: clipIndex,
+            onEdit: onEdit,
+          ),
+          StudioTool.filter => _FilterSheet(
+            c: c,
+            index: clipIndex,
+            onEdit: onEdit,
+          ),
+          StudioTool.adjust => _AdjustSheet(
+            c: c,
+            index: clipIndex,
+            onEdit: onEdit,
+          ),
           StudioTool.text => _TextSheet(
             c: c,
             onEdit: onEdit,
@@ -115,7 +208,11 @@ Future<void> showStudioTool(BuildContext context, StudioTool tool, StudioControl
           StudioTool.broll => _BrollSheet(c: c, onEdit: onEdit),
           StudioTool.sticker => _StickerSheet(c: c, onEdit: onEdit),
           StudioTool.cards => MotionGraphicsSheet(c: c, onEdit: onEdit),
-          StudioTool.transition => _TransitionSheet(c: c, index: clipIndex, onEdit: onEdit),
+          StudioTool.transition => _TransitionSheet(
+            c: c,
+            index: clipIndex,
+            onEdit: onEdit,
+          ),
           StudioTool.library => _LibrarySheet(c: c, onEdit: onEdit),
           StudioTool.director => SizedBox.shrink(),
         },
@@ -133,17 +230,29 @@ class _Title extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: EdgeInsets.only(bottom: 12),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(text, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 18)),
-          if (subtitle != null) Text(subtitle!, style: Theme.of(context).textTheme.labelSmall),
-        ]),
-      );
+    padding: EdgeInsets.only(bottom: 12),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          text,
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 18),
+        ),
+        if (subtitle != null)
+          Text(subtitle!, style: Theme.of(context).textTheme.labelSmall),
+      ],
+    ),
+  );
 }
 
 /// "This clip / All clips" switch for per-clip tools.
 class _Scope extends StatelessWidget {
-  const _Scope({required this.all, required this.onChanged, required this.index, required this.count});
+  const _Scope({
+    required this.all,
+    required this.onChanged,
+    required this.index,
+    required this.count,
+  });
   final bool all;
   final ValueChanged<bool> onChanged;
   final int index;
@@ -172,7 +281,11 @@ void _close(BuildContext context) {
 // ── clip tools ───────────────────────────────────────────────────────────────
 
 class _TrimSheet extends StatefulWidget {
-  const _TrimSheet({required this.c, required this.index, required this.onEdit});
+  const _TrimSheet({
+    required this.c,
+    required this.index,
+    required this.onEdit,
+  });
   final StudioController c;
   final int index;
   final EditFn onEdit;
@@ -186,39 +299,69 @@ class _TrimSheetState extends State<_TrimSheet> {
 
   /// Length of this clip's own file (not the first video's: added clips, stills and processed copies differ).
   late final int srcLen = () {
-    final own = widget.c.ir!.sources.where((s) => s.assetId == clip.assetId).firstOrNull?.durationMs ?? clip.sourceEndMs;
+    final own =
+        widget.c.ir!.sources
+            .where((s) => s.assetId == clip.assetId)
+            .firstOrNull
+            ?.durationMs ??
+        clip.sourceEndMs;
     // A still can hold for any length; offer up to twice its current hold (at least 10 s).
-    if (widget.c.isStillAsset(clip.assetId)) return math.min(own, math.max(clip.sourceEndMs * 2, 10000));
+    if (widget.c.isStillAsset(clip.assetId))
+      return math.min(own, math.max(clip.sourceEndMs * 2, 10000));
     return math.max(own, clip.sourceEndMs);
   }();
-  late RangeValues v = RangeValues(clip.sourceStartMs.toDouble(), clip.sourceEndMs.toDouble());
+  late RangeValues v = RangeValues(
+    clip.sourceStartMs.toDouble(),
+    clip.sourceEndMs.toDouble(),
+  );
 
   @override
-  Widget build(BuildContext context) => Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        _Title('Trim clip ${widget.index + 1}', subtitle: 'Drag the handles to set where this clip starts and ends in the original video.'),
-        RangeSlider(
-          values: v,
-          min: 0,
-          max: srcLen.toDouble(),
-          divisions: (srcLen / 100).clamp(1, 2000).round(),
-          labels: RangeLabels(timecode(v.start.round()), timecode(v.end.round())),
-          onChanged: (r) => setState(() => v = r),
-        ),
-        Text('${timecode(v.start.round())} → ${timecode(v.end.round())}  (${((v.end - v.start) / 1000).toStringAsFixed(1)}s)',
-            textAlign: TextAlign.center, style: TextStyle(fontFeatures: [FontFeature.tabularFigures()])),
-        SizedBox(height: 16),
-        FilledButton(
-          onPressed: () {
-            _close(context);
-            widget.onEdit((ir) => TimelineOps.trim(ir, widget.index, sourceStartMs: v.start.round(), sourceEndMs: v.end.round()));
-          },
-          child: Text('Apply trim'),
-        ),
-      ]);
+  Widget build(BuildContext context) => Column(
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      _Title(
+        'Trim clip ${widget.index + 1}',
+        subtitle: 'Drag the handles to set where this clip starts and ends in the original video.',
+      ),
+      RangeSlider(
+        values: v,
+        min: 0,
+        max: srcLen.toDouble(),
+        divisions: (srcLen / 100).clamp(1, 2000).round(),
+        labels: RangeLabels(timecode(v.start.round()), timecode(v.end.round())),
+        onChanged: (r) => setState(() => v = r),
+      ),
+      Text(
+        '${timecode(v.start.round())} → ${timecode(v.end.round())}  (${((v.end - v.start) / 1000).toStringAsFixed(1)}s)',
+        textAlign: TextAlign.center,
+        style: TextStyle(fontFeatures: [FontFeature.tabularFigures()]),
+      ),
+      SizedBox(height: 16),
+      FilledButton(
+        onPressed: () {
+          _close(context);
+          widget.onEdit(
+            (ir) => TimelineOps.trim(
+              ir,
+              widget.index,
+              sourceStartMs: v.start.round(),
+              sourceEndMs: v.end.round(),
+            ),
+          );
+        },
+        child: Text('Apply trim'),
+      ),
+    ],
+  );
 }
 
 class _DuplicateSheet extends StatelessWidget {
-  const _DuplicateSheet({required this.c, required this.index, required this.onEdit});
+  const _DuplicateSheet({
+    required this.c,
+    required this.index,
+    required this.onEdit,
+  });
   final StudioController c;
   final int index;
   final EditFn onEdit;
@@ -226,18 +369,30 @@ class _DuplicateSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final clip = c.ir!.clips[index];
-    return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      _Title('Duplicate', subtitle: 'The copy goes right after the clip; everything after it moves later.'),
-      ListTile(
-        leading: Icon(Icons.copy_all_rounded),
-        title: Text('Duplicate clip ${index + 1}'),
-        subtitle: Text('${timecode(clip.timelineStartMs)} – ${timecode(clip.timelineEndMs)}'),
-        onTap: () {
-          _close(context);
-          onEdit((ir) => TimelineOps.duplicateClip(ir, index), done: 'Clip duplicated');
-        },
-      ),
-    ]);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _Title(
+          'Duplicate',
+          subtitle: 'The copy goes right after the clip; everything after it moves later.',
+        ),
+        ListTile(
+          leading: Icon(Icons.copy_all_rounded),
+          title: Text('Duplicate clip ${index + 1}'),
+          subtitle: Text(
+            '${timecode(clip.timelineStartMs)} – ${timecode(clip.timelineEndMs)}',
+          ),
+          onTap: () {
+            _close(context);
+            onEdit(
+              (ir) => TimelineOps.duplicateClip(ir, index),
+              done: 'Clip duplicated',
+            );
+          },
+        ),
+      ],
+    );
   }
 }
 
@@ -270,22 +425,40 @@ class _StabilizeSheetState extends State<_StabilizeSheet> {
   }
 
   @override
-  Widget build(BuildContext context) => Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        _Title('Stabilise clip ${widget.index + 1}', subtitle: 'Smooths out hand shake. The picture is zoomed in slightly to hide the moving edges.'),
-        Wrap(spacing: 8, children: [
-          for (final (label, s) in const [('Light', 0.5), ('Recommended', 1.0), ('Smoothest', 2.0)])
-            ChoiceChip(label: Text(label), selected: strength == s, onSelected: busy ? null : (_) => setState(() => strength = s)),
-        ]),
-        SizedBox(height: 12),
-        SizedBox(
-          height: 48,
-          child: FilledButton.icon(
-            onPressed: busy ? null : _go,
-            icon: Icon(Icons.video_stable_rounded),
-            label: Text(busy ? 'Stabilising on this phone…' : 'Stabilise'),
-          ),
+  Widget build(BuildContext context) => Column(
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      _Title(
+        'Stabilise clip ${widget.index + 1}',
+        subtitle: 'Smooths out hand shake. The picture is zoomed in slightly to hide the moving edges.',
+      ),
+      Wrap(
+        spacing: 8,
+        children: [
+          for (final (label, s) in const [
+            ('Light', 0.5),
+            ('Recommended', 1.0),
+            ('Smoothest', 2.0),
+          ])
+            ChoiceChip(
+              label: Text(label),
+              selected: strength == s,
+              onSelected: busy ? null : (_) => setState(() => strength = s),
+            ),
+        ],
+      ),
+      SizedBox(height: 12),
+      SizedBox(
+        height: 48,
+        child: FilledButton.icon(
+          onPressed: busy ? null : _go,
+          icon: Icon(Icons.video_stable_rounded),
+          label: Text(busy ? 'Stabilising on this phone…' : 'Stabilise'),
         ),
-      ]);
+      ),
+    ],
+  );
 }
 
 /// Freeze frame: holds the exact frame under the playhead; everything after moves later.
@@ -316,26 +489,45 @@ class _FreezeSheetState extends State<_FreezeSheet> {
   }
 
   @override
-  Widget build(BuildContext context) => Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        _Title('Freeze frame', subtitle: 'Holds the frame at ${timecode(widget.c.playheadMs)}. Trim the still later to change how long it holds.'),
-        Wrap(spacing: 8, children: [
+  Widget build(BuildContext context) => Column(
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      _Title(
+        'Freeze frame',
+        subtitle:
+            'Holds the frame at ${timecode(widget.c.playheadMs)}. Trim the still later to change how long it holds.',
+      ),
+      Wrap(
+        spacing: 8,
+        children: [
           for (final s in const [1, 2, 3, 5])
-            ChoiceChip(label: Text('$s s'), selected: seconds == s, onSelected: busy ? null : (_) => setState(() => seconds = s)),
-        ]),
-        SizedBox(height: 12),
-        SizedBox(
-          height: 48,
-          child: FilledButton.icon(
-            onPressed: busy ? null : _freeze,
-            icon: Icon(Icons.pause_circle_outline_rounded),
-            label: Text(busy ? 'Capturing the frame…' : 'Freeze frame'),
-          ),
+            ChoiceChip(
+              label: Text('$s s'),
+              selected: seconds == s,
+              onSelected: busy ? null : (_) => setState(() => seconds = s),
+            ),
+        ],
+      ),
+      SizedBox(height: 12),
+      SizedBox(
+        height: 48,
+        child: FilledButton.icon(
+          onPressed: busy ? null : _freeze,
+          icon: Icon(Icons.pause_circle_outline_rounded),
+          label: Text(busy ? 'Capturing the frame…' : 'Freeze frame'),
         ),
-      ]);
+      ),
+    ],
+  );
 }
 
 class _DeleteSheet extends StatelessWidget {
-  const _DeleteSheet({required this.c, required this.index, required this.onEdit});
+  const _DeleteSheet({
+    required this.c,
+    required this.index,
+    required this.onEdit,
+  });
   final StudioController c;
   final int index;
   final EditFn onEdit;
@@ -343,42 +535,60 @@ class _DeleteSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final clip = c.ir!.clips[index];
-    return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      _Title('Delete', subtitle: 'Everything after the deleted part moves up; captions, music and B-roll stay in sync.'),
-      ListTile(
-        leading: Icon(Icons.delete_outline_rounded, color: AppTheme.error),
-        title: Text('Delete clip ${index + 1}'),
-        subtitle: Text('${timecode(clip.timelineStartMs)} – ${timecode(clip.timelineEndMs)}'),
-        enabled: c.ir!.clips.length > 1,
-        onTap: () {
-          _close(context);
-          onEdit((ir) => TimelineOps.deleteClip(ir, index), done: 'Clip deleted');
-        },
-      ),
-      ListTile(
-        leading: Icon(Icons.first_page_rounded),
-        title: Text('Delete everything before the playhead'),
-        enabled: c.playheadMs > TimelineOps.minClipMs,
-        onTap: () {
-          _close(context);
-          onEdit((ir) => TimelineOps.removeRange(ir, 0, c.playheadMs));
-        },
-      ),
-      ListTile(
-        leading: Icon(Icons.last_page_rounded),
-        title: Text('Delete everything after the playhead'),
-        enabled: c.ir!.durationMs - c.playheadMs > TimelineOps.minClipMs,
-        onTap: () {
-          _close(context);
-          onEdit((ir) => TimelineOps.removeRange(ir, c.playheadMs, ir.durationMs));
-        },
-      ),
-    ]);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _Title(
+          'Delete',
+          subtitle: 'Everything after the deleted part moves up; captions, music and B-roll stay in sync.',
+        ),
+        ListTile(
+          leading: Icon(Icons.delete_outline_rounded, color: AppTheme.error),
+          title: Text('Delete clip ${index + 1}'),
+          subtitle: Text(
+            '${timecode(clip.timelineStartMs)} – ${timecode(clip.timelineEndMs)}',
+          ),
+          enabled: c.ir!.clips.length > 1,
+          onTap: () {
+            _close(context);
+            onEdit(
+              (ir) => TimelineOps.deleteClip(ir, index),
+              done: 'Clip deleted',
+            );
+          },
+        ),
+        ListTile(
+          leading: Icon(Icons.first_page_rounded),
+          title: Text('Delete everything before the playhead'),
+          enabled: c.playheadMs > TimelineOps.minClipMs,
+          onTap: () {
+            _close(context);
+            onEdit((ir) => TimelineOps.removeRange(ir, 0, c.playheadMs));
+          },
+        ),
+        ListTile(
+          leading: Icon(Icons.last_page_rounded),
+          title: Text('Delete everything after the playhead'),
+          enabled: c.ir!.durationMs - c.playheadMs > TimelineOps.minClipMs,
+          onTap: () {
+            _close(context);
+            onEdit(
+              (ir) => TimelineOps.removeRange(ir, c.playheadMs, ir.durationMs),
+            );
+          },
+        ),
+      ],
+    );
   }
 }
 
 class _OrderSheet extends StatelessWidget {
-  const _OrderSheet({required this.c, required this.index, required this.onEdit});
+  const _OrderSheet({
+    required this.c,
+    required this.index,
+    required this.onEdit,
+  });
   final StudioController c;
   final int index;
   final EditFn onEdit;
@@ -386,43 +596,62 @@ class _OrderSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final n = c.ir!.clips.length;
-    return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      _Title('Reorder clip ${index + 1} of $n', subtitle: n < 2 ? 'Split the video first to get clips to reorder.' : null),
-      Row(children: [
-        Expanded(
-          child: OutlinedButton.icon(
-            onPressed: index == 0
-                ? null
-                : () {
-                    _close(context);
-                    c.select(index - 1);
-                    onEdit((ir) => TimelineOps.moveClip(ir, index, index - 1));
-                  },
-            icon: Icon(Icons.arrow_back_rounded),
-            label: Text('Earlier'),
-          ),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _Title(
+          'Reorder clip ${index + 1} of $n',
+          subtitle: n < 2
+              ? 'Split the video first to get clips to reorder.'
+              : null,
         ),
-        SizedBox(width: 8),
-        Expanded(
-          child: OutlinedButton.icon(
-            onPressed: index >= n - 1
-                ? null
-                : () {
-                    _close(context);
-                    c.select(index + 1);
-                    onEdit((ir) => TimelineOps.moveClip(ir, index, index + 1));
-                  },
-            icon: Icon(Icons.arrow_forward_rounded),
-            label: Text('Later'),
-          ),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: index == 0
+                    ? null
+                    : () {
+                        _close(context);
+                        c.select(index - 1);
+                        onEdit(
+                          (ir) => TimelineOps.moveClip(ir, index, index - 1),
+                        );
+                      },
+                icon: Icon(Icons.arrow_back_rounded),
+                label: Text('Earlier'),
+              ),
+            ),
+            SizedBox(width: 8),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: index >= n - 1
+                    ? null
+                    : () {
+                        _close(context);
+                        c.select(index + 1);
+                        onEdit(
+                          (ir) => TimelineOps.moveClip(ir, index, index + 1),
+                        );
+                      },
+                icon: Icon(Icons.arrow_forward_rounded),
+                label: Text('Later'),
+              ),
+            ),
+          ],
         ),
-      ]),
-    ]);
+      ],
+    );
   }
 }
 
 class _SpeedSheet extends StatefulWidget {
-  const _SpeedSheet({required this.c, required this.index, required this.onEdit});
+  const _SpeedSheet({
+    required this.c,
+    required this.index,
+    required this.onEdit,
+  });
   final StudioController c;
   final int index;
   final EditFn onEdit;
@@ -437,182 +666,319 @@ class _SpeedSheetState extends State<_SpeedSheet> {
   bool busy = false;
 
   static const _speedBadges = [
-    (rate: 0.5, label: '0.5x', name: 'Slow-Mo', icon: Icons.slow_motion_video_rounded, color: Color(0xFF38BDF8)),
-    (rate: 0.75, label: '0.75x', name: 'Chill', icon: Icons.motion_photos_paused_rounded, color: Color(0xFF2DD4BF)),
-    (rate: 1.0, label: '1.0x', name: 'Normal', icon: Icons.play_arrow_rounded, color: Color(0xFF34D399)),
-    (rate: 1.25, label: '1.25x', name: 'Paced', icon: Icons.directions_walk_rounded, color: Color(0xFFA3E635)),
-    (rate: 1.5, label: '1.5x', name: 'Punchy', icon: Icons.bolt_rounded, color: Color(0xFFFBBF24)),
-    (rate: 2.0, label: '2.0x', name: 'Fast', icon: Icons.fast_forward_rounded, color: Color(0xFFFB923C)),
-    (rate: 3.0, label: '3.0x', name: 'Hyper', icon: Icons.rocket_launch_rounded, color: Color(0xFFA855F7)),
+    (
+      rate: 0.5,
+      label: '0.5x',
+      name: 'Slow-Mo',
+      icon: Icons.slow_motion_video_rounded,
+      color: Color(0xFF38BDF8),
+    ),
+    (
+      rate: 0.75,
+      label: '0.75x',
+      name: 'Chill',
+      icon: Icons.motion_photos_paused_rounded,
+      color: Color(0xFF2DD4BF),
+    ),
+    (
+      rate: 1.0,
+      label: '1.0x',
+      name: 'Normal',
+      icon: Icons.play_arrow_rounded,
+      color: Color(0xFF34D399),
+    ),
+    (
+      rate: 1.25,
+      label: '1.25x',
+      name: 'Paced',
+      icon: Icons.directions_walk_rounded,
+      color: Color(0xFFA3E635),
+    ),
+    (
+      rate: 1.5,
+      label: '1.5x',
+      name: 'Punchy',
+      icon: Icons.bolt_rounded,
+      color: Color(0xFFFBBF24),
+    ),
+    (
+      rate: 2.0,
+      label: '2.0x',
+      name: 'Fast',
+      icon: Icons.fast_forward_rounded,
+      color: Color(0xFFFB923C),
+    ),
+    (
+      rate: 3.0,
+      label: '3.0x',
+      name: 'Hyper',
+      icon: Icons.rocket_launch_rounded,
+      color: Color(0xFFA855F7),
+    ),
   ];
 
   static const _rampPresets = [
-    (key: 'hero', label: 'Hero Slow-Mo', icon: Icons.show_chart_rounded, desc: 'Normal → Slow drop → Normal'),
-    (key: 'montage', label: 'Montage', icon: Icons.timeline_rounded, desc: 'Fast burst → Normal pace'),
-    (key: 'bullet', label: 'Bullet Time', icon: Icons.camera_rounded, desc: 'Instant dramatic freeze'),
-    (key: 'flash_in', label: 'Flash In', icon: Icons.trending_up_rounded, desc: 'Accelerates into cut'),
-    (key: 'flash_out', label: 'Flash Out', icon: Icons.trending_down_rounded, desc: 'Decelerates from cut'),
+    (
+      key: 'hero',
+      label: 'Hero Slow-Mo',
+      icon: Icons.show_chart_rounded,
+      desc: 'Normal → Slow drop → Normal',
+    ),
+    (
+      key: 'montage',
+      label: 'Montage',
+      icon: Icons.timeline_rounded,
+      desc: 'Fast burst → Normal pace',
+    ),
+    (
+      key: 'bullet',
+      label: 'Bullet Time',
+      icon: Icons.camera_rounded,
+      desc: 'Instant dramatic freeze',
+    ),
+    (
+      key: 'flash_in',
+      label: 'Flash In',
+      icon: Icons.trending_up_rounded,
+      desc: 'Accelerates into cut',
+    ),
+    (
+      key: 'flash_out',
+      label: 'Flash Out',
+      icon: Icons.trending_down_rounded,
+      desc: 'Decelerates from cut',
+    ),
   ];
 
   @override
   Widget build(BuildContext context) => Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const _Title('Video Speed & Ramping', subtitle: 'Pitch correction enabled automatically'),
-          _Scope(all: all, onChanged: (v) => setState(() => all = v), index: widget.index, count: widget.c.ir!.clips.length),
-          const SizedBox(height: 10),
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      const _Title(
+        'Video Speed & Ramping',
+        subtitle: 'Pitch correction enabled automatically',
+      ),
+      _Scope(
+        all: all,
+        onChanged: (v) => setState(() => all = v),
+        index: widget.index,
+        count: widget.c.ir!.clips.length,
+      ),
+      const SizedBox(height: 10),
 
-          // Visual Speed Badges Strip
-          SizedBox(
-            height: 72,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: _speedBadges.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 8),
-              itemBuilder: (ctx, i) {
-                final b = _speedBadges[i];
-                final isSelected = (speed - b.rate).abs() < 0.05;
-                return InkWell(
+      // Visual Speed Badges Strip
+      SizedBox(
+        height: 72,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          itemCount: _speedBadges.length,
+          separatorBuilder: (_, _) => const SizedBox(width: 8),
+          itemBuilder: (ctx, i) {
+            final b = _speedBadges[i];
+            final isSelected = (speed - b.rate).abs() < 0.05;
+            return InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () => setState(() => speed = b.rate),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                width: 70,
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? b.color.withValues(alpha: 0.15)
+                      : AppTheme.surfaceElevated,
                   borderRadius: BorderRadius.circular(12),
-                  onTap: () => setState(() => speed = b.rate),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    width: 70,
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    decoration: BoxDecoration(
-                      color: isSelected ? b.color.withValues(alpha: 0.15) : AppTheme.surfaceElevated,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: isSelected ? b.color : AppTheme.border,
-                        width: isSelected ? 2 : 1,
+                  border: Border.all(
+                    color: isSelected ? b.color : AppTheme.border,
+                    width: isSelected ? 2 : 1,
+                  ),
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      b.icon,
+                      size: 20,
+                      color: isSelected ? b.color : AppTheme.textSecondary,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      b.label,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: isSelected
+                            ? FontWeight.bold
+                            : FontWeight.w600,
+                        color: isSelected ? b.color : AppTheme.textPrimary,
                       ),
                     ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(b.icon, size: 20, color: isSelected ? b.color : AppTheme.textSecondary),
-                        const SizedBox(height: 4),
-                        Text(
-                          b.label,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
-                            color: isSelected ? b.color : AppTheme.textPrimary,
-                          ),
-                        ),
-                        Text(
-                          b.name,
-                          style: TextStyle(
-                            fontSize: 9,
-                            color: isSelected ? b.color : AppTheme.textMuted,
-                          ),
-                        ),
-                      ],
+                    Text(
+                      b.name,
+                      style: TextStyle(
+                        fontSize: 9,
+                        color: isSelected ? b.color : AppTheme.textMuted,
+                      ),
                     ),
-                  ),
-                );
-              },
-            ),
-          ),
-          const SizedBox(height: 12),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+      const SizedBox(height: 12),
 
-          Row(
-            children: [
-              Text('Continuous Speed: ${speed.toStringAsFixed(2)}x', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-              const Spacer(),
-              Text(speed < 1.0 ? 'Slow-motion' : (speed > 1.0 ? 'Accelerated' : 'Normal'), style: TextStyle(fontSize: 12, color: speed != 1.0 ? AppTheme.primary : AppTheme.textMuted)),
-            ],
+      Row(
+        children: [
+          Text(
+            'Continuous Speed: ${speed.toStringAsFixed(2)}x',
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
           ),
-          Slider(
-            value: speed,
-            min: 0.25,
-            max: 4,
-            divisions: 75,
-            label: '${speed.toStringAsFixed(2)}x',
-            onChanged: (v) => setState(() => speed = (v * 100).round() / 100),
-          ),
-
-          FilledButton(
-            onPressed: () {
-              _close(context);
-              widget.onEdit((ir) => TimelineOps.setSpeed(ir, speed, index: all ? null : widget.index), done: 'Speed set to ${speed.toStringAsFixed(2)}x');
-            },
-            child: Text('Apply ${speed.toStringAsFixed(2)}x Speed'),
-          ),
-          const SizedBox(height: 12),
-
-          OutlinedButton.icon(
-            onPressed: busy
-                ? null
-                : () async {
-                    setState(() => busy = true);
-                    try {
-                      await widget.c.reverseClip(widget.index);
-                      if (context.mounted) {
-                        _close(context);
-                        showSuccess(context, 'Clip ${widget.index + 1} now plays backwards');
-                      }
-                    } catch (e) {
-                      if (context.mounted) showError(context, e);
-                    } finally {
-                      if (mounted) setState(() => busy = false);
-                    }
-                  },
-            icon: const Icon(Icons.fast_rewind_rounded),
-            label: Text(busy ? 'Reversing clip… (generating reversed track)' : 'Play this clip backwards (Reverse)'),
-          ),
-
-          const SizedBox(height: 16),
-          Text('Speed Ramp Curves (This Clip)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textSecondary)),
-          const SizedBox(height: 8),
-
-          SizedBox(
-            height: 64,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: _rampPresets.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 8),
-              itemBuilder: (ctx, i) {
-                final r = _rampPresets[i];
-                return InkWell(
-                  borderRadius: BorderRadius.circular(10),
-                  onTap: () {
-                    _close(context);
-                    widget.onEdit((ir) => TimelineOps.speedRamp(ir, widget.index, r.key), done: 'Speed ramp: ${r.label}');
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: AppTheme.surfaceElevated,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: AppTheme.border),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(r.icon, size: 18, color: AppTheme.primary),
-                        const SizedBox(width: 8),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(r.label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                            Text(r.desc, style: TextStyle(fontSize: 9, color: AppTheme.textMuted)),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
+          const Spacer(),
+          Text(
+            speed < 1.0
+                ? 'Slow-motion'
+                : (speed > 1.0 ? 'Accelerated' : 'Normal'),
+            style: TextStyle(
+              fontSize: 12,
+              color: speed != 1.0 ? AppTheme.primary : AppTheme.textMuted,
             ),
           ),
         ],
-      );
+      ),
+      Slider(
+        value: speed,
+        min: 0.25,
+        max: 4,
+        divisions: 75,
+        label: '${speed.toStringAsFixed(2)}x',
+        onChanged: (v) => setState(() => speed = (v * 100).round() / 100),
+      ),
+
+      FilledButton(
+        onPressed: () {
+          _close(context);
+          widget.onEdit(
+            (ir) => TimelineOps.setSpeed(
+              ir,
+              speed,
+              index: all ? null : widget.index,
+            ),
+            done: 'Speed set to ${speed.toStringAsFixed(2)}x',
+          );
+        },
+        child: Text('Apply ${speed.toStringAsFixed(2)}x Speed'),
+      ),
+      const SizedBox(height: 12),
+
+      OutlinedButton.icon(
+        onPressed: busy
+            ? null
+            : () async {
+                setState(() => busy = true);
+                try {
+                  await widget.c.reverseClip(widget.index);
+                  if (context.mounted) {
+                    _close(context);
+                    showSuccess(
+                      context,
+                      'Clip ${widget.index + 1} now plays backwards',
+                    );
+                  }
+                } catch (e) {
+                  if (context.mounted) showError(context, e);
+                } finally {
+                  if (mounted) setState(() => busy = false);
+                }
+              },
+        icon: const Icon(Icons.fast_rewind_rounded),
+        label: Text(
+          busy
+              ? 'Reversing clip… (generating reversed track)'
+              : 'Play this clip backwards (Reverse)',
+        ),
+      ),
+
+      const SizedBox(height: 16),
+      Text(
+        'Speed Ramp Curves (This Clip)',
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+          color: AppTheme.textSecondary,
+        ),
+      ),
+      const SizedBox(height: 8),
+
+      SizedBox(
+        height: 64,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          itemCount: _rampPresets.length,
+          separatorBuilder: (_, _) => const SizedBox(width: 8),
+          itemBuilder: (ctx, i) {
+            final r = _rampPresets[i];
+            return InkWell(
+              borderRadius: BorderRadius.circular(10),
+              onTap: () {
+                _close(context);
+                widget.onEdit(
+                  (ir) => TimelineOps.speedRamp(ir, widget.index, r.key),
+                  done: 'Speed ramp: ${r.label}',
+                );
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: AppTheme.surfaceElevated,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppTheme.border),
+                ),
+                child: Row(
+                  children: [
+                    Icon(r.icon, size: 18, color: AppTheme.primary),
+                    const SizedBox(width: 8),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          r.label,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          r.desc,
+                          style: TextStyle(
+                            fontSize: 9,
+                            color: AppTheme.textMuted,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    ],
+  );
 }
 
 class _VolumeSheet extends StatefulWidget {
-  const _VolumeSheet({required this.c, required this.index, required this.onEdit});
+  const _VolumeSheet({
+    required this.c,
+    required this.index,
+    required this.onEdit,
+  });
   final StudioController c;
   final int index;
   final EditFn onEdit;
@@ -629,49 +995,99 @@ class _VolumeSheetState extends State<_VolumeSheet> {
   late bool cleanup = widget.c.ir!.clips[widget.index].voiceCleanup;
   bool all = false;
 
-  String _fmt(double db) => db <= -60 ? 'Muted' : '${db >= 0 ? '+' : ''}${db.toStringAsFixed(0)} dB';
+  String _fmt(double db) =>
+      db <= -60 ? 'Muted' : '${db >= 0 ? '+' : ''}${db.toStringAsFixed(0)} dB';
 
   @override
-  Widget build(BuildContext context) => Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        const _Title('Original audio'),
-        _Scope(all: all, onChanged: (v) => setState(() => all = v), index: widget.index, count: widget.c.ir!.clips.length),
-        Text('Clip volume: ${_fmt(clipDb)}'),
-        Slider(value: clipDb, min: -60, max: 12, divisions: 72, onChanged: (v) => setState(() => clipDb = v.roundToDouble())),
-        Text('Whole video voice level: ${_fmt(masterDb)}'),
-        Slider(value: masterDb, min: -60, max: 12, divisions: 72, onChanged: (v) => setState(() => masterDb = v.roundToDouble())),
-        Text('Fade in: ${fadeIn == 0 ? 'Off' : '${fadeIn.toStringAsFixed(1)} s'}'),
-        Slider(value: fadeIn.clamp(0, 3), min: 0, max: 3, divisions: 30, onChanged: (v) => setState(() => fadeIn = v)),
-        Text('Fade out: ${fadeOut == 0 ? 'Off' : '${fadeOut.toStringAsFixed(1)} s'}'),
-        Slider(value: fadeOut.clamp(0, 3), min: 0, max: 3, divisions: 30, onChanged: (v) => setState(() => fadeOut = v)),
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          value: cleanup,
-          onChanged: (v) => setState(() => cleanup = v),
-          title: Text('Reduce background noise'),
-          subtitle: Text('Cuts rumble, hiss and hum between words. Applied in the exported video.'),
+  Widget build(BuildContext context) => Column(
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      const _Title('Original audio'),
+      _Scope(
+        all: all,
+        onChanged: (v) => setState(() => all = v),
+        index: widget.index,
+        count: widget.c.ir!.clips.length,
+      ),
+      Text('Clip volume: ${_fmt(clipDb)}'),
+      Slider(
+        value: clipDb,
+        min: -60,
+        max: 12,
+        divisions: 72,
+        onChanged: (v) => setState(() => clipDb = v.roundToDouble()),
+      ),
+      Text('Whole video voice level: ${_fmt(masterDb)}'),
+      Slider(
+        value: masterDb,
+        min: -60,
+        max: 12,
+        divisions: 72,
+        onChanged: (v) => setState(() => masterDb = v.roundToDouble()),
+      ),
+      Text(
+        'Fade in: ${fadeIn == 0 ? 'Off' : '${fadeIn.toStringAsFixed(1)} s'}',
+      ),
+      Slider(
+        value: fadeIn.clamp(0, 3),
+        min: 0,
+        max: 3,
+        divisions: 30,
+        onChanged: (v) => setState(() => fadeIn = v),
+      ),
+      Text(
+        'Fade out: ${fadeOut == 0 ? 'Off' : '${fadeOut.toStringAsFixed(1)} s'}',
+      ),
+      Slider(
+        value: fadeOut.clamp(0, 3),
+        min: 0,
+        max: 3,
+        divisions: 30,
+        onChanged: (v) => setState(() => fadeOut = v),
+      ),
+      SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        value: cleanup,
+        onChanged: (v) => setState(() => cleanup = v),
+        title: Text('Reduce background noise'),
+        subtitle: Text(
+          'Cuts rumble, hiss and hum between words. Applied in the exported video.',
         ),
-        Row(children: [
-          TextButton(onPressed: () => setState(() => clipDb = -60), child: Text('Mute clip')),
+      ),
+      Row(
+        children: [
+          TextButton(
+            onPressed: () => setState(() => clipDb = -60),
+            child: Text('Mute clip'),
+          ),
           Spacer(),
           FilledButton(
             onPressed: () {
               _close(context);
               final index = all ? null : widget.index;
-              widget.onEdit((ir) => TimelineOps.setVoiceCleanup(
-                    TimelineOps.setClipAudioFades(
-                      TimelineOps.setOriginalVolume(TimelineOps.setClipVolume(ir, clipDb, index: index), masterDb),
-                      fadeInMs: (fadeIn * 1000).round(),
-                      fadeOutMs: (fadeOut * 1000).round(),
-                      index: index,
+              widget.onEdit(
+                (ir) => TimelineOps.setVoiceCleanup(
+                  TimelineOps.setClipAudioFades(
+                    TimelineOps.setOriginalVolume(
+                      TimelineOps.setClipVolume(ir, clipDb, index: index),
+                      masterDb,
                     ),
-                    cleanup,
+                    fadeInMs: (fadeIn * 1000).round(),
+                    fadeOutMs: (fadeOut * 1000).round(),
                     index: index,
-                  ));
+                  ),
+                  cleanup,
+                  index: index,
+                ),
+              );
             },
             child: Text('Apply'),
           ),
-        ]),
-      ]);
+        ],
+      ),
+    ],
+  );
 }
 
 class _CanvasSheet extends StatefulWidget {
@@ -685,112 +1101,201 @@ class _CanvasSheet extends StatefulWidget {
 
 class _CanvasSheetState extends State<_CanvasSheet> {
   late String aspect = widget.c.ir!.canvas.aspect;
-  late bool fill = widget.c.ir!.clips.first.crop != null || TimelineOps.centerCrop(
-            widget.c.ir!.sources.firstOrNull?.width ?? 0, widget.c.ir!.sources.firstOrNull?.height ?? 0, widget.c.ir!.canvas) ==
-        null;
+  late bool fill =
+      widget.c.ir!.clips.first.crop != null ||
+      TimelineOps.centerCrop(
+            widget.c.ir!.sources.firstOrNull?.width ?? 0,
+            widget.c.ir!.sources.firstOrNull?.height ?? 0,
+            widget.c.ir!.canvas,
+          ) ==
+          null;
 
   static const _aspectConfigs = [
-    (ratio: '9:16', title: '9:16 Vertical', subtitle: 'Reels · Shorts · TikTok', icon: Icons.smartphone_rounded, w: 26.0, h: 46.0),
-    (ratio: '16:9', title: '16:9 Landscape', subtitle: 'YouTube · Desktop', icon: Icons.tv_rounded, w: 46.0, h: 26.0),
-    (ratio: '1:1', title: '1:1 Square', subtitle: 'Instagram Post', icon: Icons.crop_square_rounded, w: 34.0, h: 34.0),
-    (ratio: '4:5', title: '4:5 Portrait', subtitle: 'Instagram Feed', icon: Icons.portrait_rounded, w: 30.0, h: 38.0),
+    (
+      ratio: '9:16',
+      title: '9:16 Vertical',
+      subtitle: 'Reels · Shorts · TikTok',
+      icon: Icons.smartphone_rounded,
+      w: 26.0,
+      h: 46.0,
+    ),
+    (
+      ratio: '16:9',
+      title: '16:9 Landscape',
+      subtitle: 'YouTube · Desktop',
+      icon: Icons.tv_rounded,
+      w: 46.0,
+      h: 26.0,
+    ),
+    (
+      ratio: '1:1',
+      title: '1:1 Square',
+      subtitle: 'Instagram Post',
+      icon: Icons.crop_square_rounded,
+      w: 34.0,
+      h: 34.0,
+    ),
+    (
+      ratio: '4:5',
+      title: '4:5 Portrait',
+      subtitle: 'Instagram Feed',
+      icon: Icons.portrait_rounded,
+      w: 30.0,
+      h: 38.0,
+    ),
   ];
 
   @override
   Widget build(BuildContext context) => Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const _Title('Canvas & Aspect Ratio', subtitle: 'Choose video dimensions for your target platform'),
-          const SizedBox(height: 8),
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      const _Title(
+        'Canvas & Aspect Ratio',
+        subtitle: 'Choose video dimensions for your target platform',
+      ),
+      const SizedBox(height: 8),
 
-          // Visual Aspect Ratio Mockups Grid
-          GridView.count(
-            crossAxisCount: 2,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            mainAxisSpacing: 10,
-            crossAxisSpacing: 10,
-            childAspectRatio: 1.85,
-            children: [
-              for (final cfg in _aspectConfigs)
-                InkWell(
+      // Visual Aspect Ratio Mockups Grid
+      GridView.count(
+        crossAxisCount: 2,
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        mainAxisSpacing: 10,
+        crossAxisSpacing: 10,
+        childAspectRatio: 1.85,
+        children: [
+          for (final cfg in _aspectConfigs)
+            InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () => setState(() => aspect = cfg.ratio),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: aspect == cfg.ratio
+                      ? AppTheme.primary.withValues(alpha: 0.12)
+                      : AppTheme.surfaceElevated,
                   borderRadius: BorderRadius.circular(12),
-                  onTap: () => setState(() => aspect = cfg.ratio),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: aspect == cfg.ratio ? AppTheme.primary.withValues(alpha: 0.12) : AppTheme.surfaceElevated,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: aspect == cfg.ratio ? AppTheme.primary : AppTheme.border,
-                        width: aspect == cfg.ratio ? 2 : 1,
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        // Visual Canvas Silhouette
-                        Container(
-                          width: 48,
-                          height: 52,
-                          alignment: Alignment.center,
-                          child: Container(
-                            width: cfg.w,
-                            height: cfg.h,
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(4),
-                              border: Border.all(
-                                color: aspect == cfg.ratio ? AppTheme.primary : AppTheme.textSecondary,
-                                width: 1.5,
-                              ),
-                              color: aspect == cfg.ratio ? AppTheme.primary.withValues(alpha: 0.3) : AppTheme.border.withValues(alpha: 0.3),
-                            ),
-                            child: Icon(cfg.icon, size: 14, color: aspect == cfg.ratio ? AppTheme.primary : AppTheme.textSecondary),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(cfg.title, style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: aspect == cfg.ratio ? AppTheme.primary : AppTheme.textPrimary)),
-                              const SizedBox(height: 2),
-                              Text(cfg.subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 10, color: AppTheme.textMuted)),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
+                  border: Border.all(
+                    color: aspect == cfg.ratio
+                        ? AppTheme.primary
+                        : AppTheme.border,
+                    width: aspect == cfg.ratio ? 2 : 1,
                   ),
                 ),
-            ],
-          ),
-          const SizedBox(height: 14),
+                child: Row(
+                  children: [
+                    // Visual Canvas Silhouette
+                    Container(
+                      width: 48,
+                      height: 52,
+                      alignment: Alignment.center,
+                      child: Container(
+                        width: cfg.w,
+                        height: cfg.h,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(
+                            color: aspect == cfg.ratio
+                                ? AppTheme.primary
+                                : AppTheme.textSecondary,
+                            width: 1.5,
+                          ),
+                          color: aspect == cfg.ratio
+                              ? AppTheme.primary.withValues(alpha: 0.3)
+                              : AppTheme.border.withValues(alpha: 0.3),
+                        ),
+                        child: Icon(
+                          cfg.icon,
+                          size: 14,
+                          color: aspect == cfg.ratio
+                              ? AppTheme.primary
+                              : AppTheme.textSecondary,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            cfg.title,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: aspect == cfg.ratio
+                                  ? AppTheme.primary
+                                  : AppTheme.textPrimary,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            cfg.subtitle,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: AppTheme.textMuted,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+      const SizedBox(height: 14),
 
-          SegmentedButton<bool>(
-            segments: const [
-              ButtonSegment(value: true, label: Text('Fill (Smart Crop)'), icon: Icon(Icons.crop_rounded)),
-              ButtonSegment(value: false, label: Text('Fit (Add Bars)'), icon: Icon(Icons.fit_screen_rounded)),
-            ],
-            selected: {fill},
-            onSelectionChanged: (s) => setState(() => fill = s.first),
+      SegmentedButton<bool>(
+        segments: const [
+          ButtonSegment(
+            value: true,
+            label: Text('Fill (Smart Crop)'),
+            icon: Icon(Icons.crop_rounded),
           ),
-          const SizedBox(height: 16),
-          FilledButton(
-            onPressed: () {
-              _close(context);
-              widget.onEdit((ir) => TimelineOps.setAspect(ir, aspect, fill: fill, focus: widget.c.faceFocus));
-            },
-            child: Text('Apply $aspect Canvas'),
+          ButtonSegment(
+            value: false,
+            label: Text('Fit (Add Bars)'),
+            icon: Icon(Icons.fit_screen_rounded),
           ),
         ],
-      );
+        selected: {fill},
+        onSelectionChanged: (s) => setState(() => fill = s.first),
+      ),
+      const SizedBox(height: 16),
+      FilledButton(
+        onPressed: () {
+          _close(context);
+          widget.onEdit(
+            (ir) => TimelineOps.setAspect(
+              ir,
+              aspect,
+              fill: fill,
+              focus: widget.c.faceFocus,
+            ),
+          );
+        },
+        child: Text('Apply $aspect Canvas'),
+      ),
+    ],
+  );
 }
 
 class _RotateSheet extends StatefulWidget {
-  const _RotateSheet({required this.c, required this.index, required this.onEdit});
+  const _RotateSheet({
+    required this.c,
+    required this.index,
+    required this.onEdit,
+  });
   final StudioController c;
   final int index;
   final EditFn onEdit;
@@ -803,15 +1308,27 @@ class _RotateSheetState extends State<_RotateSheet> {
   bool all = true;
 
   @override
-  Widget build(BuildContext context) => Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        const _Title('Rotate & flip'),
-        _Scope(all: all, onChanged: (v) => setState(() => all = v), index: widget.index, count: widget.c.ir!.clips.length),
-        Row(children: [
+  Widget build(BuildContext context) => Column(
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      const _Title('Rotate & flip'),
+      _Scope(
+        all: all,
+        onChanged: (v) => setState(() => all = v),
+        index: widget.index,
+        count: widget.c.ir!.clips.length,
+      ),
+      Row(
+        children: [
           Expanded(
             child: OutlinedButton.icon(
               onPressed: () {
                 _close(context);
-                widget.onEdit((ir) => TimelineOps.rotate(ir, index: all ? null : widget.index));
+                widget.onEdit(
+                  (ir) =>
+                      TimelineOps.rotate(ir, index: all ? null : widget.index),
+                );
               },
               icon: Icon(Icons.rotate_90_degrees_cw_rounded),
               label: Text('Rotate 90°'),
@@ -822,18 +1339,31 @@ class _RotateSheetState extends State<_RotateSheet> {
             child: OutlinedButton.icon(
               onPressed: () {
                 _close(context);
-                widget.onEdit((ir) => TimelineOps.rotate(ir, index: all ? null : widget.index, rotate90: false, toggleFlip: true));
+                widget.onEdit(
+                  (ir) => TimelineOps.rotate(
+                    ir,
+                    index: all ? null : widget.index,
+                    rotate90: false,
+                    toggleFlip: true,
+                  ),
+                );
               },
               icon: Icon(Icons.flip_rounded),
               label: Text('Flip'),
             ),
           ),
-        ]),
-      ]);
+        ],
+      ),
+    ],
+  );
 }
 
 class _FilterSheet extends StatefulWidget {
-  const _FilterSheet({required this.c, required this.index, required this.onEdit});
+  const _FilterSheet({
+    required this.c,
+    required this.index,
+    required this.onEdit,
+  });
   final StudioController c;
   final int index;
   final EditFn onEdit;
@@ -846,7 +1376,8 @@ class _FilterSheetState extends State<_FilterSheet> {
   bool all = true;
   late EditIrFilter? _selectedFilter = widget.c.ir!.clips[widget.index].filter;
 
-  static const _samplePortrait = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80';
+  static const _samplePortrait =
+      'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80';
 
   @override
   Widget build(BuildContext context) {
@@ -854,9 +1385,17 @@ class _FilterSheetState extends State<_FilterSheet> {
     final totalClips = widget.c.ir!.clips.length;
 
     final filterItems = [
-      (name: 'Original', filter: null as EditIrFilter?, desc: 'Clean natural look'),
+      (
+        name: 'Original',
+        filter: null as EditIrFilter?,
+        desc: 'Clean natural look',
+      ),
       for (final e in filterLooks.entries)
-        (name: e.key, filter: e.value as EditIrFilter?, desc: _filterDesc(e.key)),
+        (
+          name: e.key,
+          filter: e.value as EditIrFilter?,
+          desc: _filterDesc(e.key),
+        ),
     ];
 
     return Column(
@@ -869,23 +1408,49 @@ class _FilterSheetState extends State<_FilterSheet> {
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Visual Color Filters', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 18)),
-                Text('Tap to see real-time color grading', style: Theme.of(context).textTheme.labelSmall),
+                Text(
+                  'Visual Color Filters',
+                  style: Theme.of(context).textTheme.titleLarge
+                      ?.copyWith(fontSize: 18),
+                ),
+                Text(
+                  'Tap to see real-time color grading',
+                  style: Theme.of(context).textTheme.labelSmall,
+                ),
               ],
             ),
             if (_selectedFilter != null)
               TextButton.icon(
                 onPressed: () {
                   setState(() => _selectedFilter = null);
-                  widget.onEdit((ir) => TimelineOps.setFilter(ir, null, index: all ? null : widget.index), done: 'Filter removed');
+                  widget.onEdit(
+                    (ir) => TimelineOps.setFilter(
+                      ir,
+                      null,
+                      index: all ? null : widget.index,
+                    ),
+                    done: 'Filter removed',
+                  );
                 },
-                icon: Icon(Icons.refresh_rounded, size: 16, color: AppTheme.textSecondary),
-                label: Text('Reset', style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+                icon: Icon(
+                  Icons.refresh_rounded,
+                  size: 16,
+                  color: AppTheme.textSecondary,
+                ),
+                label: Text(
+                  'Reset',
+                  style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                ),
               ),
           ],
         ),
         const SizedBox(height: 12),
-        _Scope(all: all, onChanged: (v) => setState(() => all = v), index: widget.index, count: totalClips),
+        _Scope(
+          all: all,
+          onChanged: (v) => setState(() => all = v),
+          index: widget.index,
+          count: totalClips,
+        ),
         const SizedBox(height: 8),
 
         // Visual Filter Cards Strip
@@ -901,14 +1466,22 @@ class _FilterSheetState extends State<_FilterSheet> {
                   ? currentPreset == null
                   : currentPreset == item.filter?.preset;
 
-              final matrix = item.filter == null ? null : gradeMatrix(item.filter!);
+              final matrix = item.filter == null
+                  ? null
+                  : gradeMatrix(item.filter!);
 
               return GestureDetector(
                 onTap: () {
                   setState(() => _selectedFilter = item.filter);
                   widget.onEdit(
-                    (ir) => TimelineOps.setFilter(ir, item.filter, index: all ? null : widget.index),
-                    done: item.filter == null ? 'Filter cleared' : '${item.name} filter applied',
+                    (ir) => TimelineOps.setFilter(
+                      ir,
+                      item.filter,
+                      index: all ? null : widget.index,
+                    ),
+                    done: item.filter == null
+                        ? 'Filter cleared'
+                        : '${item.name} filter applied',
                   );
                 },
                 child: Column(
@@ -921,16 +1494,20 @@ class _FilterSheetState extends State<_FilterSheet> {
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: isSelected ? AppTheme.primary : AppTheme.border,
+                          color: isSelected
+                              ? AppTheme.primary
+                              : AppTheme.border,
                           width: isSelected ? 2.5 : 1,
                         ),
                         boxShadow: isSelected
                             ? [
                                 BoxShadow(
-                                  color: AppTheme.primary.withValues(alpha: 0.4),
+                                  color: AppTheme.primary.withValues(
+                                    alpha: 0.4,
+                                  ),
                                   blurRadius: 10,
                                   spreadRadius: 1,
-                                )
+                                ),
                               ]
                             : null,
                       ),
@@ -945,14 +1522,16 @@ class _FilterSheetState extends State<_FilterSheet> {
                                 child: Image.network(
                                   _samplePortrait,
                                   fit: BoxFit.cover,
-                                  errorBuilder: (_, _, _) => _fallbackFilterThumb(item.name),
+                                  errorBuilder: (_, _, _) =>
+                                      _fallbackFilterThumb(item.name),
                                 ),
                               )
                             else
                               Image.network(
                                 _samplePortrait,
                                 fit: BoxFit.cover,
-                                errorBuilder: (_, _, _) => _fallbackFilterThumb(item.name),
+                                errorBuilder: (_, _, _) =>
+                                    _fallbackFilterThumb(item.name),
                               ),
                             Positioned(
                               bottom: 0,
@@ -964,7 +1543,10 @@ class _FilterSheetState extends State<_FilterSheet> {
                                   gradient: LinearGradient(
                                     begin: Alignment.bottomCenter,
                                     end: Alignment.topCenter,
-                                    colors: [Colors.black.withValues(alpha: 0.8), Colors.transparent],
+                                    colors: [
+                                      Colors.black.withValues(alpha: 0.8),
+                                      Colors.transparent,
+                                    ],
                                   ),
                                 ),
                               ),
@@ -979,7 +1561,11 @@ class _FilterSheetState extends State<_FilterSheet> {
                                     color: AppTheme.primary,
                                     shape: BoxShape.circle,
                                   ),
-                                  child: const Icon(Icons.check, size: 12, color: Colors.white),
+                                  child: const Icon(
+                                    Icons.check,
+                                    size: 12,
+                                    color: Colors.white,
+                                  ),
                                 ),
                               ),
                           ],
@@ -991,8 +1577,12 @@ class _FilterSheetState extends State<_FilterSheet> {
                       item.name,
                       style: TextStyle(
                         fontSize: 12,
-                        fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                        color: isSelected ? AppTheme.primary : AppTheme.textPrimary,
+                        fontWeight: isSelected
+                            ? FontWeight.bold
+                            : FontWeight.w500,
+                        color: isSelected
+                            ? AppTheme.primary
+                            : AppTheme.textPrimary,
                       ),
                     ),
                   ],
@@ -1005,7 +1595,11 @@ class _FilterSheetState extends State<_FilterSheet> {
         const SizedBox(height: 14),
         FilledButton(
           onPressed: () => _close(context),
-          child: Text(all ? 'Done (Applied to all $totalClips clips)' : 'Done (Applied to Clip ${widget.index + 1})'),
+          child: Text(
+            all
+                ? 'Done (Applied to all $totalClips clips)'
+                : 'Done (Applied to Clip ${widget.index + 1})',
+          ),
         ),
       ],
     );
@@ -1037,15 +1631,29 @@ class _FilterSheetState extends State<_FilterSheet> {
     };
     return Container(
       decoration: BoxDecoration(
-        gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: colors),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: colors,
+        ),
       ),
-      child: Center(child: Icon(Icons.palette_rounded, color: Colors.white.withValues(alpha: 0.6), size: 20)),
+      child: Center(
+        child: Icon(
+          Icons.palette_rounded,
+          color: Colors.white.withValues(alpha: 0.6),
+          size: 20,
+        ),
+      ),
     );
   }
 }
 
 class _AdjustSheet extends StatefulWidget {
-  const _AdjustSheet({required this.c, required this.index, required this.onEdit});
+  const _AdjustSheet({
+    required this.c,
+    required this.index,
+    required this.onEdit,
+  });
   final StudioController c;
   final int index;
   final EditFn onEdit;
@@ -1055,42 +1663,108 @@ class _AdjustSheet extends StatefulWidget {
 }
 
 class _AdjustSheetState extends State<_AdjustSheet> {
-  late EditIrFilter f = widget.c.ir!.clips[widget.index].filter ?? EditIrFilter();
+  late EditIrFilter f =
+      widget.c.ir!.clips[widget.index].filter ?? EditIrFilter();
   bool all = true;
 
   /// [v] shown as -100..+100 around [neutral]; [span] is how far the slider reaches either side.
-  Widget _slider(String label, double v, double neutral, double span, ValueChanged<double> on, {bool oneSided = false}) {
+  Widget _slider(
+    String label,
+    double v,
+    double neutral,
+    double span,
+    ValueChanged<double> on, {
+    bool oneSided = false,
+  }) {
     final shown = ((v - neutral) / span * 100).round();
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text('$label  ${shown > 0 && !oneSided ? '+' : ''}$shown'),
-      Slider(
-        value: v.clamp(oneSided ? neutral : neutral - span, neutral + span),
-        min: oneSided ? neutral : neutral - span,
-        max: neutral + span,
-        divisions: oneSided ? 20 : 40,
-        onChanged: on,
-      ),
-    ]);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('$label  ${shown > 0 && !oneSided ? '+' : ''}$shown'),
+        Slider(
+          value: v.clamp(oneSided ? neutral : neutral - span, neutral + span),
+          min: oneSided ? neutral : neutral - span,
+          max: neutral + span,
+          divisions: oneSided ? 20 : 40,
+          onChanged: on,
+        ),
+      ],
+    );
   }
 
   @override
-  Widget build(BuildContext context) => Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        const _Title('Adjust colour'),
-        _Scope(all: all, onChanged: (v) => setState(() => all = v), index: widget.index, count: widget.c.ir!.clips.length),
-        Flexible(
-          child: SingleChildScrollView(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              _slider('Exposure', f.exposure, 0, 1, (v) => setState(() => f = f.copyWith(exposure: v))),
-              _slider('Brightness', f.brightness, 1, 1, (v) => setState(() => f = f.copyWith(brightness: v))),
-              _slider('Contrast', f.contrast, 1, 1, (v) => setState(() => f = f.copyWith(contrast: v))),
-              _slider('Saturation', f.saturation, 1, 1, (v) => setState(() => f = f.copyWith(saturation: v))),
-              _slider('Warmth', f.temperature, 0, 1, (v) => setState(() => f = f.copyWith(temperature: v))),
-              _slider('Tint', f.tint, 0, 1, (v) => setState(() => f = f.copyWith(tint: v))),
-              _slider('Vignette', f.vignette, 0, 1, (v) => setState(() => f = f.copyWith(vignette: v)), oneSided: true),
-            ]),
+  Widget build(BuildContext context) => Column(
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      const _Title('Adjust colour'),
+      _Scope(
+        all: all,
+        onChanged: (v) => setState(() => all = v),
+        index: widget.index,
+        count: widget.c.ir!.clips.length,
+      ),
+      Flexible(
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _slider(
+                'Exposure',
+                f.exposure,
+                0,
+                1,
+                (v) => setState(() => f = f.copyWith(exposure: v)),
+              ),
+              _slider(
+                'Brightness',
+                f.brightness,
+                1,
+                1,
+                (v) => setState(() => f = f.copyWith(brightness: v)),
+              ),
+              _slider(
+                'Contrast',
+                f.contrast,
+                1,
+                1,
+                (v) => setState(() => f = f.copyWith(contrast: v)),
+              ),
+              _slider(
+                'Saturation',
+                f.saturation,
+                1,
+                1,
+                (v) => setState(() => f = f.copyWith(saturation: v)),
+              ),
+              _slider(
+                'Warmth',
+                f.temperature,
+                0,
+                1,
+                (v) => setState(() => f = f.copyWith(temperature: v)),
+              ),
+              _slider(
+                'Tint',
+                f.tint,
+                0,
+                1,
+                (v) => setState(() => f = f.copyWith(tint: v)),
+              ),
+              _slider(
+                'Vignette',
+                f.vignette,
+                0,
+                1,
+                (v) => setState(() => f = f.copyWith(vignette: v)),
+                oneSided: true,
+              ),
+            ],
           ),
         ),
-        Row(children: [
+      ),
+      Row(
+        children: [
           TextButton(
             onPressed: () => setState(() => f = EditIrFilter(preset: f.preset)),
             child: Text('Reset'),
@@ -1100,12 +1774,20 @@ class _AdjustSheetState extends State<_AdjustSheet> {
             onPressed: () {
               _close(context);
               final next = f;
-              widget.onEdit((ir) => TimelineOps.setFilter(ir, next.isNeutral ? null : next, index: all ? null : widget.index));
+              widget.onEdit(
+                (ir) => TimelineOps.setFilter(
+                  ir,
+                  next.isNeutral ? null : next,
+                  index: all ? null : widget.index,
+                ),
+              );
             },
             child: Text('Apply'),
           ),
-        ]),
-      ]);
+        ],
+      ),
+    ],
+  );
 }
 
 /// Records a voiceover from the playhead. The recording is placed where it started; music ducks under it on export.
@@ -1124,12 +1806,12 @@ class _VoiceoverSheetState extends State<_VoiceoverSheet> {
   bool _busy = false;
 
   Future<void> _speak() => _run(() async {
-        await widget.c.addNarration(_narration.text);
-        if (mounted) {
-          _close(context);
-          showSuccess(context, 'AI voice added');
-        }
-      });
+    await widget.c.addNarration(_narration.text);
+    if (mounted) {
+      _close(context);
+      showSuccess(context, 'AI voice added');
+    }
+  });
 
   @override
   void dispose() {
@@ -1152,70 +1834,98 @@ class _VoiceoverSheetState extends State<_VoiceoverSheet> {
   }
 
   Future<void> _start() => _run(() async {
-        await widget.c.startVoiceover();
-        _since = DateTime.now();
-        _tick = Timer.periodic(const Duration(milliseconds: 200), (_) => setState(() {}));
-      });
+    await widget.c.startVoiceover();
+    _since = DateTime.now();
+    _tick = Timer.periodic(
+      const Duration(milliseconds: 200),
+      (_) => setState(() {}),
+    );
+  });
 
   Future<void> _stop() => _run(() async {
-        _tick?.cancel();
-        await widget.c.stopVoiceover();
-        if (mounted) {
-          _close(context);
-          showSuccess(context, 'Voiceover added');
-        }
-      });
+    _tick?.cancel();
+    await widget.c.stopVoiceover();
+    if (mounted) {
+      _close(context);
+      showSuccess(context, 'Voiceover added');
+    }
+  });
 
   @override
   Widget build(BuildContext context) {
     final c = widget.c;
     final recording = c.recordingVoiceover;
-    final elapsed = _since == null ? 0 : DateTime.now().difference(_since!).inMilliseconds;
+    final elapsed = _since == null
+        ? 0
+        : DateTime.now().difference(_since!).inMilliseconds;
     final count = c.ir?.audio.voiceovers.length ?? 0;
-    return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      _Title(
-        'Voiceover',
-        subtitle: recording
-            ? 'Recording from ${timecode(c.voiceoverStartMs ?? 0)}…'
-            : 'Records from the playhead (${timecode(c.playheadMs)}) while the video plays (muted). Music is lowered under your voice on export.',
-      ),
-      if (recording)
-        Text(timecode(elapsed), textAlign: TextAlign.center, style: Theme.of(context).textTheme.headlineMedium?.copyWith(color: AppTheme.error)),
-      SizedBox(height: 12),
-      SizedBox(
-        height: 56,
-        child: FilledButton.icon(
-          style: FilledButton.styleFrom(backgroundColor: recording ? AppTheme.error : null),
-          onPressed: _busy ? null : (recording ? _stop : _start),
-          icon: Icon(recording ? Icons.stop_rounded : Icons.mic_rounded),
-          label: Text(recording ? 'Stop and add' : 'Start recording'),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _Title(
+          'Voiceover',
+          subtitle: recording
+              ? 'Recording from ${timecode(c.voiceoverStartMs ?? 0)}…'
+              : 'Records from the playhead (${timecode(c.playheadMs)}) while the video plays (muted). Music is lowered under your voice on export.',
         ),
-      ),
-      if (recording)
-        TextButton(onPressed: _busy ? null : () => _run(c.cancelVoiceover), child: Text('Discard')),
-      if (!recording) ...[
-        Divider(height: 28),
-        Text("Or type it and let the phone's AI voice read it", style: TextStyle(color: AppTheme.textSecondary)),
-        SizedBox(height: 8),
-        TextField(controller: _narration, minLines: 2, maxLines: 4, maxLength: 400, decoration: fieldDecoration('Narration text')),
+        if (recording)
+          Text(
+            timecode(elapsed),
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.headlineMedium
+                ?.copyWith(color: AppTheme.error),
+          ),
+        SizedBox(height: 12),
         SizedBox(
-          height: 48,
-          child: OutlinedButton.icon(
-            onPressed: _busy ? null : _speak,
-            icon: Icon(Icons.record_voice_over_rounded),
-            label: Text(_busy ? 'Generating voice…' : 'Generate AI voice'),
+          height: 56,
+          child: FilledButton.icon(
+            style: FilledButton.styleFrom(
+              backgroundColor: recording ? AppTheme.error : null,
+            ),
+            onPressed: _busy ? null : (recording ? _stop : _start),
+            icon: Icon(recording ? Icons.stop_rounded : Icons.mic_rounded),
+            label: Text(recording ? 'Stop and add' : 'Start recording'),
           ),
         ),
+        if (recording)
+          TextButton(
+            onPressed: _busy ? null : () => _run(c.cancelVoiceover),
+            child: Text('Discard'),
+          ),
+        if (!recording) ...[
+          Divider(height: 28),
+          Text(
+            "Or type it and let the phone's AI voice read it",
+            style: TextStyle(color: AppTheme.textSecondary),
+          ),
+          SizedBox(height: 8),
+          TextField(
+            controller: _narration,
+            minLines: 2,
+            maxLines: 4,
+            maxLength: 400,
+            decoration: fieldDecoration('Narration text'),
+          ),
+          SizedBox(
+            height: 48,
+            child: OutlinedButton.icon(
+              onPressed: _busy ? null : _speak,
+              icon: Icon(Icons.record_voice_over_rounded),
+              label: Text(_busy ? 'Generating voice…' : 'Generate AI voice'),
+            ),
+          ),
+        ],
+        if (!recording && count > 0)
+          Padding(
+            padding: EdgeInsets.only(top: 8),
+            child: Text(
+              '$count voiceover${count == 1 ? '' : 's'} on the timeline. Tap one on the Voiceover track to move, trim, change its volume or delete it.',
+              style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+            ),
+          ),
       ],
-      if (!recording && count > 0)
-        Padding(
-          padding: EdgeInsets.only(top: 8),
-          child: Text(
-            '$count voiceover${count == 1 ? '' : 's'} on the timeline. Tap one on the Voiceover track to move, trim, change its volume or delete it.',
-            style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
-          ),
-        ),
-    ]);
+    );
   }
 }
 
@@ -1273,8 +1983,16 @@ class _StickerSheetState extends State<_StickerSheet> {
       if (s.attribution != null) widget.c.mediaCredits[s.url] = s.attribution!;
       _close(context);
       widget.onEdit(
-        (ir) => TimelineOps.addSticker(ir, {'kind': 'url', 'url': s.url, 'query': s.title},
-            startMs: widget.c.playheadMs, avoidFace: TimelineOps.faceOnCanvas(ir, widget.c.faces, widget.c.playheadMs)),
+        (ir) => TimelineOps.addSticker(
+          ir,
+          {'kind': 'url', 'url': s.url, 'query': s.title},
+          startMs: widget.c.playheadMs,
+          avoidFace: TimelineOps.faceOnCanvas(
+            ir,
+            widget.c.faces,
+            widget.c.playheadMs,
+          ),
+        ),
         done: 'Sticker added. Drag it on the preview to move it.',
       );
     } catch (e) {
@@ -1289,14 +2007,26 @@ class _StickerSheetState extends State<_StickerSheet> {
     try {
       final docs = await getApplicationDocumentsDirectory();
       final name = emoji.runes.map((r) => r.toRadixString(16)).join('_');
-      final path = await renderEmojiSticker(emoji, '${docs.path}/stickers/emoji_$name.png');
+      final path = await renderEmojiSticker(
+        emoji,
+        '${docs.path}/stickers/emoji_$name.png',
+      );
       final source = widget.c.localOverlaySource(path, label: 'Sticker $emoji');
       if (!mounted) return;
       _close(context);
       widget.onEdit(
-          (ir) => TimelineOps.addSticker(ir, source,
-              startMs: widget.c.playheadMs, avoidFace: TimelineOps.faceOnCanvas(ir, widget.c.faces, widget.c.playheadMs)),
-          done: 'Sticker added. Drag it on the preview to move it.');
+        (ir) => TimelineOps.addSticker(
+          ir,
+          source,
+          startMs: widget.c.playheadMs,
+          avoidFace: TimelineOps.faceOnCanvas(
+            ir,
+            widget.c.faces,
+            widget.c.playheadMs,
+          ),
+        ),
+        done: 'Sticker added. Drag it on the preview to move it.',
+      );
     } catch (e) {
       if (mounted) showError(context, e);
     } finally {
@@ -1305,33 +2035,55 @@ class _StickerSheetState extends State<_StickerSheet> {
   }
 
   @override
-  Widget build(BuildContext context) => Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        _Title('Stickers', subtitle: 'Added at ${timecode(widget.c.playheadMs)} for 2.5 s. Resize, rotate and animate it in the B-roll inspector.'),
-        Text('3D stickers', style: Theme.of(context).textTheme.labelLarge),
-        SizedBox(height: 6),
-        TextField(
-          controller: _q,
-          textInputAction: TextInputAction.search,
-          onSubmitted: (_) => _search(),
-          decoration: fieldDecoration('Search 3D stickers', hint: 'fire, rocket, money, trophy…').copyWith(
-            suffixIcon: IconButton(tooltip: 'Search', icon: Icon(Icons.search_rounded), onPressed: () => _search()),
-          ),
+  Widget build(BuildContext context) => Column(
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      _Title(
+        'Stickers',
+        subtitle:
+            'Added at ${timecode(widget.c.playheadMs)} for 2.5 s. Resize, rotate and animate it in the B-roll inspector.',
+      ),
+      Text('3D stickers', style: Theme.of(context).textTheme.labelLarge),
+      SizedBox(height: 6),
+      TextField(
+        controller: _q,
+        textInputAction: TextInputAction.search,
+        onSubmitted: (_) => _search(),
+        decoration:
+            fieldDecoration(
+              'Search 3D stickers',
+              hint: 'fire, rocket, money, trophy…',
+            ).copyWith(
+              suffixIcon: IconButton(
+                tooltip: 'Search',
+                icon: Icon(Icons.search_rounded),
+                onPressed: () => _search(),
+              ),
+            ),
+      ),
+      SizedBox(height: 8),
+      if (_searching)
+        SizedBox(
+          height: 120,
+          child: UniversalSkeleton(type: SkeletonType.activity, itemCount: 1),
         ),
-        SizedBox(height: 8),
-        if (_searching) SizedBox(height: 120, child: UniversalSkeleton(type: SkeletonType.activity, itemCount: 1)),
-        if (_error != null && !_searching) ErrorView(error: _error!, compact: true, onRetry: _search),
-        if (!_searching && _error == null && (_found?.isEmpty ?? false))
-          EmptyView(
-            icon: Icons.emoji_emotions_outlined,
-            title: 'No 3D stickers found',
-            message: 'Try one simple word, or use an emoji below.',
-            actionLabel: 'Show popular',
-            onAction: () => _search(''),
-          ),
-        if (!_searching && (_found?.isNotEmpty ?? false))
-          SizedBox(
-            height: 132,
-            child: ListView(scrollDirection: Axis.horizontal, children: [
+      if (_error != null && !_searching)
+        ErrorView(error: _error!, compact: true, onRetry: _search),
+      if (!_searching && _error == null && (_found?.isEmpty ?? false))
+        EmptyView(
+          icon: Icons.emoji_emotions_outlined,
+          title: 'No 3D stickers found',
+          message: 'Try one simple word, or use an emoji below.',
+          actionLabel: 'Show popular',
+          onAction: () => _search(''),
+        ),
+      if (!_searching && (_found?.isNotEmpty ?? false))
+        SizedBox(
+          height: 132,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            children: [
               for (final s in _found!)
                 Padding(
                   padding: EdgeInsets.only(right: 6),
@@ -1340,31 +2092,57 @@ class _StickerSheetState extends State<_StickerSheet> {
                     onTap: _busy == null ? () => _add3d(s) : null,
                     child: SizedBox(
                       width: 96,
-                      child: Column(children: [
-                        SizedBox(
-                          width: 88,
-                          height: 88,
-                          child: Stack(fit: StackFit.expand, children: [
-                            Opacity(
-                              opacity: _busy == s.url ? 0.4 : 1,
-                              child: Image.network(s.thumbnailUrl, cacheWidth: 200, fit: BoxFit.contain,
-                                  errorBuilder: (_, _, _) => Icon(Icons.broken_image_rounded, color: AppTheme.textMuted)),
+                      child: Column(
+                        children: [
+                          SizedBox(
+                            width: 88,
+                            height: 88,
+                            child: Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                Opacity(
+                                  opacity: _busy == s.url ? 0.4 : 1,
+                                  child: Image.network(
+                                    s.thumbnailUrl,
+                                    cacheWidth: 200,
+                                    fit: BoxFit.contain,
+                                    errorBuilder: (_, _, _) => Icon(
+                                      Icons.broken_image_rounded,
+                                      color: AppTheme.textMuted,
+                                    ),
+                                  ),
+                                ),
+                                Positioned(
+                                  top: 0,
+                                  right: 0,
+                                  child: AssetDownloadBadge(url: s.url),
+                                ),
+                              ],
                             ),
-                            Positioned(top: 0, right: 0, child: AssetDownloadBadge(url: s.url)),
-                          ]),
-                        ),
-                        SizedBox(height: 4),
-                        Text(s.title, maxLines: 2, textAlign: TextAlign.center, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11)),
-                      ]),
+                          ),
+                          SizedBox(height: 4),
+                          Text(
+                            s.title,
+                            maxLines: 2,
+                            textAlign: TextAlign.center,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 11),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
-            ]),
+            ],
           ),
-        SizedBox(height: 12),
-        Text('Emoji', style: Theme.of(context).textTheme.labelLarge),
-        SizedBox(height: 6),
-        Wrap(spacing: 4, runSpacing: 4, children: [
+        ),
+      SizedBox(height: 12),
+      Text('Emoji', style: Theme.of(context).textTheme.labelLarge),
+      SizedBox(height: 6),
+      Wrap(
+        spacing: 4,
+        runSpacing: 4,
+        children: [
           for (final e in stickerEmojis)
             SizedBox(
               width: 52,
@@ -1373,11 +2151,18 @@ class _StickerSheetState extends State<_StickerSheet> {
                 borderRadius: BorderRadius.circular(12),
                 onTap: _busy == null ? () => _add(e) : null,
                 // The sticker being drawn dims until it is placed.
-                child: Center(child: Opacity(opacity: _busy == e ? 0.3 : 1, child: Text(e, style: TextStyle(fontSize: 30)))),
+                child: Center(
+                  child: Opacity(
+                    opacity: _busy == e ? 0.3 : 1,
+                    child: Text(e, style: TextStyle(fontSize: 30)),
+                  ),
+                ),
               ),
             ),
-        ]),
-      ]);
+        ],
+      ),
+    ],
+  );
 }
 
 // ── overlays & audio ─────────────────────────────────────────────────────────
@@ -1409,7 +2194,9 @@ class _TextSheetState extends State<_TextSheet> {
   );
 
   late final _text = TextEditingController(text: _existing?.text ?? '');
-  late final int _initialMs = _existing == null ? 3000 : _existing.endMs - _existing.startMs;
+  late final int _initialMs = _existing == null
+      ? 3000
+      : _existing.endMs - _existing.startMs;
   late double seconds = (_initialMs / 1000).clamp(_minSeconds, _maxSeconds);
   late double? y = (_initialStyle['positionY'] as num?)?.toDouble() ?? 0.25;
   late final double x = (_initialStyle['positionX'] as num?)?.toDouble() ?? 0.5;
@@ -1417,10 +2204,16 @@ class _TextSheetState extends State<_TextSheet> {
   late String _fontFamily = (_initialStyle['fontFamily'] as String?) ?? 'Inter';
 
   /// Canvas pixels (contract §3.4): 72 px is about 7% of a 1080-wide frame.
-  late double _fontSize = ((_initialStyle['fontSizePx'] as num?)?.toDouble() ?? 72).clamp(_minFont, _maxFont);
+  late double _fontSize =
+      ((_initialStyle['fontSizePx'] as num?)?.toDouble() ?? 72).clamp(
+        _minFont,
+        _maxFont,
+      );
   late String _textColor = _hex6(_initialStyle['textColor']) ?? '#FFFFFF';
-  late String? _bgColor = (_initialStyle['background'] as Map?)?['color'] as String?;
-  late int _strokeWidth = (_initialStyle['strokeWidthPx'] as num?)?.round() ?? 0;
+  late String? _bgColor =
+      (_initialStyle['background'] as Map?)?['color'] as String?;
+  late int _strokeWidth =
+      (_initialStyle['strokeWidthPx'] as num?)?.round() ?? 0;
   late bool _shadow = _initialStyle['shadow'] != false;
   late bool _glow = _initialStyle['glow'] == true;
   late String _animation = (_initialStyle['animation'] as String?) ?? 'none';
@@ -1431,8 +2224,34 @@ class _TextSheetState extends State<_TextSheet> {
   static const _minFont = 24.0, _maxFont = 240.0;
   static const _minSeconds = 0.5, _maxSeconds = 30.0;
 
-  static const _emojis = ['🔥', '🚀', '❤️', '💡', '👏', '😂', '✨', '🎯', '📈', '⚡', '🎬', '💥', '💰', '👑', '🎉', '💯'];
-  static const _fonts = ['Inter', 'Anton', 'Montserrat', 'Poppins', 'Syne', 'Outfit', 'Roboto', 'Bebas Neue'];
+  static const _emojis = [
+    '🔥',
+    '🚀',
+    '❤️',
+    '💡',
+    '👏',
+    '😂',
+    '✨',
+    '🎯',
+    '📈',
+    '⚡',
+    '🎬',
+    '💥',
+    '💰',
+    '👑',
+    '🎉',
+    '💯',
+  ];
+  static const _fonts = [
+    'Inter',
+    'Anton',
+    'Montserrat',
+    'Poppins',
+    'Syne',
+    'Outfit',
+    'Roboto',
+    'Bebas Neue',
+  ];
   static const _textColors = [
     ('#FFFFFF', 'White'),
     ('#FFE600', 'Yellow'),
@@ -1468,11 +2287,13 @@ class _TextSheetState extends State<_TextSheet> {
   static String? _hex6(Object? v) {
     if (v is! String) return null;
     final h = v.trim().replaceFirst('#', '');
-    if ((h.length != 6 && h.length != 8) || int.tryParse(h, radix: 16) == null) return null;
+    if ((h.length != 6 && h.length != 8) || int.tryParse(h, radix: 16) == null)
+      return null;
     return '#${h.substring(0, 6).toUpperCase()}';
   }
 
-  static Color _swatch(String hex) => Color(int.parse('FF${hex.substring(1, 7)}', radix: 16));
+  static Color _swatch(String hex) =>
+      Color(int.parse('FF${hex.substring(1, 7)}', radix: 16));
 
   @override
   void dispose() {
@@ -1505,14 +2326,19 @@ class _TextSheetState extends State<_TextSheet> {
       // A title has no spoken words: its "highlight" is its own colour. Captions keep their highlight colour.
       if (!_isCaption) 'highlightColor': _textColor,
       'positionX': x,
-      'positionY': y ?? (_initialStyle['positionY'] as num?)?.toDouble() ?? 0.25,
-      'background': _bgColor == null ? null : {if (bg is Map) ...bg.cast<String, dynamic>(), 'color': _bgColor},
+      'positionY':
+          y ?? (_initialStyle['positionY'] as num?)?.toDouble() ?? 0.25,
+      'background': _bgColor == null
+          ? null
+          : {if (bg is Map) ...bg.cast<String, dynamic>(), 'color': _bgColor},
       'strokeWidthPx': _strokeWidth,
       'strokeColor': _initialStyle['strokeColor'] ?? '#000000',
       'shadow': _shadow,
       'glow': _glow,
       'animation': _animation,
-      'enter': _enter == null ? null : {'type': _enter, 'durationMs': _enter == 'typewriter' ? 1200 : 400},
+      'enter': _enter == null
+          ? null
+          : {'type': _enter, 'durationMs': _enter == 'typewriter' ? 1200 : 400},
       'exit': _exit == null ? null : {'type': _exit, 'durationMs': 400},
       'loop': _loop == null ? null : {'type': _loop, 'periodMs': 1200},
     };
@@ -1521,7 +2347,10 @@ class _TextSheetState extends State<_TextSheet> {
   void _submit() {
     final t = _text.text.trim();
     if (t.isEmpty) {
-      showError(context, _isCaption ? 'Type the caption first.' : 'Type some text first.');
+      showError(
+        context,
+        _isCaption ? 'Type the caption first.' : 'Type some text first.',
+      );
       return;
     }
     final style = _buildStyle();
@@ -1533,13 +2362,25 @@ class _TextSheetState extends State<_TextSheet> {
       widget.onEdit((ir) {
         var out = TimelineOps.editText(ir, ex.id, text: t, style: style);
         if ((ms - _initialMs).abs() >= 50) {
-          out = TimelineOps.setItemRange(out, _isCaption ? TrackKind.captions : TrackKind.text, ex.id, ex.startMs, ex.startMs + ms);
+          out = TimelineOps.setItemRange(
+            out,
+            _isCaption ? TrackKind.captions : TrackKind.text,
+            ex.id,
+            ex.startMs,
+            ex.startMs + ms,
+          );
         }
         return out;
       }, done: _isCaption ? 'Caption updated' : 'Text updated');
     } else {
       widget.onEdit(
-        (ir) => TimelineOps.addText(ir, t, startMs: widget.c.playheadMs, durationMs: ms, style: style),
+        (ir) => TimelineOps.addText(
+          ir,
+          t,
+          startMs: widget.c.playheadMs,
+          durationMs: ms,
+          style: style,
+        ),
         done: 'Text added. Drag it on the video to move it.',
       );
     }
@@ -1547,7 +2388,9 @@ class _TextSheetState extends State<_TextSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final titles = widget.c.ir!.captions.where((c) => c.kind == 'text').toList();
+    final titles = widget.c.ir!.captions
+        .where((c) => c.kind == 'text')
+        .toList();
     final previewStyle = _buildStyle();
     final ex = _existing;
 
@@ -1557,7 +2400,9 @@ class _TextSheetState extends State<_TextSheet> {
         padding: EdgeInsets.zero,
         children: [
           _Title(
-            ex == null ? 'Add text' : (_isCaption ? 'Edit caption' : 'Edit text'),
+            ex == null
+                ? 'Add text'
+                : (_isCaption ? 'Edit caption' : 'Edit text'),
             subtitle: ex == null
                 ? 'Starts at ${timecode(widget.c.playheadMs)}. Drag it on the video to position it.'
                 : '${timecode(ex.startMs)} – ${timecode(ex.endMs)}. Drag it on the video to position it.',
@@ -1584,7 +2429,8 @@ class _TextSheetState extends State<_TextSheet> {
                   fontSize: (_fontSize / 3).clamp(12, 32).toDouble(),
                   color: _swatch(_textColor),
                   shadows: [
-                    if (_glow) Shadow(blurRadius: 16, color: _swatch(_textColor)),
+                    if (_glow)
+                      Shadow(blurRadius: 16, color: _swatch(_textColor)),
                     if (_shadow || _strokeWidth > 0) ...[
                       Shadow(blurRadius: 4, color: Colors.black),
                       Shadow(blurRadius: 1, color: Colors.black),
@@ -1602,16 +2448,32 @@ class _TextSheetState extends State<_TextSheet> {
             minLines: 1,
             maxLines: 3,
             onChanged: (_) => setState(() {}),
-            decoration: fieldDecoration(_isCaption ? 'Caption text' : 'Text content', hint: 'Type your title, hook, or text…'),
+            decoration: fieldDecoration(
+              _isCaption ? 'Caption text' : 'Text content',
+              hint: 'Type your title, hook, or text…',
+            ),
           ),
           SizedBox(height: 8),
 
           // Quick Emojis
-          Row(children: [
-            Icon(Icons.emoji_emotions_outlined, size: 16, color: AppTheme.textSecondary),
-            SizedBox(width: 6),
-            Text('Quick Emojis', style: TextStyle(fontSize: 12, color: AppTheme.textSecondary, fontWeight: FontWeight.bold)),
-          ]),
+          Row(
+            children: [
+              Icon(
+                Icons.emoji_emotions_outlined,
+                size: 16,
+                color: AppTheme.textSecondary,
+              ),
+              SizedBox(width: 6),
+              Text(
+                'Quick Emojis',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: AppTheme.textSecondary,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
           SizedBox(height: 6),
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
@@ -1624,8 +2486,14 @@ class _TextSheetState extends State<_TextSheet> {
                       borderRadius: BorderRadius.circular(8),
                       onTap: () => _insertEmoji(em),
                       child: Container(
-                        padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                        decoration: BoxDecoration(color: AppTheme.surfaceElevated, borderRadius: BorderRadius.circular(8)),
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppTheme.surfaceElevated,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
                         child: Text(em, style: TextStyle(fontSize: 18)),
                       ),
                     ),
@@ -1636,7 +2504,14 @@ class _TextSheetState extends State<_TextSheet> {
           SizedBox(height: 12),
 
           // Google Font Family
-          Text('Font Style', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textSecondary)),
+          Text(
+            'Font Style',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: AppTheme.textSecondary,
+            ),
+          ),
           SizedBox(height: 6),
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
@@ -1657,7 +2532,14 @@ class _TextSheetState extends State<_TextSheet> {
           SizedBox(height: 12),
 
           // Text Colors
-          Text('Text Color', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textSecondary)),
+          Text(
+            'Text Color',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: AppTheme.textSecondary,
+            ),
+          ),
           SizedBox(height: 6),
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
@@ -1680,7 +2562,9 @@ class _TextSheetState extends State<_TextSheet> {
                             color: _swatch(hex),
                             shape: BoxShape.circle,
                             border: Border.all(
-                              color: _textColor == hex ? AppTheme.primary : AppTheme.border,
+                              color: _textColor == hex
+                                  ? AppTheme.primary
+                                  : AppTheme.border,
                               width: _textColor == hex ? 3 : 1,
                             ),
                           ),
@@ -1694,29 +2578,50 @@ class _TextSheetState extends State<_TextSheet> {
           SizedBox(height: 12),
 
           // Highlight / Background
-          Text('Highlight Box', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textSecondary)),
+          Text(
+            'Highlight Box',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: AppTheme.textSecondary,
+            ),
+          ),
           SizedBox(height: 6),
-          Wrap(spacing: 8, children: [
-            for (final (hex, label) in _bgColors)
-              ChoiceChip(
-                label: Text(label),
-                selected: _bgColor == hex,
-                onSelected: (_) => setState(() => _bgColor = hex),
-              ),
-          ]),
+          Wrap(
+            spacing: 8,
+            children: [
+              for (final (hex, label) in _bgColors)
+                ChoiceChip(
+                  label: Text(label),
+                  selected: _bgColor == hex,
+                  onSelected: (_) => setState(() => _bgColor = hex),
+                ),
+            ],
+          ),
           SizedBox(height: 12),
 
           // Word highlighting
-          Text('Word highlight', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textSecondary)),
+          Text(
+            'Word highlight',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: AppTheme.textSecondary,
+            ),
+          ),
           SizedBox(height: 6),
-          Wrap(spacing: 8, runSpacing: 6, children: [
-            for (final (animKey, animLabel) in _animations)
-              ChoiceChip(
-                label: Text(animLabel),
-                selected: _animation == animKey,
-                onSelected: (_) => setState(() => _animation = animKey),
-              ),
-          ]),
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            children: [
+              for (final (animKey, animLabel) in _animations)
+                ChoiceChip(
+                  label: Text(animLabel),
+                  selected: _animation == animKey,
+                  onSelected: (_) => setState(() => _animation = animKey),
+                ),
+            ],
+          ),
           SizedBox(height: 12),
 
           // Motion: the same In / Out / Loop the export renders.
@@ -1725,73 +2630,136 @@ class _TextSheetState extends State<_TextSheet> {
             ('Out', textExitTypes, _exit, (String? v) => _exit = v),
             ('Loop', textLoopTypes, _loop, (String? v) => _loop = v),
           ]) ...[
-            Text('Animation: $label', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textSecondary)),
+            Text(
+              'Animation: $label',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.textSecondary,
+              ),
+            ),
             SizedBox(height: 6),
-            Wrap(spacing: 8, runSpacing: 6, children: [
-              ChoiceChip(label: Text('None'), selected: value == null, onSelected: (_) => setState(() => set(null))),
-              for (final t in types)
-                ChoiceChip(label: Text(textMotionLabels[t] ?? t), selected: value == t, onSelected: (_) => setState(() => set(t))),
-            ]),
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: [
+                ChoiceChip(
+                  label: Text('None'),
+                  selected: value == null,
+                  onSelected: (_) => setState(() => set(null)),
+                ),
+                for (final t in types)
+                  ChoiceChip(
+                    label: Text(textMotionLabels[t] ?? t),
+                    selected: value == t,
+                    onSelected: (_) => setState(() => set(t)),
+                  ),
+              ],
+            ),
             SizedBox(height: 12),
           ],
 
           // Effects: Stroke, Shadow, Glow
-          Text('Effects & Styling', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textSecondary)),
+          Text(
+            'Effects & Styling',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: AppTheme.textSecondary,
+            ),
+          ),
           SizedBox(height: 6),
-          Wrap(spacing: 8, children: [
-            FilterChip(
-              label: Text('Drop Shadow'),
-              selected: _shadow,
-              onSelected: (v) => setState(() => _shadow = v),
-            ),
-            FilterChip(
-              label: Text('Neon Glow'),
-              selected: _glow,
-              onSelected: (v) => setState(() => _glow = v),
-            ),
-            for (final (w, label) in const [(0, 'No Stroke'), (6, 'Outline'), (10, 'Thick outline')])
-              ChoiceChip(
-                label: Text(label),
-                selected: _strokeWidth == w,
-                onSelected: (_) => setState(() => _strokeWidth = w),
+          Wrap(
+            spacing: 8,
+            children: [
+              FilterChip(
+                label: Text('Drop Shadow'),
+                selected: _shadow,
+                onSelected: (v) => setState(() => _shadow = v),
               ),
-          ]),
+              FilterChip(
+                label: Text('Neon Glow'),
+                selected: _glow,
+                onSelected: (v) => setState(() => _glow = v),
+              ),
+              for (final (w, label) in const [
+                (0, 'No Stroke'),
+                (6, 'Outline'),
+                (10, 'Thick outline'),
+              ])
+                ChoiceChip(
+                  label: Text(label),
+                  selected: _strokeWidth == w,
+                  onSelected: (_) => setState(() => _strokeWidth = w),
+                ),
+            ],
+          ),
           SizedBox(height: 12),
 
           // Font Size & Duration
-          Row(children: [
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Size: ${_fontSize.round()}px', style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
-                Slider(
-                  value: _fontSize,
-                  min: _minFont,
-                  max: _maxFont,
-                  divisions: ((_maxFont - _minFont) / 4).round(),
-                  onChanged: (v) => setState(() => _fontSize = v),
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Size: ${_fontSize.round()}px',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppTheme.textSecondary,
+                      ),
+                    ),
+                    Slider(
+                      value: _fontSize,
+                      min: _minFont,
+                      max: _maxFont,
+                      divisions: ((_maxFont - _minFont) / 4).round(),
+                      onChanged: (v) => setState(() => _fontSize = v),
+                    ),
+                  ],
                 ),
-              ]),
-            ),
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Duration: ${seconds.toStringAsFixed(1)}s', style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
-                Slider(
-                  value: seconds,
-                  min: _minSeconds,
-                  max: _maxSeconds,
-                  divisions: ((_maxSeconds - _minSeconds) * 2).round(),
-                  onChanged: (v) => setState(() => seconds = v),
+              ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Duration: ${seconds.toStringAsFixed(1)}s',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppTheme.textSecondary,
+                      ),
+                    ),
+                    Slider(
+                      value: seconds,
+                      min: _minSeconds,
+                      max: _maxSeconds,
+                      divisions: ((_maxSeconds - _minSeconds) * 2).round(),
+                      onChanged: (v) => setState(() => seconds = v),
+                    ),
+                  ],
                 ),
-              ]),
-            ),
-          ]),
+              ),
+            ],
+          ),
           SizedBox(height: 8),
 
           // Vertical Position Quick Buttons (a position dragged on the video selects none of them)
-          Text('Vertical Position', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textSecondary)),
+          Text(
+            'Vertical Position',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: AppTheme.textSecondary,
+            ),
+          ),
           SizedBox(height: 6),
           SegmentedButton<double>(
-            segments: [for (final (v, label) in _positions) ButtonSegment(value: v, label: Text(label))],
+            segments: [
+              for (final (v, label) in _positions)
+                ButtonSegment(value: v, label: Text(label)),
+            ],
             selected: {
               for (final (v, _) in _positions)
                 if (y != null && (y! - v).abs() < 0.01) v,
@@ -1806,7 +2774,11 @@ class _TextSheetState extends State<_TextSheet> {
           // Apply / Add Button
           FilledButton.icon(
             icon: Icon(ex != null ? Icons.check_rounded : Icons.add_rounded),
-            label: Text(ex != null ? (_isCaption ? 'Update caption' : 'Update text') : 'Add text to video'),
+            label: Text(
+              ex != null
+                  ? (_isCaption ? 'Update caption' : 'Update text')
+                  : 'Add text to video',
+            ),
             onPressed: _submit,
           ),
           if (ex != null) ...[
@@ -1814,10 +2786,15 @@ class _TextSheetState extends State<_TextSheet> {
             TextButton.icon(
               style: TextButton.styleFrom(foregroundColor: AppTheme.error),
               icon: Icon(Icons.delete_outline_rounded),
-              label: Text(_isCaption ? 'Delete this caption' : 'Delete this text'),
+              label: Text(
+                _isCaption ? 'Delete this caption' : 'Delete this text',
+              ),
               onPressed: () {
                 _close(context);
-                widget.onEdit((ir) => TimelineOps.removeCaption(ir, ex.id), done: _isCaption ? 'Caption deleted' : 'Text deleted');
+                widget.onEdit(
+                  (ir) => TimelineOps.removeCaption(ir, ex.id),
+                  done: _isCaption ? 'Caption deleted' : 'Text deleted',
+                );
               },
             ),
           ],
@@ -1829,7 +2806,11 @@ class _TextSheetState extends State<_TextSheet> {
               ListTile(
                 dense: true,
                 selected: t.id == ex?.id,
-                title: Text(t.text, maxLines: 1, overflow: TextOverflow.ellipsis),
+                title: Text(
+                  t.text,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
                 subtitle: Text('${timecode(t.startMs)} – ${timecode(t.endMs)}'),
                 onTap: t.id == ex?.id
                     ? null
@@ -1839,13 +2820,24 @@ class _TextSheetState extends State<_TextSheet> {
                         widget.c.selectTrackItem(t.id, TrackKind.text);
                         widget.c.seek(t.startMs);
                         nav.pop();
-                        showStudioTool(nav.context, StudioTool.text, widget.c, onEdit: widget.onEdit);
+                        showStudioTool(
+                          nav.context,
+                          StudioTool.text,
+                          widget.c,
+                          onEdit: widget.onEdit,
+                        );
                       },
                 trailing: IconButton(
-                  icon: Icon(Icons.delete_outline_rounded, color: AppTheme.error),
+                  icon: Icon(
+                    Icons.delete_outline_rounded,
+                    color: AppTheme.error,
+                  ),
                   onPressed: () {
                     _close(context);
-                    widget.onEdit((ir) => TimelineOps.removeCaption(ir, t.id), done: 'Text deleted');
+                    widget.onEdit(
+                      (ir) => TimelineOps.removeCaption(ir, t.id),
+                      done: 'Text deleted',
+                    );
                   },
                 ),
               ),
@@ -1872,50 +2864,77 @@ class _CleanupSheetState extends State<_CleanupSheet> {
   @override
   Widget build(BuildContext context) {
     final c = widget.c;
-    final ready = c.transcriptState == TranscriptState.ready && c.words.isNotEmpty;
-    return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      _Title('Clean up',
+    final ready =
+        c.transcriptState == TranscriptState.ready && c.words.isNotEmpty;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _Title(
+          'Clean up',
           subtitle: ready
               ? 'Cuts follow the transcript (${c.words.length} words). Undo brings everything back.'
               : c.transcriptState == TranscriptState.running
-                  ? 'Waiting for the transcript…'
-                  : 'Cleanup needs a transcript. ${errorText(c.transcriptError ?? '')}'),
-      Text('Pauses longer than', style: TextStyle(color: AppTheme.textSecondary)),
-      Wrap(spacing: 8, children: [
-        for (final ms in const [300, 500, 800, 1200])
-          ChoiceChip(label: Text('${(ms / 1000).toStringAsFixed(1)} s'), selected: gapMs == ms, onSelected: (_) => setState(() => gapMs = ms)),
-      ]),
-      SizedBox(height: 8),
-      SizedBox(
-        height: 48,
-        child: FilledButton.icon(
-          onPressed: !ready
-              ? null
-              : () {
-                  _close(context);
-                  widget.onEdit((ir) => TimelineOps.removePauses(ir, c.words, minGapMs: gapMs), done: 'Pauses removed');
-                },
-          icon: Icon(Icons.content_cut_rounded),
-          label: Text('Remove pauses'),
+              ? 'Waiting for the transcript…'
+              : 'Cleanup needs a transcript. ${errorText(c.transcriptError ?? '')}',
         ),
-      ),
-      SizedBox(height: 8),
-      SizedBox(
-        height: 48,
-        child: OutlinedButton.icon(
-          onPressed: !ready
-              ? null
-              : () {
-                  _close(context);
-                  widget.onEdit((ir) => TimelineOps.removeFillers(ir, c.words), done: 'Filler words removed');
-                },
-          icon: Icon(Icons.record_voice_over_rounded),
-          label: Text('Remove filler words (um, uh, you know…)'),
+        Text(
+          'Pauses longer than',
+          style: TextStyle(color: AppTheme.textSecondary),
         ),
-      ),
-      if (!ready && c.transcriptState == TranscriptState.failed)
-        TextButton(onPressed: c.transcribe, child: Text('Retry transcript')),
-    ]);
+        Wrap(
+          spacing: 8,
+          children: [
+            for (final ms in const [300, 500, 800, 1200])
+              ChoiceChip(
+                label: Text('${(ms / 1000).toStringAsFixed(1)} s'),
+                selected: gapMs == ms,
+                onSelected: (_) => setState(() => gapMs = ms),
+              ),
+          ],
+        ),
+        SizedBox(height: 8),
+        SizedBox(
+          height: 48,
+          child: FilledButton.icon(
+            onPressed: !ready
+                ? null
+                : () {
+                    _close(context);
+                    widget.onEdit(
+                      (ir) => TimelineOps.removePauses(
+                        ir,
+                        c.words,
+                        minGapMs: gapMs,
+                      ),
+                      done: 'Pauses removed',
+                    );
+                  },
+            icon: Icon(Icons.content_cut_rounded),
+            label: Text('Remove pauses'),
+          ),
+        ),
+        SizedBox(height: 8),
+        SizedBox(
+          height: 48,
+          child: OutlinedButton.icon(
+            onPressed: !ready
+                ? null
+                : () {
+                    _close(context);
+                    widget.onEdit(
+                      (ir) => TimelineOps.removeFillers(ir, c.words),
+                      done: 'Filler words removed',
+                    );
+                  },
+            icon: Icon(Icons.record_voice_over_rounded),
+            label: Text('Remove filler words (um, uh, you know…)'),
+          ),
+        ),
+        if (!ready && c.transcriptState == TranscriptState.failed)
+          TextButton(onPressed: c.transcribe, child: Text('Retry transcript')),
+      ],
+    );
   }
 }
 
@@ -1931,8 +2950,13 @@ class _CaptionsSheet extends StatefulWidget {
 class _CaptionsSheetState extends State<_CaptionsSheet> {
   /// Starts on the style the captions already use, so "Apply to all" is a no-op until changed.
   late String preset = () {
-    final current = widget.c.ir!.captions.where((x) => x.kind == 'caption').firstOrNull?.style['preset'];
-    return current is String && TimelineOps.captionPresets.containsKey(current) ? current : 'BOLD_POP';
+    final current = widget.c.ir!.captions
+        .where((x) => x.kind == 'caption')
+        .firstOrNull
+        ?.style['preset'];
+    return current is String && TimelineOps.captionPresets.containsKey(current)
+        ? current
+        : 'BOLD_POP';
   }();
   int words = 3;
 
@@ -1979,7 +3003,11 @@ class _CaptionsSheetState extends State<_CaptionsSheet> {
       } else if (c.transcriptState == TranscriptState.failed) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Transcription failed: ${errorText(c.transcriptError ?? '')}')),
+            SnackBar(
+              content: Text(
+                'Transcription failed: ${errorText(c.transcriptError ?? '')}',
+              ),
+            ),
           );
         }
       }
@@ -2002,11 +3030,17 @@ class _CaptionsSheetState extends State<_CaptionsSheet> {
       _convertError = null;
     });
     try {
-      final texts = await widget.c.translateCaptions(target, script: _roman ? 'roman' : 'native');
+      final texts = await widget.c.translateCaptions(
+        target,
+        script: _roman ? 'roman' : 'native',
+      );
       if (!mounted) return;
       _close(context);
-      widget.onEdit((ir) => TimelineOps.retextCaptions(ir, texts),
-          done: 'Captions converted to ${CaptionLanguages.nameOf(target)}${_roman ? ' (Roman letters)' : ''}');
+      widget.onEdit(
+        (ir) => TimelineOps.retextCaptions(ir, texts),
+        done:
+            'Captions converted to ${CaptionLanguages.nameOf(target)}${_roman ? ' (Roman letters)' : ''}',
+      );
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -2037,11 +3071,24 @@ class _CaptionsSheetState extends State<_CaptionsSheet> {
     final hasSpeech = c.ir!.captions.any((x) => x.kind == 'caption');
     // About 0.45 s per word, like natural speech, between 1.2 s and 5 s.
     final ms = (t.split(RegExp(r'\s+')).length * 450).clamp(1200, 5000);
-    final style = hasSpeech ? null : TimelineOps.captionStyle(preset, highlightColor: color, positionY: y, fontSizePx: _fontSizePx);
+    final style = hasSpeech
+        ? null
+        : TimelineOps.captionStyle(
+            preset,
+            highlightColor: color,
+            positionY: y,
+            fontSizePx: _fontSizePx,
+          );
     final at = c.playheadMs;
     _close(context);
     widget.onEdit(
-      (ir) => TimelineOps.addCaption(ir, t, startMs: at, durationMs: ms, style: style),
+      (ir) => TimelineOps.addCaption(
+        ir,
+        t,
+        startMs: at,
+        durationMs: ms,
+        style: style,
+      ),
       done: 'Caption added at ${timecode(at)}',
     );
   }
@@ -2055,19 +3102,31 @@ class _CaptionsSheetState extends State<_CaptionsSheet> {
     super.dispose();
   }
 
-  List<EditIrCaption> get _speech => [for (final x in widget.c.ir!.captions) if (x.kind == 'caption') x];
+  List<EditIrCaption> get _speech => [
+    for (final x in widget.c.ir!.captions)
+      if (x.kind == 'caption') x,
+  ];
 
-  void _startFixing() => setState(() => _fixing = {for (final x in _speech) x.id: TextEditingController(text: x.text)});
+  void _startFixing() => setState(
+    () => _fixing = {
+      for (final x in _speech) x.id: TextEditingController(text: x.text),
+    },
+  );
 
   void _saveFixes() {
     final old = {for (final x in _speech) x.id: x.text};
     final changed = {
       for (final e in _fixing!.entries)
-        if (e.value.text.trim().isNotEmpty && e.value.text.trim() != old[e.key]) e.key: e.value.text.trim(),
+        if (e.value.text.trim().isNotEmpty && e.value.text.trim() != old[e.key])
+          e.key: e.value.text.trim(),
     };
     _close(context);
     if (changed.isEmpty) return;
-    widget.onEdit((ir) => TimelineOps.retextCaptions(ir, changed), done: '${changed.length} caption${changed.length == 1 ? '' : 's'} corrected');
+    widget.onEdit(
+      (ir) => TimelineOps.retextCaptions(ir, changed),
+      done:
+          '${changed.length} caption${changed.length == 1 ? '' : 's'} corrected',
+    );
   }
 
   /// Shares the captions as .srt and .vtt files (written to the temp folder first).
@@ -2076,12 +3135,18 @@ class _CaptionsSheetState extends State<_CaptionsSheet> {
     try {
       final dir = await getTemporaryDirectory();
       final ir = widget.c.ir!;
-      final srt = await File('${dir.path}/captions.srt').writeAsString(CaptionTools.toSrt(ir), flush: true);
-      final vtt = await File('${dir.path}/captions.vtt').writeAsString(CaptionTools.toVtt(ir), flush: true);
-      await SharePlus.instance.share(ShareParams(files: [
-        XFile(srt.path, mimeType: 'application/x-subrip'),
-        XFile(vtt.path, mimeType: 'text/vtt'),
-      ]));
+      final srt = await File('${dir.path}/captions.srt')
+          .writeAsString(CaptionTools.toSrt(ir), flush: true);
+      final vtt = await File('${dir.path}/captions.vtt')
+          .writeAsString(CaptionTools.toVtt(ir), flush: true);
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [
+            XFile(srt.path, mimeType: 'application/x-subrip'),
+            XFile(vtt.path, mimeType: 'text/vtt'),
+          ],
+        ),
+      );
     } catch (e) {
       if (mounted) setState(() => _exportError = e);
     }
@@ -2089,39 +3154,132 @@ class _CaptionsSheetState extends State<_CaptionsSheet> {
 
   Widget _fixBody(BuildContext context) {
     final caps = _speech;
-    return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      _Title('Fix caption text', subtitle: 'Correct any word. Timings stay as they are.'),
-      ConstrainedBox(
-        constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.5),
-        child: ListView.builder(
-          shrinkWrap: true,
-          itemCount: caps.length,
-          itemBuilder: (context, i) => Padding(
-            padding: EdgeInsets.only(bottom: 8),
-            child: TextField(
-              controller: _fixing![caps[i].id],
-              minLines: 1,
-              maxLines: 3,
-              textInputAction: TextInputAction.next,
-              decoration: InputDecoration(labelText: timecode(caps[i].startMs), isDense: true),
-            ),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _Title(
+          'Fix caption text',
+          subtitle: 'Correct any word. Timings stay as they are.',
+        ),
+        ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.5,
+          ),
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: caps.length,
+            itemBuilder: (context, i) {
+              final cap = caps[i];
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    TextField(
+                      controller: _fixing![cap.id],
+                      minLines: 1,
+                      maxLines: 3,
+                      textInputAction: TextInputAction.next,
+                      decoration: InputDecoration(
+                        labelText: timecode(cap.startMs),
+                        isDense: true,
+                      ),
+                    ),
+                    if (cap.words.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Wrap(
+                        spacing: 4,
+                        runSpacing: 4,
+                        children: [
+                          for (final (wIdx, word) in cap.words.indexed)
+                            InkWell(
+                              borderRadius: BorderRadius.circular(4),
+                              onTap: () {
+                                widget.onEdit(
+                                  (ir) => TimelineOps.toggleWordHighlight(
+                                    ir,
+                                    cap.id,
+                                    wIdx,
+                                  ),
+                                );
+                                setState(() {});
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: word.highlight
+                                      ? AppTheme.primary.withValues(alpha: 0.25)
+                                      : AppTheme.surface,
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(
+                                    color: word.highlight
+                                        ? AppTheme.primary
+                                        : AppTheme.border,
+                                    width: word.highlight ? 1.5 : 1,
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (word.highlight) ...[
+                                      Icon(
+                                        Icons.star_rounded,
+                                        size: 10,
+                                        color: AppTheme.primary,
+                                      ),
+                                      const SizedBox(width: 2),
+                                    ],
+                                    Text(
+                                      word.text,
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: word.highlight
+                                            ? FontWeight.bold
+                                            : FontWeight.normal,
+                                        color: word.highlight
+                                            ? Colors.white
+                                            : AppTheme.textSecondary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              );
+            },
           ),
         ),
-      ),
-      SizedBox(height: 8),
-      Wrap(alignment: WrapAlignment.end, spacing: 8, children: [
-        TextButton(
-          onPressed: () => setState(() {
-            for (final t in _fixing!.values) {
-              t.dispose();
-            }
-            _fixing = null;
-          }),
-          child: Text('Cancel'),
+        SizedBox(height: 8),
+        Wrap(
+          alignment: WrapAlignment.end,
+          spacing: 8,
+          children: [
+            TextButton(
+              onPressed: () => setState(() {
+                for (final t in _fixing!.values) {
+                  t.dispose();
+                }
+                _fixing = null;
+              }),
+              child: Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: _saveFixes,
+              child: Text('Save corrections'),
+            ),
+          ],
         ),
-        FilledButton(onPressed: _saveFixes, child: Text('Save corrections')),
-      ]),
-    ]);
+      ],
+    );
   }
 
   // The sheet follows the controller: a new transcript (language change) updates it in place.
@@ -2139,281 +3297,607 @@ class _CaptionsSheetState extends State<_CaptionsSheet> {
     final ready = c.transcriptState == TranscriptState.ready;
     final running = c.transcriptState == TranscriptState.running;
     final detected = c.transcript?.language;
-    return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      _Title('Captions',
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _Title(
+          'Captions',
           subtitle: ready
               ? 'Word-synced from the transcript (${c.words.length} words'
-                  '${c.spokenLanguage == CaptionLanguages.auto && CaptionLanguages.isKnown(detected) ? ', detected ${CaptionLanguages.nameOf(detected!)}' : ''}).'
+                    '${c.spokenLanguage == CaptionLanguages.auto && CaptionLanguages.isKnown(detected) ? ', detected ${CaptionLanguages.nameOf(detected!)}' : ''}).'
               : running
-                  ? 'Waiting for the transcript…'
-                  : 'Auto captions need a transcript. ${errorText(c.transcriptError ?? '')} You can still type captions below.'),
-      if (!has) ...[
-        Container(
-          margin: EdgeInsets.only(bottom: 12),
-          padding: EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [AppTheme.primary.withValues(alpha: 0.18), Colors.purpleAccent.withValues(alpha: 0.12)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
+              ? 'Waiting for the transcript…'
+              : 'Auto captions need a transcript. ${errorText(c.transcriptError ?? '')} You can still type captions below.',
+        ),
+        if (!has) ...[
+          Container(
+            margin: EdgeInsets.only(bottom: 12),
+            padding: EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  AppTheme.primary.withValues(alpha: 0.18),
+                  Colors.purpleAccent.withValues(alpha: 0.12),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: AppTheme.primary.withValues(alpha: 0.35),
+              ),
             ),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppTheme.primary.withValues(alpha: 0.35)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(children: [
-                Icon(Icons.auto_awesome, color: AppTheme.primary, size: 20),
-                SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    '1-Tap Auto Viral Captions',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.auto_awesome, color: AppTheme.primary, size: 20),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '1-Tap Auto Viral Captions',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(height: 6),
+                Text(
+                  'Automatically transcribes speech, syncs word timings, and applies trending viral motion and keyword highlights.',
+                  style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                ),
+                SizedBox(height: 10),
+                FilledButton.icon(
+                  onPressed: _autoGenerating ? null : _autoGenerate,
+                  icon: _autoGenerating
+                      ? SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : Icon(Icons.bolt_rounded),
+                  label: Text(
+                    _autoGenerating
+                        ? (running
+                              ? 'Transcribing & syncing…'
+                              : 'Generating viral captions…')
+                        : '✨ Auto-Generate Captions Now',
                   ),
                 ),
-              ]),
-              SizedBox(height: 6),
-              Text(
-                'Automatically transcribes speech, syncs word timings, and applies trending viral motion and keyword highlights.',
-                style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
-              ),
-              SizedBox(height: 10),
-              FilledButton.icon(
-                onPressed: _autoGenerating ? null : _autoGenerate,
-                icon: _autoGenerating
-                    ? SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : Icon(Icons.bolt_rounded),
-                label: Text(_autoGenerating
-                    ? (running ? 'Transcribing & syncing…' : 'Generating viral captions…')
-                    : '✨ Auto-Generate Captions Now'),
-              ),
-            ],
-          ),
-        ),
-      ],
-      // Manual captions: no transcript needed (no speech, a failed transcription, or a line to add by hand).
-      Text('Type a caption', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textSecondary)),
-      SizedBox(height: 4),
-      Row(children: [
-        Expanded(
-          child: TextField(
-            controller: _manual,
-            minLines: 1,
-            maxLines: 2,
-            textInputAction: TextInputAction.done,
-            onSubmitted: (_) => _addManual(),
-            decoration: fieldDecoration('Caption at ${timecode(c.playheadMs)}', hint: 'What is said here…'),
-          ),
-        ),
-        SizedBox(width: 8),
-        FilledButton.tonal(onPressed: _addManual, child: Text('Add')),
-      ]),
-      SizedBox(height: 12),
-      Row(children: [
-        Expanded(child: Text('Spoken language', overflow: TextOverflow.ellipsis)),
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 160),
-          child: DropdownButton<String>(
-            isExpanded: true,
-            value: c.spokenLanguage,
-            onChanged: running ? null : (v) => v == null ? null : c.setSpokenLanguage(v),
-            items: [
-              for (final e in CaptionLanguages.spoken.entries)
-                DropdownMenuItem(
-                  value: e.key,
-                  child: Text(e.value, overflow: TextOverflow.ellipsis),
-                ),
-            ],
-          ),
-        ),
-      ]),
-      if (running) SizedBox(height: 48, child: UniversalSkeleton(type: SkeletonType.activity)),
-      SizedBox(height: 8),
-      SizedBox(
-        height: 84,
-        child: ListView(scrollDirection: Axis.horizontal, children: [
-          for (final e in TimelineOps.captionPresets.entries)
-            CaptionPresetCard(
-              name: e.value,
-              style: TimelineOps.captionStyle(e.key),
-              selected: preset == e.key,
-              onTap: () => setState(() => preset = e.key),
-            ),
-        ]),
-      ),
-      SizedBox(height: 8),
-      SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(children: [
-          Text('Highlight'),
-          SizedBox(width: 8),
-          ChoiceChip(label: Text('Preset'), selected: color == null, onSelected: (_) => setState(() => color = null)),
-          SizedBox(width: 8),
-          for (final hex in ['#FFE600', '#22D3EE', '#4ADE80', '#F472B6', '#FFFFFF'])
-            Semantics(
-              button: true,
-              selected: color == hex,
-              label: 'Highlight $hex',
-              child: GestureDetector(
-                onTap: () => setState(() => color = hex),
-                child: Container(
-                  width: 36,
-                  height: 36,
-                  margin: EdgeInsets.only(right: 8),
-                  decoration: BoxDecoration(
-                    color: Color(int.parse('FF${hex.substring(1)}', radix: 16)),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: color == hex ? AppTheme.primary : AppTheme.border, width: color == hex ? 3 : 1),
-                  ),
-                ),
-              ),
-            ),
-        ]),
-      ),
-      SizedBox(height: 8),
-      Text('Caption font size', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.textSecondary)),
-      SizedBox(height: 4),
-      SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(children: [
-          ChoiceChip(
-            label: Text('Preset default'),
-            selected: _fontSizePx == null,
-            onSelected: (_) => setState(() => _fontSizePx = null),
-          ),
-          SizedBox(width: 6),
-          ChoiceChip(
-            label: Text('Compact (42px)'),
-            selected: _fontSizePx == 42.0,
-            onSelected: (_) => setState(() => _fontSizePx = 42.0),
-          ),
-          SizedBox(width: 6),
-          ChoiceChip(
-            label: Text('Standard (56px)'),
-            selected: _fontSizePx == 56.0,
-            onSelected: (_) => setState(() => _fontSizePx = 56.0),
-          ),
-          SizedBox(width: 6),
-          ChoiceChip(
-            label: Text('Bold (70px)'),
-            selected: _fontSizePx == 70.0,
-            onSelected: (_) => setState(() => _fontSizePx = 70.0),
-          ),
-          SizedBox(width: 6),
-          ChoiceChip(
-            label: Text('Massive Viral (88px)'),
-            selected: _fontSizePx == 88.0,
-            onSelected: (_) => setState(() => _fontSizePx = 88.0),
-          ),
-        ]),
-      ),
-      SizedBox(height: 6),
-      Wrap(spacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
-        Text('Auto'),
-        FilterChip(label: Text('Highlight key words'), selected: _keywords, onSelected: (v) => setState(() => _keywords = v)),
-      ]),
-      Text('Words per caption: $words'),
-      Slider(value: words.toDouble(), min: 1, max: 6, divisions: 5, onChanged: (v) => setState(() => words = v.round())),
-      SegmentedButton<double>(
-        segments: [ButtonSegment(value: 0.25, label: Text('Top')), ButtonSegment(value: 0.5, label: Text('Middle')), ButtonSegment(value: 0.72, label: Text('Bottom'))],
-        selected: {y},
-        onSelectionChanged: (v) => setState(() => y = v.first),
-      ),
-      SizedBox(height: 12),
-      if (has)
-        FilledButton.icon(
-          onPressed: () {
-            _close(context);
-            widget.onEdit((ir) => TimelineOps.styleCaptions(ir, preset, highlightColor: color, positionY: y, fontSizePx: _fontSizePx),
-                done: 'Caption style applied to all captions');
-          },
-          icon: Icon(Icons.format_paint_rounded),
-          label: Text('Apply to all captions'),
-        ),
-      Wrap(alignment: WrapAlignment.spaceBetween, crossAxisAlignment: WrapCrossAlignment.center, spacing: 8, children: [
-        if (has)
-          TextButton(
-            onPressed: () {
-              _close(context);
-              widget.onEdit((ir) => TimelineOps.clearCaptions(ir), done: 'Captions removed');
-            },
-            child: Text('Remove', style: TextStyle(color: AppTheme.error)),
-          ),
-        if (!ready && c.transcriptState == TranscriptState.failed)
-          TextButton(onPressed: c.transcribe, child: Text('Retry transcript')),
-        (has ? OutlinedButton.new : FilledButton.new)(
-          onPressed: !ready
-              ? null
-              : () {
-                  _close(context);
-                  final keywords = _keywords;
-                  widget.onEdit((ir) {
-                    final out = TimelineOps.autoCaptions(
-                      ir,
-                      c.words,
-                      preset: preset,
-                      wordsPerCaption: words,
-                      highlightColor: color,
-                      positionY: y,
-                      fontSizePx: _fontSizePx,
-                    );
-                    return keywords ? TimelineOps.enhanceCaptions(out) : out;
-                  }, done: 'Captions added');
-                },
-          child: Text(has ? 'Regenerate from transcript' : 'Add captions'),
-        ),
-      ]),
-      if (has) ...[
-        Divider(height: 24),
-        Wrap(spacing: 8, children: [
-          OutlinedButton.icon(onPressed: _startFixing, icon: Icon(Icons.edit_note_rounded), label: Text('Fix caption text')),
-          OutlinedButton.icon(onPressed: _exportSubtitles, icon: Icon(Icons.subtitles_rounded), label: Text('Export .srt / .vtt')),
-        ]),
-        if (_exportError != null) ...[
-          Text('The subtitle files could not be shared. ${errorText(_exportError!)}', style: TextStyle(color: AppTheme.error)),
-          Wrap(spacing: 8, children: [
-            TextButton(onPressed: _exportSubtitles, child: Text('Try again')),
-            TextButton(onPressed: () => setState(() => _exportError = null), child: Text('Dismiss')),
-          ]),
-        ],
-        SizedBox(height: 8),
-        Text('Convert captions', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textSecondary)),
-        Row(children: [
-          Expanded(
-            child: DropdownButton<String>(
-              isExpanded: true,
-              value: _convertTo,
-              hint: Text('Choose a language'),
-              onChanged: _converting ? null : (v) => setState(() => _convertTo = v),
-              items: [
-                for (final e in CaptionLanguages.targets.entries) DropdownMenuItem(value: e.key, child: Text(e.value, overflow: TextOverflow.ellipsis)),
               ],
             ),
           ),
-          SizedBox(width: 8),
-          FilterChip(
-            label: Text('Roman letters'),
-            selected: _roman,
-            onSelected: _converting ? null : (v) => setState(() => _roman = v),
+        ],
+        // Manual captions: no transcript needed (no speech, a failed transcription, or a line to add by hand).
+        Text(
+          'Type a caption',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: AppTheme.textSecondary,
           ),
-        ]),
-        if (_converting)
-          SizedBox(height: 48, child: UniversalSkeleton(type: SkeletonType.activity))
-        else if (_convertError != null) ...[
-          Text(errorText(_convertError!), style: TextStyle(color: AppTheme.error)),
-          Wrap(spacing: 8, children: [
-            TextButton(onPressed: _convert, child: Text('Try again')),
-            TextButton(onPressed: () => setState(() => _convertError = null), child: Text('Keep current captions')),
-          ]),
-        ] else
-          OutlinedButton.icon(
-            onPressed: _convertTo == null ? null : _convert,
-            icon: Icon(Icons.translate_rounded),
-            label: Text('Convert captions'),
+        ),
+        SizedBox(height: 4),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _manual,
+                minLines: 1,
+                maxLines: 2,
+                textInputAction: TextInputAction.done,
+                onSubmitted: (_) => _addManual(),
+                decoration: fieldDecoration(
+                  'Caption at ${timecode(c.playheadMs)}',
+                  hint: 'What is said here…',
+                ),
+              ),
+            ),
+            SizedBox(width: 8),
+            FilledButton.tonal(onPressed: _addManual, child: Text('Add')),
+          ],
+        ),
+        SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: Text('Spoken language', overflow: TextOverflow.ellipsis),
+            ),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 160),
+              child: DropdownButton<String>(
+                isExpanded: true,
+                value: c.spokenLanguage,
+                onChanged: running
+                    ? null
+                    : (v) => v == null ? null : c.setSpokenLanguage(v),
+                items: [
+                  for (final e in CaptionLanguages.spoken.entries)
+                    DropdownMenuItem(
+                      value: e.key,
+                      child: Text(e.value, overflow: TextOverflow.ellipsis),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        if (running)
+          SizedBox(
+            height: 48,
+            child: UniversalSkeleton(type: SkeletonType.activity),
           ),
+        SizedBox(height: 8),
+        SizedBox(
+          height: 84,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            children: [
+              for (final e in TimelineOps.captionPresets.entries)
+                CaptionPresetCard(
+                  name: e.value,
+                  style: TimelineOps.captionStyle(e.key),
+                  selected: preset == e.key,
+                  onTap: () => setState(() => preset = e.key),
+                ),
+            ],
+          ),
+        ),
+        SizedBox(height: 8),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              Text('Highlight'),
+              SizedBox(width: 8),
+              ChoiceChip(
+                label: Text('Preset'),
+                selected: color == null,
+                onSelected: (_) => setState(() => color = null),
+              ),
+              SizedBox(width: 8),
+              for (final hex in [
+                '#FFE600',
+                '#22D3EE',
+                '#4ADE80',
+                '#F472B6',
+                '#FFFFFF',
+              ])
+                Semantics(
+                  button: true,
+                  selected: color == hex,
+                  label: 'Highlight $hex',
+                  child: GestureDetector(
+                    onTap: () => setState(() => color = hex),
+                    child: Container(
+                      width: 36,
+                      height: 36,
+                      margin: EdgeInsets.only(right: 8),
+                      decoration: BoxDecoration(
+                        color: Color(
+                          int.parse('FF${hex.substring(1)}', radix: 16),
+                        ),
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: color == hex
+                              ? AppTheme.primary
+                              : AppTheme.border,
+                          width: color == hex ? 3 : 1,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        SizedBox(height: 8),
+        Text(
+          'Caption font size',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: AppTheme.textSecondary,
+          ),
+        ),
+        SizedBox(height: 4),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              ChoiceChip(
+                label: Text('Preset default'),
+                selected: _fontSizePx == null,
+                onSelected: (_) => setState(() => _fontSizePx = null),
+              ),
+              SizedBox(width: 6),
+              ChoiceChip(
+                label: Text('Compact (42px)'),
+                selected: _fontSizePx == 42.0,
+                onSelected: (_) => setState(() => _fontSizePx = 42.0),
+              ),
+              SizedBox(width: 6),
+              ChoiceChip(
+                label: Text('Standard (56px)'),
+                selected: _fontSizePx == 56.0,
+                onSelected: (_) => setState(() => _fontSizePx = 56.0),
+              ),
+              SizedBox(width: 6),
+              ChoiceChip(
+                label: Text('Bold (70px)'),
+                selected: _fontSizePx == 70.0,
+                onSelected: (_) => setState(() => _fontSizePx = 70.0),
+              ),
+              SizedBox(width: 6),
+              ChoiceChip(
+                label: Text('Massive Viral (88px)'),
+                selected: _fontSizePx == 88.0,
+                onSelected: (_) => setState(() => _fontSizePx = 88.0),
+              ),
+            ],
+          ),
+        ),
+        SizedBox(height: 6),
+        Wrap(
+          spacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Text('Auto'),
+            FilterChip(
+              label: Text('Highlight key words'),
+              selected: _keywords,
+              onSelected: (v) => setState(() => _keywords = v),
+            ),
+          ],
+        ),
+        Text('Words per caption: $words'),
+        Slider(
+          value: words.toDouble(),
+          min: 1,
+          max: 6,
+          divisions: 5,
+          onChanged: (v) => setState(() => words = v.round()),
+        ),
+        SegmentedButton<double>(
+          segments: [
+            ButtonSegment(value: 0.25, label: Text('Top')),
+            ButtonSegment(value: 0.5, label: Text('Middle')),
+            ButtonSegment(value: 0.72, label: Text('Bottom')),
+          ],
+          selected: {y},
+          onSelectionChanged: (v) => setState(() => y = v.first),
+        ),
+        SizedBox(height: 12),
+        if (has)
+          FilledButton.icon(
+            onPressed: () {
+              _close(context);
+              widget.onEdit(
+                (ir) => TimelineOps.styleCaptions(
+                  ir,
+                  preset,
+                  highlightColor: color,
+                  positionY: y,
+                  fontSizePx: _fontSizePx,
+                ),
+                done: 'Caption style applied to all captions',
+              );
+            },
+            icon: Icon(Icons.format_paint_rounded),
+            label: Text('Apply to all captions'),
+          ),
+        Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 8,
+          children: [
+            if (has)
+              TextButton(
+                onPressed: () {
+                  _close(context);
+                  widget.onEdit(
+                    (ir) => TimelineOps.clearCaptions(ir),
+                    done: 'Captions removed',
+                  );
+                },
+                child: Text('Remove', style: TextStyle(color: AppTheme.error)),
+              ),
+            if (!ready && c.transcriptState == TranscriptState.failed)
+              TextButton(
+                onPressed: c.transcribe,
+                child: Text('Retry transcript'),
+              ),
+            (has ? OutlinedButton.new : FilledButton.new)(
+              onPressed: !ready
+                  ? null
+                  : () {
+                      _close(context);
+                      final keywords = _keywords;
+                      widget.onEdit((ir) {
+                        final out = TimelineOps.autoCaptions(
+                          ir,
+                          c.words,
+                          preset: preset,
+                          wordsPerCaption: words,
+                          highlightColor: color,
+                          positionY: y,
+                          fontSizePx: _fontSizePx,
+                        );
+                        return keywords
+                            ? TimelineOps.enhanceCaptions(out)
+                            : out;
+                      }, done: 'Captions added');
+                    },
+              child: Text(has ? 'Regenerate from transcript' : 'Add captions'),
+            ),
+          ],
+        ),
+        if (has) ...[
+          const Divider(height: 24),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Tap words to toggle keyword highlight',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.textSecondary,
+                ),
+              ),
+              Text(
+                '${_speech.length} line${_speech.length == 1 ? '' : 's'}',
+                style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 180),
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: _speech.length,
+              itemBuilder: (context, i) {
+                final cap = _speech[i];
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppTheme.surfaceElevated,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: AppTheme.border.withValues(alpha: 0.6),
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.access_time_rounded,
+                            size: 11,
+                            color: AppTheme.textMuted,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            timecode(cap.startMs),
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: AppTheme.textMuted,
+                              fontFamily: 'monospace',
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 4,
+                        children: [
+                          for (final (wIdx, word) in cap.words.indexed)
+                            InkWell(
+                              borderRadius: BorderRadius.circular(6),
+                              onTap: () {
+                                widget.onEdit(
+                                  (ir) => TimelineOps.toggleWordHighlight(
+                                    ir,
+                                    cap.id,
+                                    wIdx,
+                                  ),
+                                  done: word.highlight
+                                      ? 'Removed highlight'
+                                      : 'Word highlighted: ${word.text}',
+                                );
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 7,
+                                  vertical: 3,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: word.highlight
+                                      ? (color != null
+                                            ? Color(
+                                                int.parse(
+                                                  'FF${color!.replaceFirst('#', '')}',
+                                                  radix: 16,
+                                                ),
+                                              ).withValues(alpha: 0.25)
+                                            : AppTheme.primary.withValues(
+                                                alpha: 0.25,
+                                              ))
+                                      : AppTheme.surface,
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(
+                                    color: word.highlight
+                                        ? (color != null
+                                              ? Color(
+                                                  int.parse(
+                                                    'FF${color!.replaceFirst('#', '')}',
+                                                    radix: 16,
+                                                  ),
+                                                )
+                                              : AppTheme.primary)
+                                        : AppTheme.border,
+                                    width: word.highlight ? 1.5 : 1,
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (word.highlight) ...[
+                                      Icon(
+                                        Icons.star_rounded,
+                                        size: 11,
+                                        color: color != null
+                                            ? Color(
+                                                int.parse(
+                                                  'FF${color!.replaceFirst('#', '')}',
+                                                  radix: 16,
+                                                ),
+                                              )
+                                            : AppTheme.primary,
+                                      ),
+                                      const SizedBox(width: 3),
+                                    ],
+                                    Text(
+                                      word.text,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: word.highlight
+                                            ? FontWeight.bold
+                                            : FontWeight.normal,
+                                        color: word.highlight
+                                            ? Colors.white
+                                            : AppTheme.textSecondary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            children: [
+              OutlinedButton.icon(
+                onPressed: _startFixing,
+                icon: Icon(Icons.edit_note_rounded),
+                label: Text('Fix caption text'),
+              ),
+              OutlinedButton.icon(
+                onPressed: _exportSubtitles,
+                icon: Icon(Icons.subtitles_rounded),
+                label: Text('Export .srt / .vtt'),
+              ),
+            ],
+          ),
+          if (_exportError != null) ...[
+            Text(
+              'The subtitle files could not be shared. ${errorText(_exportError!)}',
+              style: TextStyle(color: AppTheme.error),
+            ),
+            Wrap(
+              spacing: 8,
+              children: [
+                TextButton(
+                  onPressed: _exportSubtitles,
+                  child: Text('Try again'),
+                ),
+                TextButton(
+                  onPressed: () => setState(() => _exportError = null),
+                  child: Text('Dismiss'),
+                ),
+              ],
+            ),
+          ],
+          SizedBox(height: 8),
+          Text(
+            'Convert captions',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: AppTheme.textSecondary,
+            ),
+          ),
+          Row(
+            children: [
+              Expanded(
+                child: DropdownButton<String>(
+                  isExpanded: true,
+                  value: _convertTo,
+                  hint: Text('Choose a language'),
+                  onChanged: _converting
+                      ? null
+                      : (v) => setState(() => _convertTo = v),
+                  items: [
+                    for (final e in CaptionLanguages.targets.entries)
+                      DropdownMenuItem(
+                        value: e.key,
+                        child: Text(e.value, overflow: TextOverflow.ellipsis),
+                      ),
+                  ],
+                ),
+              ),
+              SizedBox(width: 8),
+              FilterChip(
+                label: Text('Roman letters'),
+                selected: _roman,
+                onSelected: _converting
+                    ? null
+                    : (v) => setState(() => _roman = v),
+              ),
+            ],
+          ),
+          if (_converting)
+            SizedBox(
+              height: 48,
+              child: UniversalSkeleton(type: SkeletonType.activity),
+            )
+          else if (_convertError != null) ...[
+            Text(
+              errorText(_convertError!),
+              style: TextStyle(color: AppTheme.error),
+            ),
+            Wrap(
+              spacing: 8,
+              children: [
+                TextButton(onPressed: _convert, child: Text('Try again')),
+                TextButton(
+                  onPressed: () => setState(() => _convertError = null),
+                  child: Text('Keep current captions'),
+                ),
+              ],
+            ),
+          ] else
+            OutlinedButton.icon(
+              onPressed: _convertTo == null ? null : _convert,
+              icon: Icon(Icons.translate_rounded),
+              label: Text('Convert captions'),
+            ),
+        ],
       ],
-    ]);
+    );
   }
 }
 
@@ -2423,10 +3907,12 @@ class _MusicWaveformVisualizer extends StatefulWidget {
   final Color? color;
 
   @override
-  State<_MusicWaveformVisualizer> createState() => _MusicWaveformVisualizerState();
+  State<_MusicWaveformVisualizer> createState() =>
+      _MusicWaveformVisualizerState();
 }
 
-class _MusicWaveformVisualizerState extends State<_MusicWaveformVisualizer> with SingleTickerProviderStateMixin {
+class _MusicWaveformVisualizerState extends State<_MusicWaveformVisualizer>
+    with SingleTickerProviderStateMixin {
   late final AnimationController _anim = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 700),
@@ -2450,7 +3936,10 @@ class _MusicWaveformVisualizerState extends State<_MusicWaveformVisualizer> with
               width: 2.5,
               height: h,
               margin: const EdgeInsets.symmetric(horizontal: 1),
-              decoration: BoxDecoration(color: AppTheme.textMuted, borderRadius: BorderRadius.circular(2)),
+              decoration: BoxDecoration(
+                color: AppTheme.textMuted,
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
         ],
       );
@@ -2474,11 +3963,14 @@ class _MusicWaveformVisualizerState extends State<_MusicWaveformVisualizer> with
   }
 
   Widget _bar(double h, Color color) => Container(
-        width: 2.5,
-        height: h.clamp(3.0, 16.0),
-        margin: const EdgeInsets.symmetric(horizontal: 1),
-        decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(2)),
-      );
+    width: 2.5,
+    height: h.clamp(3.0, 16.0),
+    margin: const EdgeInsets.symmetric(horizontal: 1),
+    decoration: BoxDecoration(
+      color: color,
+      borderRadius: BorderRadius.circular(2),
+    ),
+  );
 }
 
 class _MusicSheet extends ConsumerStatefulWidget {
@@ -2503,14 +3995,54 @@ class _MusicSheetState extends ConsumerState<_MusicSheet> {
   VideoPlayerController? _previewPlayer;
 
   static const _moodPresets = [
-    (tag: 'upbeat', label: 'Upbeat', icon: Icons.bolt_rounded, color: Color(0xFFF59E0B)),
-    (tag: 'lo-fi', label: 'Lo-Fi', icon: Icons.coffee_rounded, color: Color(0xFFA78BFA)),
-    (tag: 'cinematic', label: 'Cinematic', icon: Icons.movie_filter_rounded, color: Color(0xFF38BDF8)),
-    (tag: 'ambient', label: 'Ambient', icon: Icons.nightlight_round, color: Color(0xFF818CF8)),
-    (tag: 'energetic', label: 'Energetic', icon: Icons.local_fire_department_rounded, color: Color(0xFFF43F5E)),
-    (tag: 'calm', label: 'Calm', icon: Icons.spa_rounded, color: Color(0xFF10B981)),
-    (tag: 'electronic', label: 'Electronic', icon: Icons.headphones_rounded, color: Color(0xFF06B6D4)),
-    (tag: 'acoustic', label: 'Acoustic', icon: Icons.music_note_rounded, color: Color(0xFFEAB308)),
+    (
+      tag: 'upbeat',
+      label: 'Upbeat',
+      icon: Icons.bolt_rounded,
+      color: Color(0xFFF59E0B),
+    ),
+    (
+      tag: 'lo-fi',
+      label: 'Lo-Fi',
+      icon: Icons.coffee_rounded,
+      color: Color(0xFFA78BFA),
+    ),
+    (
+      tag: 'cinematic',
+      label: 'Cinematic',
+      icon: Icons.movie_filter_rounded,
+      color: Color(0xFF38BDF8),
+    ),
+    (
+      tag: 'ambient',
+      label: 'Ambient',
+      icon: Icons.nightlight_round,
+      color: Color(0xFF818CF8),
+    ),
+    (
+      tag: 'energetic',
+      label: 'Energetic',
+      icon: Icons.local_fire_department_rounded,
+      color: Color(0xFFF43F5E),
+    ),
+    (
+      tag: 'calm',
+      label: 'Calm',
+      icon: Icons.spa_rounded,
+      color: Color(0xFF10B981),
+    ),
+    (
+      tag: 'electronic',
+      label: 'Electronic',
+      icon: Icons.headphones_rounded,
+      color: Color(0xFF06B6D4),
+    ),
+    (
+      tag: 'acoustic',
+      label: 'Acoustic',
+      icon: Icons.music_note_rounded,
+      color: Color(0xFFEAB308),
+    ),
   ];
 
   @override
@@ -2620,7 +4152,9 @@ class _MusicSheetState extends ConsumerState<_MusicSheet> {
     if (!mounted) return;
     final url = await guarded(
       context,
-      () => ref.read(socialApiProvider).uploadFile(path, fileBytes: bytes, filename: file.name),
+      () => ref
+          .read(socialApiProvider)
+          .uploadFile(path, fileBytes: bytes, filename: file.name),
     );
     if (!mounted) return;
     setState(() => _busy = false);
@@ -2629,10 +4163,20 @@ class _MusicSheetState extends ConsumerState<_MusicSheet> {
     }
   }
 
-  Widget _buildCurrentTrackCard(BuildContext context, EditIrMusic music, bool hasSpeech) {
-    final currentTitle = music.source['title'] ?? music.source['query'] ?? 'Background Soundtrack';
+  Widget _buildCurrentTrackCard(
+    BuildContext context,
+    EditIrMusic music,
+    bool hasSpeech,
+  ) {
+    final currentTitle =
+        music.source['title'] ??
+        music.source['query'] ??
+        'Background Soundtrack';
     final currentUrl = music.source['url'] as String?;
-    final isPlayingCurrent = currentUrl != null && _previewingUrl == currentUrl && (_previewPlayer?.value.isPlaying ?? false);
+    final isPlayingCurrent =
+        currentUrl != null &&
+        _previewingUrl == currentUrl &&
+        (_previewPlayer?.value.isPlaying ?? false);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
@@ -2640,7 +4184,10 @@ class _MusicSheetState extends ConsumerState<_MusicSheet> {
       decoration: BoxDecoration(
         color: AppTheme.surfaceElevated,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppTheme.primary.withValues(alpha: 0.4), width: 1.5),
+        border: Border.all(
+          color: AppTheme.primary.withValues(alpha: 0.4),
+          width: 1.5,
+        ),
         boxShadow: [
           BoxShadow(
             color: AppTheme.primary.withValues(alpha: 0.1),
@@ -2666,13 +4213,19 @@ class _MusicSheetState extends ConsumerState<_MusicSheet> {
                       ? IconButton(
                           padding: EdgeInsets.zero,
                           icon: Icon(
-                            isPlayingCurrent ? Icons.pause_circle_filled_rounded : Icons.play_circle_fill_rounded,
+                            isPlayingCurrent
+                                ? Icons.pause_circle_filled_rounded
+                                : Icons.play_circle_fill_rounded,
                             color: AppTheme.primary,
                             size: 28,
                           ),
                           onPressed: () => _togglePreview(currentUrl),
                         )
-                      : Icon(Icons.music_note_rounded, color: AppTheme.primary, size: 20),
+                      : Icon(
+                          Icons.music_note_rounded,
+                          color: AppTheme.primary,
+                          size: 20,
+                        ),
                 ),
               ),
               const SizedBox(width: 10),
@@ -2683,14 +4236,21 @@ class _MusicSheetState extends ConsumerState<_MusicSheet> {
                     Row(
                       children: [
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
                           decoration: BoxDecoration(
                             color: AppTheme.primary.withValues(alpha: 0.2),
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: Text(
                             'TIMELINE SOUNDTRACK',
-                            style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: AppTheme.primary),
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                              color: AppTheme.primary,
+                            ),
                           ),
                         ),
                         const SizedBox(width: 6),
@@ -2702,7 +4262,10 @@ class _MusicSheetState extends ConsumerState<_MusicSheet> {
                       currentTitle,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ],
                 ),
@@ -2711,16 +4274,27 @@ class _MusicSheetState extends ConsumerState<_MusicSheet> {
                 tooltip: 'Remove soundtrack',
                 onPressed: () {
                   _close(context);
-                  widget.onEdit((ir) => TimelineOps.removeMusic(ir), done: 'Music removed');
+                  widget.onEdit(
+                    (ir) => TimelineOps.removeMusic(ir),
+                    done: 'Music removed',
+                  );
                 },
-                icon: Icon(Icons.delete_outline_rounded, color: AppTheme.error, size: 20),
+                icon: Icon(
+                  Icons.delete_outline_rounded,
+                  color: AppTheme.error,
+                  size: 20,
+                ),
               ),
             ],
           ),
           const SizedBox(height: 10),
           Row(
             children: [
-              Icon(Icons.volume_up_rounded, size: 16, color: AppTheme.textSecondary),
+              Icon(
+                Icons.volume_up_rounded,
+                size: 16,
+                color: AppTheme.textSecondary,
+              ),
               const SizedBox(width: 6),
               Text(
                 'Volume: ${vol.toStringAsFixed(0)} dB',
@@ -2735,7 +4309,13 @@ class _MusicSheetState extends ConsumerState<_MusicSheet> {
                   onChanged: (v) {
                     setState(() => vol = v.roundToDouble());
                     widget.onEdit(
-                      (ir) => TimelineOps.updateMusic(ir, volumeDb: vol, duck: duck, fadeInMs: fades ? 500 : 0, fadeOutMs: fades ? 1000 : 0),
+                      (ir) => TimelineOps.updateMusic(
+                        ir,
+                        volumeDb: vol,
+                        duck: duck,
+                        fadeInMs: fades ? 500 : 0,
+                        fadeOutMs: fades ? 1000 : 0,
+                      ),
                     );
                   },
                 ),
@@ -2753,12 +4333,24 @@ class _MusicSheetState extends ConsumerState<_MusicSheet> {
                       ? (v) {
                           setState(() => duck = v);
                           widget.onEdit(
-                            (ir) => TimelineOps.updateMusic(ir, volumeDb: vol, duck: duck, fadeInMs: fades ? 500 : 0, fadeOutMs: fades ? 1000 : 0),
+                            (ir) => TimelineOps.updateMusic(
+                              ir,
+                              volumeDb: vol,
+                              duck: duck,
+                              fadeInMs: fades ? 500 : 0,
+                              fadeOutMs: fades ? 1000 : 0,
+                            ),
                           );
                         }
                       : null,
-                  title: const Text('Speech Ducking', style: TextStyle(fontSize: 12)),
-                  subtitle: Text(hasSpeech ? 'Lower under voice' : 'Needs speech transcript', style: TextStyle(fontSize: 10, color: AppTheme.textMuted)),
+                  title: const Text(
+                    'Speech Ducking',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                  subtitle: Text(
+                    hasSpeech ? 'Lower under voice' : 'Needs speech transcript',
+                    style: TextStyle(fontSize: 10, color: AppTheme.textMuted),
+                  ),
                 ),
               ),
               Expanded(
@@ -2769,11 +4361,23 @@ class _MusicSheetState extends ConsumerState<_MusicSheet> {
                   onChanged: (v) {
                     setState(() => fades = v);
                     widget.onEdit(
-                      (ir) => TimelineOps.updateMusic(ir, volumeDb: vol, duck: duck, fadeInMs: fades ? 500 : 0, fadeOutMs: fades ? 1000 : 0),
+                      (ir) => TimelineOps.updateMusic(
+                        ir,
+                        volumeDb: vol,
+                        duck: duck,
+                        fadeInMs: fades ? 500 : 0,
+                        fadeOutMs: fades ? 1000 : 0,
+                      ),
                     );
                   },
-                  title: const Text('Fade in & out', style: TextStyle(fontSize: 12)),
-                  subtitle: Text('Smooth head & tail', style: TextStyle(fontSize: 10, color: AppTheme.textMuted)),
+                  title: const Text(
+                    'Fade in & out',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                  subtitle: Text(
+                    'Smooth head & tail',
+                    style: TextStyle(fontSize: 10, color: AppTheme.textMuted),
+                  ),
                 ),
               ),
             ],
@@ -2784,7 +4388,8 @@ class _MusicSheetState extends ConsumerState<_MusicSheet> {
   }
 
   Widget _buildTrackCard(StockAudioResult t) {
-    final isPlaying = _previewingUrl == t.url && (_previewPlayer?.value.isPlaying ?? false);
+    final isPlaying =
+        _previewingUrl == t.url && (_previewPlayer?.value.isPlaying ?? false);
     final durStr = t.durationSec != null
         ? '${(t.durationSec! / 60).floor()}:${(t.durationSec! % 60).round().toString().padLeft(2, '0')}'
         : '';
@@ -2793,10 +4398,14 @@ class _MusicSheetState extends ConsumerState<_MusicSheet> {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: isPlaying ? AppTheme.primary.withValues(alpha: 0.1) : AppTheme.surfaceElevated,
+        color: isPlaying
+            ? AppTheme.primary.withValues(alpha: 0.1)
+            : AppTheme.surfaceElevated,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
-          color: isPlaying ? AppTheme.primary.withValues(alpha: 0.5) : AppTheme.border,
+          color: isPlaying
+              ? AppTheme.primary.withValues(alpha: 0.5)
+              : AppTheme.border,
         ),
       ),
       child: Row(
@@ -2805,7 +4414,9 @@ class _MusicSheetState extends ConsumerState<_MusicSheet> {
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
             icon: Icon(
-              isPlaying ? Icons.pause_circle_filled_rounded : Icons.play_circle_fill_rounded,
+              isPlaying
+                  ? Icons.pause_circle_filled_rounded
+                  : Icons.play_circle_fill_rounded,
               color: isPlaying ? AppTheme.success : AppTheme.primary,
               size: 34,
             ),
@@ -2824,12 +4435,18 @@ class _MusicSheetState extends ConsumerState<_MusicSheet> {
                         t.title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
                     if (isPlaying) ...[
                       const SizedBox(width: 6),
-                      _MusicWaveformVisualizer(isPlaying: true, color: AppTheme.success),
+                      _MusicWaveformVisualizer(
+                        isPlaying: true,
+                        color: AppTheme.success,
+                      ),
                     ],
                   ],
                 ),
@@ -2837,7 +4454,10 @@ class _MusicSheetState extends ConsumerState<_MusicSheet> {
                 Row(
                   children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 5,
+                        vertical: 1.5,
+                      ),
                       decoration: BoxDecoration(
                         color: AppTheme.surface,
                         borderRadius: BorderRadius.circular(4),
@@ -2845,14 +4465,21 @@ class _MusicSheetState extends ConsumerState<_MusicSheet> {
                       ),
                       child: Text(
                         t.provider.toUpperCase(),
-                        style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: AppTheme.textSecondary),
+                        style: TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.textSecondary,
+                        ),
                       ),
                     ),
                     if (durStr.isNotEmpty) ...[
                       const SizedBox(width: 6),
                       Text(
                         durStr,
-                        style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: AppTheme.textMuted,
+                        ),
                       ),
                     ],
                   ],
@@ -2868,11 +4495,17 @@ class _MusicSheetState extends ConsumerState<_MusicSheet> {
               const SizedBox(width: 6),
               FilledButton.tonal(
                 style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
                   visualDensity: VisualDensity.compact,
                 ),
                 onPressed: () => _applyTrack(t.url, t.title, t.attribution),
-                child: const Text('Use', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                child: const Text(
+                  'Use',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                ),
               ),
             ],
           ),
@@ -2886,7 +4519,9 @@ class _MusicSheetState extends ConsumerState<_MusicSheet> {
     final hasSpeech = widget.c.ir?.audio.speechRangesMs.isNotEmpty ?? false;
 
     return ConstrainedBox(
-      constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.85),
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.85,
+      ),
       child: ListView(
         shrinkWrap: true,
         physics: const BouncingScrollPhysics(),
@@ -2898,9 +4533,15 @@ class _MusicSheetState extends ConsumerState<_MusicSheet> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Music & Soundtracks', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 18)),
                   Text(
-                    m == null ? 'Browse royalty-free background music or upload your own' : 'Soundtrack active on video timeline',
+                    'Music & Soundtracks',
+                    style: Theme.of(context).textTheme.titleLarge
+                        ?.copyWith(fontSize: 18),
+                  ),
+                  Text(
+                    m == null
+                        ? 'Browse royalty-free background music or upload your own'
+                        : 'Soundtrack active on video timeline',
                     style: Theme.of(context).textTheme.labelSmall,
                   ),
                 ],
@@ -2923,12 +4564,17 @@ class _MusicSheetState extends ConsumerState<_MusicSheet> {
                 child: TextField(
                   controller: _query,
                   onSubmitted: _searchAudio,
-                  decoration: fieldDecoration('Mood / Genre', hint: 'upbeat, cinematic, lo-fi…'),
+                  decoration: fieldDecoration(
+                    'Mood / Genre',
+                    hint: 'upbeat, cinematic, lo-fi…',
+                  ),
                 ),
               ),
               const SizedBox(width: 8),
               FilledButton.icon(
-                onPressed: _searching || _busy ? null : () => _searchAudio(_query.text),
+                onPressed: _searching || _busy
+                    ? null
+                    : () => _searchAudio(_query.text),
                 icon: const Icon(Icons.search_rounded, size: 18),
                 label: const Text('Find'),
               ),
@@ -2944,7 +4590,8 @@ class _MusicSheetState extends ConsumerState<_MusicSheet> {
               children: [
                 for (final item in _moodPresets)
                   () {
-                    final isSelected = _query.text.trim().toLowerCase() == item.tag;
+                    final isSelected =
+                        _query.text.trim().toLowerCase() == item.tag;
                     return GestureDetector(
                       onTap: () {
                         _query.text = item.tag;
@@ -2953,9 +4600,14 @@ class _MusicSheetState extends ConsumerState<_MusicSheet> {
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 200),
                         margin: const EdgeInsets.only(right: 8),
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
                         decoration: BoxDecoration(
-                          color: isSelected ? item.color.withValues(alpha: 0.22) : AppTheme.surfaceElevated,
+                          color: isSelected
+                              ? item.color.withValues(alpha: 0.22)
+                              : AppTheme.surfaceElevated,
                           borderRadius: BorderRadius.circular(20),
                           border: Border.all(
                             color: isSelected ? item.color : AppTheme.border,
@@ -2965,14 +4617,24 @@ class _MusicSheetState extends ConsumerState<_MusicSheet> {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(item.icon, size: 14, color: isSelected ? item.color : AppTheme.textSecondary),
+                            Icon(
+                              item.icon,
+                              size: 14,
+                              color: isSelected
+                                  ? item.color
+                                  : AppTheme.textSecondary,
+                            ),
                             const SizedBox(width: 5),
                             Text(
                               item.label,
                               style: TextStyle(
                                 fontSize: 12,
-                                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                                color: isSelected ? item.color : AppTheme.textPrimary,
+                                fontWeight: isSelected
+                                    ? FontWeight.bold
+                                    : FontWeight.normal,
+                                color: isSelected
+                                    ? item.color
+                                    : AppTheme.textPrimary,
                               ),
                             ),
                           ],
@@ -2993,9 +4655,22 @@ class _MusicSheetState extends ConsumerState<_MusicSheet> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primary)),
+                    SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: AppTheme.primary,
+                      ),
+                    ),
                     const SizedBox(width: 10),
-                    Text('Searching soundtrack catalog…', style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+                    Text(
+                      'Searching soundtrack catalog…',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppTheme.textSecondary,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -3006,7 +4681,11 @@ class _MusicSheetState extends ConsumerState<_MusicSheet> {
               children: [
                 Text(
                   'Found ${_results!.length} royalty-free tracks:',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textSecondary),
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.textSecondary,
+                  ),
                 ),
                 Text(
                   'Pixabay · Freesound',
@@ -3018,7 +4697,10 @@ class _MusicSheetState extends ConsumerState<_MusicSheet> {
             if (_results!.isEmpty)
               Container(
                 padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(color: AppTheme.surfaceElevated, borderRadius: BorderRadius.circular(12)),
+                decoration: BoxDecoration(
+                  color: AppTheme.surfaceElevated,
+                  borderRadius: BorderRadius.circular(12),
+                ),
                 child: Text(
                   'No tracks found for this mood. Try "energetic", "calm", or import your own audio.',
                   style: TextStyle(color: AppTheme.textMuted, fontSize: 12),
@@ -3026,8 +4708,7 @@ class _MusicSheetState extends ConsumerState<_MusicSheet> {
                 ),
               )
             else
-              for (final track in _results!.take(20))
-                _buildTrackCard(track),
+              for (final track in _results!.take(20)) _buildTrackCard(track),
           ],
 
           const SizedBox(height: 10),
@@ -3039,7 +4720,10 @@ class _MusicSheetState extends ConsumerState<_MusicSheet> {
             label: const Text('Import my own audio file (MP3 / WAV)'),
           ),
           if (_busy)
-            const Padding(padding: EdgeInsets.only(top: 8), child: LinearProgressIndicator()),
+            const Padding(
+              padding: EdgeInsets.only(top: 8),
+              child: LinearProgressIndicator(),
+            ),
         ],
       ),
     );
@@ -3062,33 +4746,59 @@ class _ZoomSheetState extends State<_ZoomSheet> {
   @override
   Widget build(BuildContext context) {
     final zooms = widget.c.ir!.zooms;
-    return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      _Title('Punch-in zoom', subtitle: 'At ${timecode(widget.c.playheadMs)}'),
-      Text('Zoom ${scale.toStringAsFixed(1)}x'),
-      Slider(value: scale, min: 1.1, max: 2.0, divisions: 9, onChanged: (v) => setState(() => scale = v)),
-      Text('Hold ${seconds.toStringAsFixed(1)}s'),
-      Slider(value: seconds, min: 0.5, max: 5, divisions: 9, onChanged: (v) => setState(() => seconds = v)),
-      FilledButton(
-        onPressed: () {
-          _close(context);
-          widget.onEdit((ir) => TimelineOps.addZoom(ir, startMs: widget.c.playheadMs, durationMs: (seconds * 1000).round(), scale: scale));
-        },
-        child: Text('Add zoom'),
-      ),
-      for (final z in zooms)
-        ListTile(
-          dense: true,
-          title: Text('${z.scale.toStringAsFixed(1)}x zoom'),
-          subtitle: Text('${timecode(z.startMs)} – ${timecode(z.endMs)}'),
-          trailing: IconButton(
-            icon: Icon(Icons.delete_outline_rounded),
-            onPressed: () {
-              _close(context);
-              widget.onEdit((ir) => TimelineOps.removeZoom(ir, z.id));
-            },
-          ),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _Title(
+          'Punch-in zoom',
+          subtitle: 'At ${timecode(widget.c.playheadMs)}',
         ),
-    ]);
+        Text('Zoom ${scale.toStringAsFixed(1)}x'),
+        Slider(
+          value: scale,
+          min: 1.1,
+          max: 2.0,
+          divisions: 9,
+          onChanged: (v) => setState(() => scale = v),
+        ),
+        Text('Hold ${seconds.toStringAsFixed(1)}s'),
+        Slider(
+          value: seconds,
+          min: 0.5,
+          max: 5,
+          divisions: 9,
+          onChanged: (v) => setState(() => seconds = v),
+        ),
+        FilledButton(
+          onPressed: () {
+            _close(context);
+            widget.onEdit(
+              (ir) => TimelineOps.addZoom(
+                ir,
+                startMs: widget.c.playheadMs,
+                durationMs: (seconds * 1000).round(),
+                scale: scale,
+              ),
+            );
+          },
+          child: Text('Add zoom'),
+        ),
+        for (final z in zooms)
+          ListTile(
+            dense: true,
+            title: Text('${z.scale.toStringAsFixed(1)}x zoom'),
+            subtitle: Text('${timecode(z.startMs)} – ${timecode(z.endMs)}'),
+            trailing: IconButton(
+              icon: Icon(Icons.delete_outline_rounded),
+              onPressed: () {
+                _close(context);
+                widget.onEdit((ir) => TimelineOps.removeZoom(ir, z.id));
+              },
+            ),
+          ),
+      ],
+    );
   }
 }
 
@@ -3108,7 +4818,16 @@ class _BrollSheetState extends ConsumerState<_BrollSheet> {
   bool _busy = false;
   List<StockVideoResult>? _results;
 
-  static const _ideaChips = ['cinematic', 'nature', 'office', 'city night', 'technology', 'people', 'coffee', 'coding'];
+  static const _ideaChips = [
+    'cinematic',
+    'nature',
+    'office',
+    'city night',
+    'technology',
+    'people',
+    'coffee',
+    'coding',
+  ];
 
   @override
   void initState() {
@@ -3129,7 +4848,9 @@ class _BrollSheetState extends ConsumerState<_BrollSheet> {
     if (q.isEmpty) return;
     setState(() => _searching = true);
     try {
-      final res = await ref.read(aiDirectorServiceProvider).searchStockVideos(q);
+      final res = await ref
+          .read(aiDirectorServiceProvider)
+          .searchStockVideos(q);
       if (!mounted) return;
       setState(() {
         _results = res;
@@ -3143,11 +4864,24 @@ class _BrollSheetState extends ConsumerState<_BrollSheet> {
     }
   }
 
-  void _addClip(String url, String label, {String? credit, String? thumbnailUrl, String? previewUrl}) {
-    if (credit != null && credit.isNotEmpty) widget.c.mediaCredits[url] = credit;
+  void _addClip(
+    String url,
+    String label, {
+    String? credit,
+    String? thumbnailUrl,
+    String? previewUrl,
+  }) {
+    if (credit != null && credit.isNotEmpty)
+      widget.c.mediaCredits[url] = credit;
     _close(context);
     final source = url.startsWith('http')
-        ? {'kind': 'url', 'url': url, 'query': label, 'thumbnailUrl': thumbnailUrl ?? previewUrl ?? url, 'previewUrl': previewUrl ?? url}
+        ? {
+            'kind': 'url',
+            'url': url,
+            'query': label,
+            'thumbnailUrl': thumbnailUrl ?? previewUrl ?? url,
+            'previewUrl': previewUrl ?? url,
+          }
         : widget.c.localOverlaySource(url, label: label);
     widget.onEdit(
       (ir) => TimelineOps.addBroll(
@@ -3175,7 +4909,7 @@ class _BrollSheetState extends ConsumerState<_BrollSheet> {
   void _onSelectClip(StockVideoResult v) {
     showModalBottomSheet<void>(
       context: context,
-    useRootNavigator: true,
+      useRootNavigator: true,
       backgroundColor: AppTheme.surface,
       builder: (ctx) => SafeArea(
         child: Padding(
@@ -3184,9 +4918,16 @@ class _BrollSheetState extends ConsumerState<_BrollSheet> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('Insert Stock Video', style: Theme.of(ctx).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+              Text(
+                'Insert Stock Video',
+                style: Theme.of(ctx).textTheme.titleMedium
+                    ?.copyWith(fontWeight: FontWeight.bold),
+              ),
               SizedBox(height: 4),
-              Text('${v.provider}: ${v.author ?? v.id}', style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+              Text(
+                '${v.provider}: ${v.author ?? v.id}',
+                style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+              ),
               SizedBox(height: 16),
               FilledButton.icon(
                 icon: Icon(Icons.layers_rounded),
@@ -3213,9 +4954,20 @@ class _BrollSheetState extends ConsumerState<_BrollSheet> {
                   _close(context);
                   try {
                     // Already downloaded: the main track uses the phone's copy (no second download at export).
-                    await widget.c.addVideoClip(AssetCache.instance.cachedPath(v.downloadUrl) ?? v.downloadUrl, label: '${v.provider}: ${v.author ?? v.id}');
+                    await widget.c.addVideoClip(
+                      AssetCache.instance.cachedPath(v.downloadUrl) ??
+                          v.downloadUrl,
+                      label: '${v.provider}: ${v.author ?? v.id}',
+                    );
                   } catch (e) {
-                    messenger.showSnackBar(SnackBar(content: Text('This video could not be added: ${errorText(e)}'), backgroundColor: AppTheme.error));
+                    messenger.showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          'This video could not be added: ${errorText(e)}',
+                        ),
+                        backgroundColor: AppTheme.error,
+                      ),
+                    );
                   }
                 },
               ),
@@ -3238,7 +4990,7 @@ class _BrollSheetState extends ConsumerState<_BrollSheet> {
     final f = file;
     showModalBottomSheet<void>(
       context: context,
-    useRootNavigator: true,
+      useRootNavigator: true,
       backgroundColor: AppTheme.surface,
       builder: (ctx) => SafeArea(
         child: Padding(
@@ -3247,16 +4999,28 @@ class _BrollSheetState extends ConsumerState<_BrollSheet> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('Add Selected Video', style: Theme.of(ctx).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+              Text(
+                'Add Selected Video',
+                style: Theme.of(ctx).textTheme.titleMedium
+                    ?.copyWith(fontWeight: FontWeight.bold),
+              ),
               SizedBox(height: 4),
-              Text(f.name, style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+              Text(
+                f.name,
+                style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+              ),
               SizedBox(height: 16),
               FilledButton.icon(
                 icon: Icon(Icons.layers_rounded),
                 label: Text('Add as B-roll Cutaway (Overlay)'),
                 onPressed: () {
                   Navigator.pop(ctx);
-                  _addClip(f.path, f.name, thumbnailUrl: f.path, previewUrl: f.path);
+                  _addClip(
+                    f.path,
+                    f.name,
+                    thumbnailUrl: f.path,
+                    previewUrl: f.path,
+                  );
                 },
               ),
               SizedBox(height: 8),
@@ -3271,7 +5035,14 @@ class _BrollSheetState extends ConsumerState<_BrollSheet> {
                   try {
                     await widget.c.addVideoClip(f.path, label: f.name);
                   } catch (e) {
-                    messenger.showSnackBar(SnackBar(content: Text('This video could not be added: ${errorText(e)}'), backgroundColor: AppTheme.error));
+                    messenger.showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          'This video could not be added: ${errorText(e)}',
+                        ),
+                        backgroundColor: AppTheme.error,
+                      ),
+                    );
                   }
                 },
               ),
@@ -3290,22 +5061,33 @@ class _BrollSheetState extends ConsumerState<_BrollSheet> {
       child: ListView(
         padding: EdgeInsets.zero,
         children: [
-          _Title('B-roll Cutaways & Clips', subtitle: 'Overlay from ${timecode(widget.c.playheadMs)} or add to main timeline.'),
-          Row(children: [
-            Expanded(
-              child: TextField(
-                controller: _query,
-                onSubmitted: _searchVideos,
-                decoration: fieldDecoration('Search stock video', hint: 'e.g. nature, cinematic, city…'),
+          _Title(
+            'B-roll Cutaways & Clips',
+            subtitle:
+                'Overlay from ${timecode(widget.c.playheadMs)} or add to main timeline.',
+          ),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _query,
+                  onSubmitted: _searchVideos,
+                  decoration: fieldDecoration(
+                    'Search stock video',
+                    hint: 'e.g. nature, cinematic, city…',
+                  ),
+                ),
               ),
-            ),
-            SizedBox(width: 8),
-            FilledButton.icon(
-              onPressed: _searching || _busy ? null : () => _searchVideos(_query.text),
-              icon: Icon(Icons.search_rounded, size: 18),
-              label: Text('Find'),
-            ),
-          ]),
+              SizedBox(width: 8),
+              FilledButton.icon(
+                onPressed: _searching || _busy
+                    ? null
+                    : () => _searchVideos(_query.text),
+                icon: Icon(Icons.search_rounded, size: 18),
+                label: Text('Find'),
+              ),
+            ],
+          ),
           SizedBox(height: 8),
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
@@ -3316,9 +5098,13 @@ class _BrollSheetState extends ConsumerState<_BrollSheet> {
                     padding: EdgeInsets.only(right: 6),
                     child: ActionChip(
                       label: Text(tag, style: TextStyle(fontSize: 12)),
-                      backgroundColor: _query.text.trim().toLowerCase() == tag ? AppTheme.primary.withValues(alpha: 0.3) : AppTheme.surfaceElevated,
+                      backgroundColor: _query.text.trim().toLowerCase() == tag
+                          ? AppTheme.primary.withValues(alpha: 0.3)
+                          : AppTheme.surfaceElevated,
                       side: BorderSide(
-                        color: _query.text.trim().toLowerCase() == tag ? AppTheme.primary : AppTheme.border,
+                        color: _query.text.trim().toLowerCase() == tag
+                            ? AppTheme.primary
+                            : AppTheme.border,
                       ),
                       onPressed: () {
                         _query.text = tag;
@@ -3330,23 +5116,42 @@ class _BrollSheetState extends ConsumerState<_BrollSheet> {
             ),
           ),
           if (_searching)
-            SizedBox(height: 160, child: UniversalSkeleton(type: SkeletonType.activity, itemCount: 2)),
+            SizedBox(
+              height: 160,
+              child: UniversalSkeleton(
+                type: SkeletonType.activity,
+                itemCount: 2,
+              ),
+            ),
           if (_results != null && !_searching) ...[
             SizedBox(height: 12),
             Text(
               'Found ${_results!.length} clips (Pexels & Pixabay):',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textSecondary),
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.textSecondary,
+              ),
             ),
             SizedBox(height: 8),
             if (_results!.isEmpty)
               Container(
                 padding: EdgeInsets.all(16),
-                decoration: BoxDecoration(color: AppTheme.surfaceElevated, borderRadius: BorderRadius.circular(12)),
-                child: Text('No video clips found. Try another query like "city" or "drone".', style: TextStyle(color: AppTheme.textMuted)),
+                decoration: BoxDecoration(
+                  color: AppTheme.surfaceElevated,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  'No video clips found. Try another query like "city" or "drone".',
+                  style: TextStyle(color: AppTheme.textMuted),
+                ),
               )
             else
               SizedBox(
-                height: math.min(320.0, ((_results!.length.clamp(0, 15) + 2) ~/ 3) * 155.0),
+                height: math.min(
+                  320.0,
+                  ((_results!.length.clamp(0, 15) + 2) ~/ 3) * 155.0,
+                ),
                 child: GridView.builder(
                   physics: ClampingScrollPhysics(),
                   gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
@@ -3369,12 +5174,25 @@ class _BrollSheetState extends ConsumerState<_BrollSheet> {
                           children: [
                             if (v.thumbnailUrl != null)
                               Image.network(
-                                v.thumbnailUrl!, cacheWidth: 360,
+                                v.thumbnailUrl!,
+                                cacheWidth: 360,
                                 fit: BoxFit.cover,
-                                errorBuilder: (_, _, _) => Container(color: AppTheme.surfaceElevated, child: Icon(Icons.videocam_rounded, color: AppTheme.textMuted)),
+                                errorBuilder: (_, _, _) => Container(
+                                  color: AppTheme.surfaceElevated,
+                                  child: Icon(
+                                    Icons.videocam_rounded,
+                                    color: AppTheme.textMuted,
+                                  ),
+                                ),
                               )
                             else
-                              Container(color: AppTheme.surfaceElevated, child: Icon(Icons.videocam_rounded, color: AppTheme.textMuted)),
+                              Container(
+                                color: AppTheme.surfaceElevated,
+                                child: Icon(
+                                  Icons.videocam_rounded,
+                                  color: AppTheme.textMuted,
+                                ),
+                              ),
                             // Gradient shadow
                             Positioned(
                               left: 0,
@@ -3386,7 +5204,10 @@ class _BrollSheetState extends ConsumerState<_BrollSheet> {
                                   gradient: LinearGradient(
                                     begin: Alignment.topCenter,
                                     end: Alignment.bottomCenter,
-                                    colors: [Colors.transparent, Colors.black87],
+                                    colors: [
+                                      Colors.transparent,
+                                      Colors.black87,
+                                    ],
                                   ),
                                 ),
                               ),
@@ -3396,22 +5217,51 @@ class _BrollSheetState extends ConsumerState<_BrollSheet> {
                               top: 4,
                               left: 4,
                               child: Container(
-                                padding: EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                                decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.7), borderRadius: BorderRadius.circular(4)),
-                                child: Text(v.provider.toUpperCase(), style: TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: Colors.white)),
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: 4,
+                                  vertical: 1,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: 0.7),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  v.provider.toUpperCase(),
+                                  style: TextStyle(
+                                    fontSize: 8,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
                               ),
                             ),
                             // Download state: cloud = not on the phone yet, ring = downloading, tick = ready.
-                            Positioned(top: 4, right: 4, child: AssetDownloadBadge(url: v.downloadUrl)),
+                            Positioned(
+                              top: 4,
+                              right: 4,
+                              child: AssetDownloadBadge(url: v.downloadUrl),
+                            ),
                             // Duration
                             if (v.durationSec != null)
                               Positioned(
                                 bottom: 4,
                                 right: 4,
                                 child: Container(
-                                  padding: EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                                  decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.7), borderRadius: BorderRadius.circular(4)),
-                                  child: Text('${v.durationSec!.round()}s', style: TextStyle(fontSize: 9, color: Colors.white)),
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: 4,
+                                    vertical: 1,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withValues(alpha: 0.7),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    '${v.durationSec!.round()}s',
+                                    style: TextStyle(
+                                      fontSize: 9,
+                                      color: Colors.white,
+                                    ),
+                                  ),
                                 ),
                               ),
                           ],
@@ -3428,22 +5278,51 @@ class _BrollSheetState extends ConsumerState<_BrollSheet> {
             icon: Icon(Icons.video_library_rounded),
             label: Text('From my gallery / device'),
           ),
-          if (_busy) Padding(padding: EdgeInsets.only(top: 8), child: LinearProgressIndicator()),
+          if (_busy)
+            Padding(
+              padding: EdgeInsets.only(top: 8),
+              child: LinearProgressIndicator(),
+            ),
           SizedBox(height: 12),
           Text('Cutaway length: ${seconds.toStringAsFixed(1)}s'),
-          Slider(value: seconds, min: 1, max: 10, divisions: 18, onChanged: (v) => setState(() => seconds = v)),
+          Slider(
+            value: seconds,
+            min: 1,
+            max: 10,
+            divisions: 18,
+            onChanged: (v) => setState(() => seconds = v),
+          ),
           if (overlays.isNotEmpty) ...[
             SizedBox(height: 8),
-            Text('Active Overlays on Timeline', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textSecondary)),
+            Text(
+              'Active Overlays on Timeline',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.textSecondary,
+              ),
+            ),
             for (final o in overlays)
               ListTile(
                 dense: true,
                 contentPadding: EdgeInsets.zero,
-                leading: Icon(o.isImage ? Icons.photo_rounded : Icons.layers_rounded, color: AppTheme.accentBlue),
-                title: Text('${o.source['query'] ?? o.source['kind']}', maxLines: 1, overflow: TextOverflow.ellipsis),
-                subtitle: Text('${timecode(o.timelineStartMs)} – ${timecode(o.timelineEndMs)}'),
+                leading: Icon(
+                  o.isImage ? Icons.photo_rounded : Icons.layers_rounded,
+                  color: AppTheme.accentBlue,
+                ),
+                title: Text(
+                  '${o.source['query'] ?? o.source['kind']}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                subtitle: Text(
+                  '${timecode(o.timelineStartMs)} – ${timecode(o.timelineEndMs)}',
+                ),
                 trailing: IconButton(
-                  icon: Icon(Icons.delete_outline_rounded, color: AppTheme.error),
+                  icon: Icon(
+                    Icons.delete_outline_rounded,
+                    color: AppTheme.error,
+                  ),
                   onPressed: () {
                     _close(context);
                     widget.onEdit((ir) => TimelineOps.removeOverlay(ir, o.id));
@@ -3467,7 +5346,8 @@ class _TransitionSheet extends StatefulWidget {
   State<_TransitionSheet> createState() => _TransitionSheetState();
 }
 
-class _TransitionSheetState extends State<_TransitionSheet> with SingleTickerProviderStateMixin {
+class _TransitionSheetState extends State<_TransitionSheet>
+    with SingleTickerProviderStateMixin {
   late final AnimationController _anim = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 2400),
@@ -3477,24 +5357,77 @@ class _TransitionSheetState extends State<_TransitionSheet> with SingleTickerPro
   bool _applyToAll = true;
   late String _selectedType;
 
-  static const _sceneAUrl = 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=300&q=80';
-  static const _sceneBUrl = 'https://images.unsplash.com/photo-1519501025264-65ba15a82390?auto=format&fit=crop&w=300&q=80';
+  static const _sceneAUrl =
+      'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=300&q=80';
+  static const _sceneBUrl =
+      'https://images.unsplash.com/photo-1519501025264-65ba15a82390?auto=format&fit=crop&w=300&q=80';
 
   static const _transitions = [
-    (type: 'CUT', label: 'Hard Cut', icon: Icons.content_cut_rounded, desc: 'Instant switch between clips', defaultMs: 0),
-    (type: 'CROSSFADE', label: 'Crossfade', icon: Icons.animation_rounded, desc: 'Smooth alpha blend', defaultMs: 400),
-    (type: 'DISSOLVE', label: 'Dissolve', icon: Icons.blur_on_rounded, desc: 'Soft-focus dissolve blend', defaultMs: 500),
-    (type: 'DIP_BLACK', label: 'Fade Black', icon: Icons.dark_mode_rounded, desc: 'Cinematic dip through black', defaultMs: 500),
-    (type: 'DIP_WHITE', label: 'Fade White', icon: Icons.light_mode_rounded, desc: 'Bright exposure flash cut', defaultMs: 400),
-    (type: 'ZOOM_SWOOSH', label: 'Zoom Swoosh', icon: Icons.zoom_in_rounded, desc: 'Dynamic energetic push punch', defaultMs: 400),
-    (type: 'ZOOM_OUT', label: 'Zoom Out', icon: Icons.zoom_out_map_rounded, desc: 'Wide angle pull-back reveal', defaultMs: 500),
-    (type: 'GLITCH', label: 'Glitch', icon: Icons.electric_bolt_rounded, desc: 'Cyberpunk chromatic scanline jitter', defaultMs: 350),
+    (
+      type: 'CUT',
+      label: 'Hard Cut',
+      icon: Icons.content_cut_rounded,
+      desc: 'Instant switch between clips',
+      defaultMs: 0,
+    ),
+    (
+      type: 'CROSSFADE',
+      label: 'Crossfade',
+      icon: Icons.animation_rounded,
+      desc: 'Smooth alpha blend',
+      defaultMs: 400,
+    ),
+    (
+      type: 'DISSOLVE',
+      label: 'Dissolve',
+      icon: Icons.blur_on_rounded,
+      desc: 'Soft-focus dissolve blend',
+      defaultMs: 500,
+    ),
+    (
+      type: 'DIP_BLACK',
+      label: 'Fade Black',
+      icon: Icons.dark_mode_rounded,
+      desc: 'Cinematic dip through black',
+      defaultMs: 500,
+    ),
+    (
+      type: 'DIP_WHITE',
+      label: 'Fade White',
+      icon: Icons.light_mode_rounded,
+      desc: 'Bright exposure flash cut',
+      defaultMs: 400,
+    ),
+    (
+      type: 'ZOOM_SWOOSH',
+      label: 'Zoom Swoosh',
+      icon: Icons.zoom_in_rounded,
+      desc: 'Dynamic energetic push punch',
+      defaultMs: 400,
+    ),
+    (
+      type: 'ZOOM_OUT',
+      label: 'Zoom Out',
+      icon: Icons.zoom_out_map_rounded,
+      desc: 'Wide angle pull-back reveal',
+      defaultMs: 500,
+    ),
+    (
+      type: 'GLITCH',
+      label: 'Glitch',
+      icon: Icons.electric_bolt_rounded,
+      desc: 'Cyberpunk chromatic scanline jitter',
+      defaultMs: 350,
+    ),
   ];
 
   @override
   void initState() {
     super.initState();
-    final firstTransition = widget.c.ir?.clips.skip(1).firstOrNull?.transitionIn;
+    final firstTransition = widget.c.ir?.clips
+        .skip(1)
+        .firstOrNull
+        ?.transitionIn;
     _selectedType = firstTransition?.type ?? 'CUT';
     _durationMs = firstTransition?.durationMs ?? 400;
   }
@@ -3520,7 +5453,11 @@ class _TransitionSheetState extends State<_TransitionSheet> with SingleTickerPro
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Visual Transitions', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 18)),
+                Text(
+                  'Visual Transitions',
+                  style: Theme.of(context).textTheme.titleLarge
+                      ?.copyWith(fontSize: 18),
+                ),
                 Text(
                   hasMultipleClips
                       ? 'Live animated preview · Applied between clips'
@@ -3533,9 +5470,19 @@ class _TransitionSheetState extends State<_TransitionSheet> with SingleTickerPro
               TextButton(
                 onPressed: () {
                   setState(() => _selectedType = 'CUT');
-                  widget.onEdit((ir) => TimelineOps.setTransition(ir, null, index: _applyToAll ? null : widget.index), done: 'Transitions removed');
+                  widget.onEdit(
+                    (ir) => TimelineOps.setTransition(
+                      ir,
+                      null,
+                      index: _applyToAll ? null : widget.index,
+                    ),
+                    done: 'Transitions removed',
+                  );
                 },
-                child: Text('Reset', style: TextStyle(fontSize: 12, color: AppTheme.error)),
+                child: Text(
+                  'Reset',
+                  style: TextStyle(fontSize: 12, color: AppTheme.error),
+                ),
               ),
           ],
         ),
@@ -3547,8 +5494,14 @@ class _TransitionSheetState extends State<_TransitionSheet> with SingleTickerPro
             padding: const EdgeInsets.only(bottom: 10),
             child: SegmentedButton<bool>(
               segments: [
-                ButtonSegment(value: true, label: Text('All cuts (${clipCount - 1})')),
-                ButtonSegment(value: false, label: Text('Current cut (${(widget.index ?? 0) + 1})')),
+                ButtonSegment(
+                  value: true,
+                  label: Text('All cuts (${clipCount - 1})'),
+                ),
+                ButtonSegment(
+                  value: false,
+                  label: Text('Current cut (${(widget.index ?? 0) + 1})'),
+                ),
               ],
               selected: {_applyToAll},
               onSelectionChanged: (s) => setState(() => _applyToAll = s.first),
@@ -3580,9 +5533,18 @@ class _TransitionSheetState extends State<_TransitionSheet> with SingleTickerPro
                           _selectedType = t.type;
                           if (t.defaultMs > 0) _durationMs = t.defaultMs;
                         });
-                        final transition = t.type == 'CUT' ? null : EditIrTransition(type: t.type, durationMs: _durationMs);
+                        final transition = t.type == 'CUT'
+                            ? null
+                            : EditIrTransition(
+                                type: t.type,
+                                durationMs: _durationMs,
+                              );
                         widget.onEdit(
-                          (ir) => TimelineOps.setTransition(ir, transition, index: _applyToAll ? null : widget.index),
+                          (ir) => TimelineOps.setTransition(
+                            ir,
+                            transition,
+                            index: _applyToAll ? null : widget.index,
+                          ),
                           done: '${t.label} applied',
                         );
                       },
@@ -3613,16 +5575,23 @@ class _TransitionSheetState extends State<_TransitionSheet> with SingleTickerPro
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                             // Live Animated Micro-Transition View
-                            Expanded(
-                              child: _buildAnimatedPreview(t.type),
-                            ),
+                            Expanded(child: _buildAnimatedPreview(t.type)),
                             // Footer Label
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 6,
+                              ),
                               color: Colors.black.withValues(alpha: 0.6),
                               child: Row(
                                 children: [
-                                  Icon(t.icon, size: 14, color: isSelected ? AppTheme.primary : Colors.white70),
+                                  Icon(
+                                    t.icon,
+                                    size: 14,
+                                    color: isSelected
+                                        ? AppTheme.primary
+                                        : Colors.white70,
+                                  ),
                                   const SizedBox(width: 6),
                                   Expanded(
                                     child: Text(
@@ -3631,15 +5600,22 @@ class _TransitionSheetState extends State<_TransitionSheet> with SingleTickerPro
                                       overflow: TextOverflow.ellipsis,
                                       style: TextStyle(
                                         fontSize: 12,
-                                        fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
-                                        color: isSelected ? AppTheme.primary : Colors.white,
+                                        fontWeight: isSelected
+                                            ? FontWeight.bold
+                                            : FontWeight.w600,
+                                        color: isSelected
+                                            ? AppTheme.primary
+                                            : Colors.white,
                                       ),
                                     ),
                                   ),
                                   if (t.defaultMs > 0)
                                     Text(
                                       '${t.defaultMs}ms',
-                                      style: TextStyle(fontSize: 10, color: AppTheme.textMuted),
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        color: AppTheme.textMuted,
+                                      ),
                                     ),
                                 ],
                               ),
@@ -3656,7 +5632,11 @@ class _TransitionSheetState extends State<_TransitionSheet> with SingleTickerPro
                                 color: AppTheme.primary,
                                 shape: BoxShape.circle,
                               ),
-                              child: const Icon(Icons.check, size: 12, color: Colors.white),
+                              child: const Icon(
+                                Icons.check,
+                                size: 12,
+                                color: Colors.white,
+                              ),
                             ),
                           ),
                       ],
@@ -3672,9 +5652,18 @@ class _TransitionSheetState extends State<_TransitionSheet> with SingleTickerPro
           const SizedBox(height: 10),
           Row(
             children: [
-              Text('Duration: ${_durationMs}ms', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+              Text(
+                'Duration: ${_durationMs}ms',
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
               const Spacer(),
-              Text('${(_durationMs / 1000).toStringAsFixed(2)}s', style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+              Text(
+                '${(_durationMs / 1000).toStringAsFixed(2)}s',
+                style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+              ),
             ],
           ),
           Slider(
@@ -3684,8 +5673,17 @@ class _TransitionSheetState extends State<_TransitionSheet> with SingleTickerPro
             divisions: 16,
             onChanged: (v) {
               setState(() => _durationMs = v.round());
-              final transition = EditIrTransition(type: _selectedType, durationMs: _durationMs);
-              widget.onEdit((ir) => TimelineOps.setTransition(ir, transition, index: _applyToAll ? null : widget.index));
+              final transition = EditIrTransition(
+                type: _selectedType,
+                durationMs: _durationMs,
+              );
+              widget.onEdit(
+                (ir) => TimelineOps.setTransition(
+                  ir,
+                  transition,
+                  index: _applyToAll ? null : widget.index,
+                ),
+              );
             },
           ),
         ],
@@ -3718,8 +5716,16 @@ class _TransitionSheetState extends State<_TransitionSheet> with SingleTickerPro
           p = (v - 0.25) / 0.50;
         }
 
-        Widget sceneA = Image.network(_sceneAUrl, fit: BoxFit.cover, errorBuilder: (_, _, _) => _sceneFallbackA());
-        Widget sceneB = Image.network(_sceneBUrl, fit: BoxFit.cover, errorBuilder: (_, _, _) => _sceneFallbackB());
+        Widget sceneA = Image.network(
+          _sceneAUrl,
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) => _sceneFallbackA(),
+        );
+        Widget sceneB = Image.network(
+          _sceneBUrl,
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) => _sceneFallbackB(),
+        );
 
         return Stack(
           fit: StackFit.expand,
@@ -3735,16 +5741,15 @@ class _TransitionSheetState extends State<_TransitionSheet> with SingleTickerPro
               Opacity(opacity: p.clamp(0.0, 1.0), child: sceneB),
 
             if (type == 'DISSOLVE')
-              Opacity(
-                opacity: p.clamp(0.0, 1.0),
-                child: sceneB,
-              ),
+              Opacity(opacity: p.clamp(0.0, 1.0), child: sceneB),
 
             if (type == 'DIP_BLACK') ...[
               if (p >= 0.5) sceneB,
               Container(
                 color: Colors.black.withValues(
-                  alpha: p < 0.5 ? (p * 2.0).clamp(0.0, 1.0) : ((1.0 - p) * 2.0).clamp(0.0, 1.0),
+                  alpha: p < 0.5
+                      ? (p * 2.0).clamp(0.0, 1.0)
+                      : ((1.0 - p) * 2.0).clamp(0.0, 1.0),
                 ),
               ),
             ],
@@ -3753,7 +5758,9 @@ class _TransitionSheetState extends State<_TransitionSheet> with SingleTickerPro
               if (p >= 0.5) sceneB,
               Container(
                 color: Colors.white.withValues(
-                  alpha: p < 0.5 ? (p * 2.0).clamp(0.0, 1.0) : ((1.0 - p) * 2.0).clamp(0.0, 1.0),
+                  alpha: p < 0.5
+                      ? (p * 2.0).clamp(0.0, 1.0)
+                      : ((1.0 - p) * 2.0).clamp(0.0, 1.0),
                 ),
               ),
             ],
@@ -3762,24 +5769,36 @@ class _TransitionSheetState extends State<_TransitionSheet> with SingleTickerPro
               if (p < 0.5)
                 Transform.scale(
                   scale: 1.0 + p * 1.5,
-                  child: Opacity(opacity: (1.0 - p * 1.8).clamp(0.0, 1.0), child: sceneA),
+                  child: Opacity(
+                    opacity: (1.0 - p * 1.8).clamp(0.0, 1.0),
+                    child: sceneA,
+                  ),
                 )
               else
                 Transform.scale(
                   scale: 1.6 - (p - 0.5) * 1.2,
-                  child: Opacity(opacity: ((p - 0.5) * 2.0).clamp(0.0, 1.0), child: sceneB),
+                  child: Opacity(
+                    opacity: ((p - 0.5) * 2.0).clamp(0.0, 1.0),
+                    child: sceneB,
+                  ),
                 ),
 
             if (type == 'ZOOM_OUT')
               if (p < 0.5)
                 Transform.scale(
                   scale: (1.0 - p * 0.5).clamp(0.5, 1.0),
-                  child: Opacity(opacity: (1.0 - p * 1.8).clamp(0.0, 1.0), child: sceneA),
+                  child: Opacity(
+                    opacity: (1.0 - p * 1.8).clamp(0.0, 1.0),
+                    child: sceneA,
+                  ),
                 )
               else
                 Transform.scale(
                   scale: (0.6 + (p - 0.5) * 0.8).clamp(0.6, 1.0),
-                  child: Opacity(opacity: ((p - 0.5) * 2.0).clamp(0.0, 1.0), child: sceneB),
+                  child: Opacity(
+                    opacity: ((p - 0.5) * 2.0).clamp(0.0, 1.0),
+                    child: sceneB,
+                  ),
                 ),
 
             if (type == 'GLITCH') ...[
@@ -3790,13 +5809,17 @@ class _TransitionSheetState extends State<_TransitionSheet> with SingleTickerPro
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
-                      Container(color: Colors.cyanAccent.withValues(alpha: 0.25)),
+                      Container(
+                        color: Colors.cyanAccent.withValues(alpha: 0.25),
+                      ),
                       Positioned(
                         top: (p * 50) % 40,
                         left: 0,
                         right: 0,
                         height: 4,
-                        child: Container(color: const Color(0xFFFF00FF).withValues(alpha: 0.6)),
+                        child: Container(
+                          color: const Color(0xFFFF00FF).withValues(alpha: 0.6),
+                        ),
                       ),
                     ],
                   ),
@@ -3809,23 +5832,33 @@ class _TransitionSheetState extends State<_TransitionSheet> with SingleTickerPro
   }
 
   Widget _sceneFallbackA() => Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(colors: [Color(0xFFE65100), Color(0xFFFFB74D)]),
-        ),
-        child: const Center(child: Icon(Icons.wb_sunny_rounded, color: Colors.white, size: 20)),
-      );
+    decoration: const BoxDecoration(
+      gradient: LinearGradient(colors: [Color(0xFFE65100), Color(0xFFFFB74D)]),
+    ),
+    child: const Center(
+      child: Icon(Icons.wb_sunny_rounded, color: Colors.white, size: 20),
+    ),
+  );
 
   Widget _sceneFallbackB() => Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(colors: [Color(0xFF1A237E), Color(0xFF00E5FF)]),
-        ),
-        child: const Center(child: Icon(Icons.location_city_rounded, color: Colors.white, size: 20)),
-      );
+    decoration: const BoxDecoration(
+      gradient: LinearGradient(colors: [Color(0xFF1A237E), Color(0xFF00E5FF)]),
+    ),
+    child: const Center(
+      child: Icon(Icons.location_city_rounded, color: Colors.white, size: 20),
+    ),
+  );
 }
 
 /// A caption preset rendered as a live sample in its own font, colours, stroke, glow and pill.
 class CaptionPresetCard extends StatelessWidget {
-  const CaptionPresetCard({super.key, required this.name, required this.style, required this.selected, required this.onTap});
+  const CaptionPresetCard({
+    super.key,
+    required this.name,
+    required this.style,
+    required this.selected,
+    required this.onTap,
+  });
   final String name;
   final Map<String, dynamic> style;
   final bool selected;
@@ -3835,7 +5868,10 @@ class CaptionPresetCard extends StatelessWidget {
     if (v is! String) return d;
     final h = v.replaceFirst('#', '');
     if (h.length != 6 && h.length != 8) return d;
-    final n = int.tryParse(h.length == 6 ? 'FF$h' : h.substring(6) + h.substring(0, 6), radix: 16);
+    final n = int.tryParse(
+      h.length == 6 ? 'FF$h' : h.substring(6) + h.substring(0, 6),
+      radix: 16,
+    );
     return n == null ? d : Color(n);
   }
 
@@ -3843,11 +5879,17 @@ class CaptionPresetCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final text = _hex(style['textColor'], Colors.white);
     final hi = _hex(style['highlightColor'], Color(0xFFFFE600));
-    final bg = style['background'] is Map ? _hex((style['background'] as Map)['color'], Colors.black54) : null;
+    final bg = style['background'] is Map
+        ? _hex((style['background'] as Map)['color'], Colors.black54)
+        : null;
     final stroke = (style['strokeWidthPx'] as num? ?? 0) > 0;
     final shadows = [
       if (style['glow'] == true) Shadow(blurRadius: 10, color: hi),
-      if (style['shadow'] == true || stroke) Shadow(blurRadius: stroke ? 1.5 : 4, color: _hex(style['strokeColor'], Colors.black)),
+      if (style['shadow'] == true || stroke)
+        Shadow(
+          blurRadius: stroke ? 1.5 : 4,
+          color: _hex(style['strokeColor'], Colors.black),
+        ),
     ];
     String up(String s) => style['uppercase'] == true ? s.toUpperCase() : s;
     return Semantics(
@@ -3863,28 +5905,56 @@ class CaptionPresetCard extends StatelessWidget {
           decoration: BoxDecoration(
             color: AppTheme.background,
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: selected ? AppTheme.primary : AppTheme.border, width: selected ? 2 : 1),
+            border: Border.all(
+              color: selected ? AppTheme.primary : AppTheme.border,
+              width: selected ? 2 : 1,
+            ),
           ),
-          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Expanded(
-              child: Center(
-                child: Container(
-                  padding: bg == null ? null : EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: bg == null ? null : BoxDecoration(color: bg, borderRadius: BorderRadius.circular(6)),
-                  child: FittedBox(
-                    child: Text.rich(
-                      TextSpan(children: [
-                        TextSpan(text: '${up('Go')} '),
-                        TextSpan(text: up('viral'), style: TextStyle(color: hi)),
-                      ]),
-                      style: CaptionFonts.textStyle(style, fontSize: 18, color: text, shadows: shadows),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Expanded(
+                child: Center(
+                  child: Container(
+                    padding: bg == null
+                        ? null
+                        : EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: bg == null
+                        ? null
+                        : BoxDecoration(
+                            color: bg,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                    child: FittedBox(
+                      child: Text.rich(
+                        TextSpan(
+                          children: [
+                            TextSpan(text: '${up('Go')} '),
+                            TextSpan(
+                              text: up('viral'),
+                              style: TextStyle(color: hi),
+                            ),
+                          ],
+                        ),
+                        style: CaptionFonts.textStyle(
+                          style,
+                          fontSize: 18,
+                          color: text,
+                          shadows: shadows,
+                        ),
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
-            Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.labelSmall),
-          ]),
+              Text(
+                name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.labelSmall,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -3900,26 +5970,29 @@ class _LibrarySheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => DefaultTabController(
-        length: 7,
-        child: SizedBox(
-          height: MediaQuery.of(context).size.height * 0.8,
-          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            TabBar(
-              isScrollable: true,
-              tabAlignment: TabAlignment.start,
-              tabs: [
-                Tab(icon: Icon(Icons.cloud_upload_rounded), text: 'Uploads'),
-                Tab(icon: Icon(Icons.movie_rounded), text: 'Video'),
-                Tab(icon: Icon(Icons.photo_rounded), text: 'Photos'),
-                Tab(icon: Icon(Icons.music_note_rounded), text: 'Music'),
-                Tab(icon: Icon(Icons.graphic_eq_rounded), text: 'Sound FX'),
-                Tab(icon: Icon(Icons.title_rounded), text: 'Text'),
-                Tab(icon: Icon(Icons.auto_fix_high_rounded), text: 'Effects'),
-              ],
-            ),
-            SizedBox(height: 12),
-            Expanded(
-              child: TabBarView(children: [
+    length: 7,
+    child: SizedBox(
+      height: MediaQuery.of(context).size.height * 0.8,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          TabBar(
+            isScrollable: true,
+            tabAlignment: TabAlignment.start,
+            tabs: [
+              Tab(icon: Icon(Icons.cloud_upload_rounded), text: 'Uploads'),
+              Tab(icon: Icon(Icons.movie_rounded), text: 'Video'),
+              Tab(icon: Icon(Icons.photo_rounded), text: 'Photos'),
+              Tab(icon: Icon(Icons.music_note_rounded), text: 'Music'),
+              Tab(icon: Icon(Icons.graphic_eq_rounded), text: 'Sound FX'),
+              Tab(icon: Icon(Icons.title_rounded), text: 'Text'),
+              Tab(icon: Icon(Icons.auto_fix_high_rounded), text: 'Effects'),
+            ],
+          ),
+          SizedBox(height: 12),
+          Expanded(
+            child: TabBarView(
+              children: [
                 _UploadsTab(c: c, onEdit: onEdit),
                 _BrollSheet(c: c, onEdit: onEdit),
                 _PhotosTab(c: c, onEdit: onEdit),
@@ -3927,11 +6000,13 @@ class _LibrarySheet extends StatelessWidget {
                 _SfxTab(c: c, onEdit: onEdit),
                 _TextTemplatesTab(c: c, onEdit: onEdit),
                 _EffectsTab(c: c, onEdit: onEdit),
-              ]),
+              ],
             ),
-          ]),
-        ),
-      );
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 class _UploadsTab extends ConsumerStatefulWidget {
@@ -3953,7 +6028,7 @@ class _UploadsTabState extends ConsumerState<_UploadsTab> {
   void _chooseVideoPlacement(String path, String name) {
     showModalBottomSheet<void>(
       context: context,
-    useRootNavigator: true,
+      useRootNavigator: true,
       backgroundColor: AppTheme.surface,
       builder: (ctx) => SafeArea(
         child: Padding(
@@ -3962,9 +6037,16 @@ class _UploadsTabState extends ConsumerState<_UploadsTab> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('Insert Video Clip', style: Theme.of(ctx).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+              Text(
+                'Insert Video Clip',
+                style: Theme.of(ctx).textTheme.titleMedium
+                    ?.copyWith(fontWeight: FontWeight.bold),
+              ),
               SizedBox(height: 4),
-              Text(name, style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+              Text(
+                name,
+                style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+              ),
               SizedBox(height: 16),
               FilledButton.icon(
                 icon: Icon(Icons.movie_rounded),
@@ -3977,7 +6059,14 @@ class _UploadsTabState extends ConsumerState<_UploadsTab> {
                   try {
                     await widget.c.addVideoClip(path, label: name);
                   } catch (e) {
-                    messenger.showSnackBar(SnackBar(content: Text('This video could not be added: ${errorText(e)}'), backgroundColor: AppTheme.error));
+                    messenger.showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          'This video could not be added: ${errorText(e)}',
+                        ),
+                        backgroundColor: AppTheme.error,
+                      ),
+                    );
                   }
                 },
               ),
@@ -4008,7 +6097,11 @@ class _UploadsTabState extends ConsumerState<_UploadsTab> {
   }
 
   Future<void> _uploadPhoto() async {
-    final f = await ImagePicker().pickImage(source: ImageSource.gallery, maxWidth: 2160, maxHeight: 2160);
+    final f = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 2160,
+      maxHeight: 2160,
+    );
     if (f == null || !mounted) return;
     _close(context);
     final source = widget.c.localOverlaySource(f.path, label: f.name);
@@ -4035,7 +6128,7 @@ class _UploadsTabState extends ConsumerState<_UploadsTab> {
   void _chooseAudioPlacement(String path, String name) {
     showModalBottomSheet<void>(
       context: context,
-    useRootNavigator: true,
+      useRootNavigator: true,
       backgroundColor: AppTheme.surface,
       builder: (ctx) => SafeArea(
         child: Padding(
@@ -4044,9 +6137,16 @@ class _UploadsTabState extends ConsumerState<_UploadsTab> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('Insert Audio File', style: Theme.of(ctx).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+              Text(
+                'Insert Audio File',
+                style: Theme.of(ctx).textTheme.titleMedium
+                    ?.copyWith(fontWeight: FontWeight.bold),
+              ),
               SizedBox(height: 4),
-              Text(name, style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+              Text(
+                name,
+                style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+              ),
               SizedBox(height: 16),
               FilledButton.icon(
                 icon: Icon(Icons.music_note_rounded),
@@ -4057,7 +6157,8 @@ class _UploadsTabState extends ConsumerState<_UploadsTab> {
                   // The file stays on the phone: the timeline (and the AI Director) only see an asset reference.
                   final source = widget.c.localMediaSource(path, label: name);
                   widget.onEdit(
-                    (ir) => TimelineOps.setMusic(ir, source: source, title: name),
+                    (ir) =>
+                        TimelineOps.setMusic(ir, source: source, title: name),
                     done: 'Background music updated',
                   );
                 },
@@ -4072,7 +6173,12 @@ class _UploadsTabState extends ConsumerState<_UploadsTab> {
                   final source = widget.c.localMediaSource(path, label: name);
                   // No length = the whole file plays (it used to be cut to 2 s).
                   widget.onEdit(
-                    (ir) => TimelineOps.addSfx(ir, credit: name, source: source, startMs: widget.c.playheadMs),
+                    (ir) => TimelineOps.addSfx(
+                      ir,
+                      credit: name,
+                      source: source,
+                      startMs: widget.c.playheadMs,
+                    ),
                     done: 'Sound effect added',
                   );
                 },
@@ -4089,41 +6195,74 @@ class _UploadsTabState extends ConsumerState<_UploadsTab> {
     return ListView(
       padding: EdgeInsets.zero,
       children: [
-        _Title('Upload & Import Assets', subtitle: 'Import media from your device storage into this video.'),
+        _Title(
+          'Upload & Import Assets',
+          subtitle: 'Import media from your device storage into this video.',
+        ),
         ListTile(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: AppTheme.border)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: BorderSide(color: AppTheme.border),
+          ),
           leading: Container(
             padding: EdgeInsets.all(8),
-            decoration: BoxDecoration(color: AppTheme.primary.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),
+            decoration: BoxDecoration(
+              color: AppTheme.primary.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(8),
+            ),
             child: Icon(Icons.video_call_rounded, color: AppTheme.primary),
           ),
-          title: Text('Import Video Clip', style: TextStyle(fontWeight: FontWeight.w600)),
+          title: Text(
+            'Import Video Clip',
+            style: TextStyle(fontWeight: FontWeight.w600),
+          ),
           subtitle: Text('Add to timeline or overlay as B-roll cutaway'),
           trailing: Icon(Icons.chevron_right_rounded),
           onTap: _uploadVideo,
         ),
         SizedBox(height: 10),
         ListTile(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: AppTheme.border)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: BorderSide(color: AppTheme.border),
+          ),
           leading: Container(
             padding: EdgeInsets.all(8),
-            decoration: BoxDecoration(color: AppTheme.accentBlue.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),
-            child: Icon(Icons.add_photo_alternate_rounded, color: AppTheme.accentBlue),
+            decoration: BoxDecoration(
+              color: AppTheme.accentBlue.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+              Icons.add_photo_alternate_rounded,
+              color: AppTheme.accentBlue,
+            ),
           ),
-          title: Text('Import Photo', style: TextStyle(fontWeight: FontWeight.w600)),
+          title: Text(
+            'Import Photo',
+            style: TextStyle(fontWeight: FontWeight.w600),
+          ),
           subtitle: Text('Add full-screen or Picture-in-Picture photo overlay'),
           trailing: Icon(Icons.chevron_right_rounded),
           onTap: _uploadPhoto,
         ),
         SizedBox(height: 10),
         ListTile(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: AppTheme.border)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: BorderSide(color: AppTheme.border),
+          ),
           leading: Container(
             padding: EdgeInsets.all(8),
-            decoration: BoxDecoration(color: AppTheme.success.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),
+            decoration: BoxDecoration(
+              color: AppTheme.success.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(8),
+            ),
             child: Icon(Icons.audio_file_rounded, color: AppTheme.success),
           ),
-          title: Text('Import Audio Track', style: TextStyle(fontWeight: FontWeight.w600)),
+          title: Text(
+            'Import Audio Track',
+            style: TextStyle(fontWeight: FontWeight.w600),
+          ),
           subtitle: Text('Add custom music soundtrack or sound effect'),
           trailing: Icon(Icons.chevron_right_rounded),
           onTap: _uploadAudio,
@@ -4143,7 +6282,16 @@ class _SfxTab extends ConsumerStatefulWidget {
 }
 
 class _SfxTabState extends ConsumerState<_SfxTab> {
-  static const suggestions = ['whoosh', 'pop', 'click', 'swoosh', 'ding', 'bass drop', 'camera shutter', 'notification'];
+  static const suggestions = [
+    'whoosh',
+    'pop',
+    'click',
+    'swoosh',
+    'ding',
+    'bass drop',
+    'camera shutter',
+    'notification',
+  ];
   final _q = TextEditingController();
   List<StockAudioResult>? _results;
   Object? _error;
@@ -4167,8 +6315,11 @@ class _SfxTabState extends ConsumerState<_SfxTab> {
       _error = null;
     });
     try {
-      final res = await ref.read(aiDirectorServiceProvider).searchStockAudio(q, type: 'sfx');
-      if (mounted) setState(() => _results = res.where((r) => r.kind != 'music').toList());
+      final res = await ref
+          .read(aiDirectorServiceProvider)
+          .searchStockAudio(q, type: 'sfx');
+      if (mounted)
+        setState(() => _results = res.where((r) => r.kind != 'music').toList());
     } catch (e) {
       if (mounted) setState(() => _error = e);
     } finally {
@@ -4203,11 +6354,18 @@ class _SfxTabState extends ConsumerState<_SfxTab> {
       return;
     }
     if (!mounted) return;
-    if (r.attribution != null && r.attribution!.isNotEmpty) widget.c.mediaCredits[r.url] = r.attribution!;
+    if (r.attribution != null && r.attribution!.isNotEmpty)
+      widget.c.mediaCredits[r.url] = r.attribution!;
     final ms = r.durationSec == null ? null : (r.durationSec! * 1000).round();
     _close(context);
     widget.onEdit(
-      (ir) => TimelineOps.addSfx(ir, url: r.url, startMs: widget.c.playheadMs, durationMs: ms, credit: r.attribution),
+      (ir) => TimelineOps.addSfx(
+        ir,
+        url: r.url,
+        startMs: widget.c.playheadMs,
+        durationMs: ms,
+        credit: r.attribution,
+      ),
       done: 'Sound effect added at ${timecode(widget.c.playheadMs)}',
     );
   }
@@ -4215,52 +6373,90 @@ class _SfxTabState extends ConsumerState<_SfxTab> {
   @override
   Widget build(BuildContext context) {
     final results = _results;
-    return ListView(children: [
-      _Title('Sound effects', subtitle: 'Added at the playhead (${timecode(widget.c.playheadMs)}).'),
-      TextField(
-        controller: _q,
-        textInputAction: TextInputAction.search,
-        onSubmitted: (_) => _search(),
-        decoration: fieldDecoration('Search sounds', hint: 'whoosh, pop, applause…').copyWith(
-          suffixIcon: IconButton(tooltip: 'Search', icon: Icon(Icons.search_rounded), onPressed: _search),
+    return ListView(
+      children: [
+        _Title(
+          'Sound effects',
+          subtitle: 'Added at the playhead (${timecode(widget.c.playheadMs)}).',
         ),
-      ),
-      SizedBox(height: 8),
-      Wrap(spacing: 8, runSpacing: 4, children: [
-        for (final sgg in suggestions) ActionChip(label: Text(sgg), onPressed: () => _search(sgg)),
-      ]),
-      SizedBox(height: 12),
-      if (_searching) SizedBox(height: 160, child: UniversalSkeleton(type: SkeletonType.activity)),
-      if (_error != null && !_searching) ErrorView(error: _error!, compact: true, onRetry: _search),
-      if (!_searching && _error == null && results != null && results.isEmpty)
-        EmptyView(
-          icon: Icons.graphic_eq_rounded,
-          title: 'No sounds found',
-          message: 'Try a simpler word like "whoosh" or "click".',
-          actionLabel: 'Search "whoosh"',
-          onAction: () => _search('whoosh'),
+        TextField(
+          controller: _q,
+          textInputAction: TextInputAction.search,
+          onSubmitted: (_) => _search(),
+          decoration:
+              fieldDecoration(
+                'Search sounds',
+                hint: 'whoosh, pop, applause…',
+              ).copyWith(
+                suffixIcon: IconButton(
+                  tooltip: 'Search',
+                  icon: Icon(Icons.search_rounded),
+                  onPressed: _search,
+                ),
+              ),
         ),
-      if (!_searching && results != null)
-        for (final r in results)
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: IconButton(
-              tooltip: _previewing == r.url ? 'Stop' : 'Preview',
-              icon: Icon(_previewing == r.url ? Icons.stop_rounded : Icons.play_arrow_rounded),
-              onPressed: () => _preview(r),
-            ),
-            title: Text(r.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-            subtitle: Text(
-              [if (r.durationSec != null) '${r.durationSec!.toStringAsFixed(1)} s', r.provider].join(' · '),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-              AssetDownloadBadge(url: r.url),
-              TextButton(onPressed: () => _add(r), child: Text('Add')),
-            ]),
+        SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 4,
+          children: [
+            for (final sgg in suggestions)
+              ActionChip(label: Text(sgg), onPressed: () => _search(sgg)),
+          ],
+        ),
+        SizedBox(height: 12),
+        if (_searching)
+          SizedBox(
+            height: 160,
+            child: UniversalSkeleton(type: SkeletonType.activity),
           ),
-    ]);
+        if (_error != null && !_searching)
+          ErrorView(error: _error!, compact: true, onRetry: _search),
+        if (!_searching && _error == null && results != null && results.isEmpty)
+          EmptyView(
+            icon: Icons.graphic_eq_rounded,
+            title: 'No sounds found',
+            message: 'Try a simpler word like "whoosh" or "click".',
+            actionLabel: 'Search "whoosh"',
+            onAction: () => _search('whoosh'),
+          ),
+        if (!_searching && results != null)
+          for (final r in results)
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: IconButton(
+                tooltip: _previewing == r.url ? 'Stop' : 'Preview',
+                icon: Icon(
+                  _previewing == r.url
+                      ? Icons.stop_rounded
+                      : Icons.play_arrow_rounded,
+                ),
+                onPressed: () => _preview(r),
+              ),
+              title: Text(
+                r.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              subtitle: Text(
+                [
+                  if (r.durationSec != null)
+                    '${r.durationSec!.toStringAsFixed(1)} s',
+                  r.provider,
+                ].join(' · '),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  AssetDownloadBadge(url: r.url),
+                  TextButton(onPressed: () => _add(r), child: Text('Add')),
+                ],
+              ),
+            ),
+      ],
+    );
   }
 }
 
@@ -4287,7 +6483,11 @@ class _TextTemplatesTabState extends ConsumerState<_TextTemplatesTab> {
     if (pid == null) return BrandLook.none;
     final v = ref.watch(brandVoiceProvider(pid)).valueOrNull;
     if (v == null) return BrandLook.none;
-    return BrandLook(font: v.font, primaryColor: v.primaryColor, accentColor: v.accentColor);
+    return BrandLook(
+      font: v.font,
+      primaryColor: v.primaryColor,
+      accentColor: v.accentColor,
+    );
   }
 
   void _add(TextTemplate t, BrandLook brand) {
@@ -4309,42 +6509,70 @@ class _TextTemplatesTabState extends ConsumerState<_TextTemplatesTab> {
   @override
   Widget build(BuildContext context) {
     final brand = _brand();
-    return ListView(children: [
-      _Title('Text templates', subtitle: brand.font == null ? 'Tap a style to add it at the playhead.' : 'Using your brand font ${brand.font}.'),
-      TextField(controller: _text, decoration: fieldDecoration('Your text', hint: 'Leave empty to use the sample')),
-      SizedBox(height: 12),
-      GridView.count(
-        crossAxisCount: 2,
-        shrinkWrap: true,
-        physics: NeverScrollableScrollPhysics(),
-        mainAxisSpacing: 10,
-        crossAxisSpacing: 10,
-        childAspectRatio: 1.6,
-        children: [
-          for (final t in TextTemplate.all)
-            Semantics(
-              button: true,
-              label: 'Add ${t.name} text',
-              child: InkWell(
-                borderRadius: BorderRadius.circular(12),
-                onTap: () => _add(t, brand),
-                child: Ink(
-                  decoration: BoxDecoration(
-                    color: AppTheme.surfaceElevated,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppTheme.border),
+    return ListView(
+      children: [
+        _Title(
+          'Text templates',
+          subtitle: brand.font == null
+              ? 'Tap a style to add it at the playhead.'
+              : 'Using your brand font ${brand.font}.',
+        ),
+        TextField(
+          controller: _text,
+          decoration: fieldDecoration(
+            'Your text',
+            hint: 'Leave empty to use the sample',
+          ),
+        ),
+        SizedBox(height: 12),
+        GridView.count(
+          crossAxisCount: 2,
+          shrinkWrap: true,
+          physics: NeverScrollableScrollPhysics(),
+          mainAxisSpacing: 10,
+          crossAxisSpacing: 10,
+          childAspectRatio: 1.6,
+          children: [
+            for (final t in TextTemplate.all)
+              Semantics(
+                button: true,
+                label: 'Add ${t.name} text',
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: () => _add(t, brand),
+                  child: Ink(
+                    decoration: BoxDecoration(
+                      color: AppTheme.surfaceElevated,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppTheme.border),
+                    ),
+                    padding: EdgeInsets.all(10),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Expanded(
+                          child: Center(
+                            child: _TemplateSample(template: t, brand: brand),
+                          ),
+                        ),
+                        Text(
+                          t.name,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppTheme.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                  padding: EdgeInsets.all(10),
-                  child: Column(mainAxisAlignment: MainAxisAlignment.spaceBetween, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                    Expanded(child: Center(child: _TemplateSample(template: t, brand: brand))),
-                    Text(t.name, textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
-                  ]),
                 ),
               ),
-            ),
-        ],
-      ),
-    ]);
+          ],
+        ),
+      ],
+    );
   }
 }
 
@@ -4358,25 +6586,41 @@ class _TemplateSample extends StatelessWidget {
     if (v is! String) return d;
     final h = v.replaceFirst('#', '');
     if (h.length != 6 && h.length != 8) return d;
-    final n = int.tryParse(h.length == 6 ? 'FF$h' : h.substring(6) + h.substring(0, 6), radix: 16);
+    final n = int.tryParse(
+      h.length == 6 ? 'FF$h' : h.substring(6) + h.substring(0, 6),
+      radix: 16,
+    );
     return n == null ? d : Color(n);
   }
 
   @override
   Widget build(BuildContext context) {
     final st = template.style(brand);
-    final bg = st['background'] is Map ? _hex((st['background'] as Map)['color'], Colors.black) : null;
-    final text = st['uppercase'] == true ? template.sample.toUpperCase() : template.sample;
+    final bg = st['background'] is Map
+        ? _hex((st['background'] as Map)['color'], Colors.black)
+        : null;
+    final text = st['uppercase'] == true
+        ? template.sample.toUpperCase()
+        : template.sample;
     return Container(
-      padding: bg == null ? EdgeInsets.zero : EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: bg == null ? null : BoxDecoration(color: bg, borderRadius: BorderRadius.circular(6)),
+      padding: bg == null
+          ? EdgeInsets.zero
+          : EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: bg == null
+          ? null
+          : BoxDecoration(color: bg, borderRadius: BorderRadius.circular(6)),
       child: Text(
         text,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
-          fontSize: ((st['fontSizePx'] as num?) ?? 64).toDouble().clamp(40, 180) / 5,
-          fontWeight: FontWeight.values[(((st['fontWeight'] as num?) ?? 700).toInt() ~/ 100 - 1).clamp(0, 8)],
+          fontSize:
+              ((st['fontSizePx'] as num?) ?? 64).toDouble().clamp(40, 180) / 5,
+          fontWeight:
+              FontWeight.values[(((st['fontWeight'] as num?) ?? 700).toInt() ~/
+                          100 -
+                      1)
+                  .clamp(0, 8)],
           color: _hex(st['textColor'], Colors.white),
           shadows: st['shadow'] == true ? [Shadow(blurRadius: 3)] : null,
         ),
@@ -4415,7 +6659,14 @@ class _PhotosTabState extends ConsumerState<_PhotosTab> {
       _error = null;
     });
     try {
-      final res = await ref.read(aiDirectorServiceProvider).searchStockPhotos(q, orientation: widget.c.ir!.canvas.width < widget.c.ir!.canvas.height ? 'portrait' : 'landscape');
+      final res = await ref
+          .read(aiDirectorServiceProvider)
+          .searchStockPhotos(
+            q,
+            orientation: widget.c.ir!.canvas.width < widget.c.ir!.canvas.height
+                ? 'portrait'
+                : 'landscape',
+          );
       if (mounted) setState(() => _results = res);
     } catch (e) {
       if (mounted) setState(() => _error = e);
@@ -4432,24 +6683,36 @@ class _PhotosTabState extends ConsumerState<_PhotosTab> {
       return;
     }
     if (!mounted) return;
-    if (credit != null && credit.isNotEmpty) widget.c.mediaCredits[url] = credit;
+    if (credit != null && credit.isNotEmpty)
+      widget.c.mediaCredits[url] = credit;
     _close(context);
     widget.onEdit(
-      (ir) => TimelineOps.addBroll(ir, {'kind': 'url', 'url': url, 'query': label},
-          startMs: widget.c.playheadMs, durationMs: (_seconds * 1000).round(), image: true),
+      (ir) => TimelineOps.addBroll(
+        ir,
+        {'kind': 'url', 'url': url, 'query': label},
+        startMs: widget.c.playheadMs,
+        durationMs: (_seconds * 1000).round(),
+        image: true,
+      ),
       done: 'Photo added. Tap it on the timeline to adjust.',
     );
   }
 
   Future<void> _fromGallery() async {
-    final f = await ImagePicker().pickImage(source: ImageSource.gallery, maxWidth: 2160, maxHeight: 2160);
+    final f = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 2160,
+      maxHeight: 2160,
+    );
     if (f == null || !mounted) return;
     setState(() => _busy = true);
     final bytes = await f.readAsBytes();
     if (!mounted) return;
     final url = await guarded(
       context,
-      () => ref.read(socialApiProvider).uploadFile(f.path, fileBytes: bytes, filename: f.name),
+      () => ref
+          .read(socialApiProvider)
+          .uploadFile(f.path, fileBytes: bytes, filename: f.name),
     );
     if (!mounted) return;
     setState(() => _busy = false);
@@ -4459,69 +6722,120 @@ class _PhotosTabState extends ConsumerState<_PhotosTab> {
   @override
   Widget build(BuildContext context) {
     final results = _results;
-    return ListView(children: [
-      _Title('Photos', subtitle: 'Shown full-screen at the playhead (${timecode(widget.c.playheadMs)}).'),
-      Row(children: [
-        Expanded(
-          child: TextField(
-            controller: _q,
-            textInputAction: TextInputAction.search,
-            onSubmitted: (_) => _search(),
-            decoration: fieldDecoration('Search free photos', hint: 'coffee beans, city at night…').copyWith(
-              suffixIcon: IconButton(tooltip: 'Search', icon: Icon(Icons.search_rounded), onPressed: _search),
-            ),
-          ),
+    return ListView(
+      children: [
+        _Title(
+          'Photos',
+          subtitle:
+              'Shown full-screen at the playhead (${timecode(widget.c.playheadMs)}).',
         ),
-        SizedBox(width: 8),
-        IconButton.filledTonal(tooltip: 'From my gallery', onPressed: _busy ? null : _fromGallery, icon: Icon(Icons.add_photo_alternate_rounded)),
-      ]),
-      Row(children: [
-        Text('Show for ${_seconds.toStringAsFixed(1)} s', style: Theme.of(context).textTheme.bodySmall),
-        Expanded(child: Slider(value: _seconds, min: 1, max: 8, divisions: 14, onChanged: (v) => setState(() => _seconds = v))),
-      ]),
-      if (_busy) SizedBox(height: 160, child: UniversalSkeleton(type: SkeletonType.activity, itemCount: 2)),
-      if (_error != null && !_busy) ErrorView(error: _error!, compact: true, onRetry: _search),
-      if (!_busy && _error == null && results != null && results.isEmpty)
-        EmptyView(
-          icon: Icons.photo_rounded,
-          title: 'No photos found',
-          message: 'Try another word, or add one from your gallery.',
-          actionLabel: 'From my gallery',
-          onAction: _fromGallery,
-        ),
-      if (!_busy && results != null && results.isNotEmpty)
-        GridView.count(
-          crossAxisCount: 3,
-          shrinkWrap: true,
-          physics: NeverScrollableScrollPhysics(),
-          mainAxisSpacing: 6,
-          crossAxisSpacing: 6,
-          childAspectRatio: 0.75,
+        Row(
           children: [
-            for (final p in results)
-              Semantics(
-                button: true,
-                label: 'Add photo ${p.title}',
-                child: InkWell(
-                  onTap: () => _add(p.url, p.title, p.attribution),
-                  borderRadius: BorderRadius.circular(8),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Stack(fit: StackFit.expand, children: [
-                      Image.network(
-                        p.thumbnailUrl, cacheWidth: 360,
-                        fit: BoxFit.cover,
-                        loadingBuilder: (_, child, prog) => prog == null ? child : Container(color: AppTheme.surfaceElevated),
-                        errorBuilder: (_, _, _) => Container(color: AppTheme.surfaceElevated, child: Icon(Icons.broken_image_rounded)),
+            Expanded(
+              child: TextField(
+                controller: _q,
+                textInputAction: TextInputAction.search,
+                onSubmitted: (_) => _search(),
+                decoration:
+                    fieldDecoration(
+                      'Search free photos',
+                      hint: 'coffee beans, city at night…',
+                    ).copyWith(
+                      suffixIcon: IconButton(
+                        tooltip: 'Search',
+                        icon: Icon(Icons.search_rounded),
+                        onPressed: _search,
                       ),
-                      Positioned(top: 4, right: 4, child: AssetDownloadBadge(url: p.url)),
-                    ]),
-                  ),
-                ),
+                    ),
               ),
+            ),
+            SizedBox(width: 8),
+            IconButton.filledTonal(
+              tooltip: 'From my gallery',
+              onPressed: _busy ? null : _fromGallery,
+              icon: Icon(Icons.add_photo_alternate_rounded),
+            ),
           ],
         ),
-    ]);
+        Row(
+          children: [
+            Text(
+              'Show for ${_seconds.toStringAsFixed(1)} s',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            Expanded(
+              child: Slider(
+                value: _seconds,
+                min: 1,
+                max: 8,
+                divisions: 14,
+                onChanged: (v) => setState(() => _seconds = v),
+              ),
+            ),
+          ],
+        ),
+        if (_busy)
+          SizedBox(
+            height: 160,
+            child: UniversalSkeleton(type: SkeletonType.activity, itemCount: 2),
+          ),
+        if (_error != null && !_busy)
+          ErrorView(error: _error!, compact: true, onRetry: _search),
+        if (!_busy && _error == null && results != null && results.isEmpty)
+          EmptyView(
+            icon: Icons.photo_rounded,
+            title: 'No photos found',
+            message: 'Try another word, or add one from your gallery.',
+            actionLabel: 'From my gallery',
+            onAction: _fromGallery,
+          ),
+        if (!_busy && results != null && results.isNotEmpty)
+          GridView.count(
+            crossAxisCount: 3,
+            shrinkWrap: true,
+            physics: NeverScrollableScrollPhysics(),
+            mainAxisSpacing: 6,
+            crossAxisSpacing: 6,
+            childAspectRatio: 0.75,
+            children: [
+              for (final p in results)
+                Semantics(
+                  button: true,
+                  label: 'Add photo ${p.title}',
+                  child: InkWell(
+                    onTap: () => _add(p.url, p.title, p.attribution),
+                    borderRadius: BorderRadius.circular(8),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          Image.network(
+                            p.thumbnailUrl,
+                            cacheWidth: 360,
+                            fit: BoxFit.cover,
+                            loadingBuilder: (_, child, prog) => prog == null
+                                ? child
+                                : Container(color: AppTheme.surfaceElevated),
+                            errorBuilder: (_, _, _) => Container(
+                              color: AppTheme.surfaceElevated,
+                              child: Icon(Icons.broken_image_rounded),
+                            ),
+                          ),
+                          Positioned(
+                            top: 4,
+                            right: 4,
+                            child: AssetDownloadBadge(url: p.url),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+      ],
+    );
   }
 }
 
@@ -4547,30 +6861,59 @@ class _EffectsTabState extends State<_EffectsTab> {
   };
 
   @override
-  Widget build(BuildContext context) => ListView(children: [
-        _Title('Effects', subtitle: 'Added at the playhead (${timecode(widget.c.playheadMs)}). Tap it on the timeline to change timing.'),
-        Row(children: [
-          Text('Strength ${(_intensity * 100).round()}%', style: Theme.of(context).textTheme.bodySmall),
-          Expanded(child: Slider(value: _intensity, min: 0.1, max: 1, divisions: 9, onChanged: (v) => setState(() => _intensity = v))),
-        ]),
-        for (final e in EditIrEffect.types.entries)
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: Icon(_icons[e.key] ?? Icons.auto_fix_high_rounded, color: AppTheme.primary),
-            title: Text(e.value.$1),
-            subtitle: Text('${e.value.$2} · ${(e.value.$3 / 1000).toStringAsFixed(1)} s'),
-            trailing: TextButton(
-              onPressed: () {
-                _close(context);
-                widget.onEdit(
-                  (ir) => TimelineOps.addEffect(ir, e.key, startMs: widget.c.playheadMs, intensity: _intensity),
-                  done: '${e.value.$1} added',
-                );
-              },
-              child: Text('Add'),
+  Widget build(BuildContext context) => ListView(
+    children: [
+      _Title(
+        'Effects',
+        subtitle:
+            'Added at the playhead (${timecode(widget.c.playheadMs)}). Tap it on the timeline to change timing.',
+      ),
+      Row(
+        children: [
+          Text(
+            'Strength ${(_intensity * 100).round()}%',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          Expanded(
+            child: Slider(
+              value: _intensity,
+              min: 0.1,
+              max: 1,
+              divisions: 9,
+              onChanged: (v) => setState(() => _intensity = v),
             ),
           ),
-      ]);
+        ],
+      ),
+      for (final e in EditIrEffect.types.entries)
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: Icon(
+            _icons[e.key] ?? Icons.auto_fix_high_rounded,
+            color: AppTheme.primary,
+          ),
+          title: Text(e.value.$1),
+          subtitle: Text(
+            '${e.value.$2} · ${(e.value.$3 / 1000).toStringAsFixed(1)} s',
+          ),
+          trailing: TextButton(
+            onPressed: () {
+              _close(context);
+              widget.onEdit(
+                (ir) => TimelineOps.addEffect(
+                  ir,
+                  e.key,
+                  startMs: widget.c.playheadMs,
+                  intensity: _intensity,
+                ),
+                done: '${e.value.$1} added',
+              );
+            },
+            child: Text('Add'),
+          ),
+        ),
+    ],
+  );
 }
 
 /// Small badge on an online asset tile: cloud (not downloaded), progress ring (downloading), tick (on the phone).
@@ -4579,7 +6922,8 @@ class AssetDownloadBadge extends StatelessWidget {
   final String url;
 
   @override
-  Widget build(BuildContext context) => ValueListenableBuilder<Map<String, double>>(
+  Widget build(BuildContext context) =>
+      ValueListenableBuilder<Map<String, double>>(
         valueListenable: AssetCache.instance.progress,
         builder: (context, progress, _) {
           final p = progress[url];
@@ -4587,13 +6931,23 @@ class AssetDownloadBadge extends StatelessWidget {
           return Container(
             width: 26,
             height: 26,
-            decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.7), shape: BoxShape.circle),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.7),
+              shape: BoxShape.circle,
+            ),
             padding: EdgeInsets.all(5),
             child: p != null
-                ? CircularProgressIndicator(strokeWidth: 2.5, value: p < 0 ? null : p, color: Colors.white)
-                : Icon(cached ? Icons.check_rounded : Icons.download_rounded, size: 16, color: cached ? AppTheme.success : Colors.white),
+                ? CircularProgressIndicator(
+                    strokeWidth: 2.5,
+                    value: p < 0 ? null : p,
+                    color: Colors.white,
+                  )
+                : Icon(
+                    cached ? Icons.check_rounded : Icons.download_rounded,
+                    size: 16,
+                    color: cached ? AppTheme.success : Colors.white,
+                  ),
           );
         },
       );
 }
-

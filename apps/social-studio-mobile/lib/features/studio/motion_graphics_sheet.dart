@@ -31,7 +31,7 @@ class _MotionGraphicsSheetState extends State<MotionGraphicsSheet> {
     },
     {
       'id': 'hormozi-counter',
-      'name': 'Hormozi Counter',
+      'name': 'Impact Counter',
       'icon': Icons.bolt_rounded,
       'desc': 'Explosive, oversized numerical counter (\$ / % / x) for viral shorts.',
       'color': const Color(0xFFFACC15),

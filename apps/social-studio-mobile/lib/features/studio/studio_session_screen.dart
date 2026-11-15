@@ -24,6 +24,7 @@ import 'clip_vignette.dart';
 import 'director_panel.dart';
 import 'export_sheet.dart';
 import 'native_preview.dart';
+import 'safe_zone_guide.dart';
 import 'studio_controller.dart';
 import 'studio_drafts_service.dart';
 import 'studio_timeline.dart';
@@ -58,6 +59,7 @@ class StudioSessionScreen extends ConsumerStatefulWidget {
     this.draft,
   });
   final String? sourcePath;
+
   /// Several clips opened together (e.g. every take of a calendar piece), in timeline order.
   final List<String> sourcePaths;
   final String? postId;
@@ -71,7 +73,8 @@ class StudioSessionScreen extends ConsumerStatefulWidget {
   final StudioDraft? draft;
 
   @override
-  ConsumerState<StudioSessionScreen> createState() => _StudioSessionScreenState();
+  ConsumerState<StudioSessionScreen> createState() =>
+      _StudioSessionScreenState();
 }
 
 class _StudioSessionScreenState extends ConsumerState<StudioSessionScreen> {
@@ -86,6 +89,7 @@ class _StudioSessionScreenState extends ConsumerState<StudioSessionScreen> {
     script: widget.script,
     draftId: widget.draftId ?? widget.draft?.id,
   );
+
   /// Two-slot controller pool for zero-jitter multi-clip transitions and background proxy hot-swapping.
   VideoPlayerController? _slotA;
   VideoPlayerController? _slotB;
@@ -123,9 +127,12 @@ class _StudioSessionScreenState extends ConsumerState<StudioSessionScreen> {
   bool _xfBusy = false;
   final Stopwatch _playbackStopwatch = Stopwatch();
   bool _dismissedProposal = false;
+  SafeZonePlatform _safeZone = SafeZonePlatform.none;
 
   /// Native composition preview (StudioPreviewMode.native, Android): null = the Dart preview (default).
-  final NativePreviewController? _native = useNativeStudioPreview ? NativePreviewController() : null;
+  final NativePreviewController? _native = useNativeStudioPreview
+      ? NativePreviewController()
+      : null;
   Map<String, String> _nativeFonts = const {};
   String? _nativeFontKey;
 
@@ -156,13 +163,21 @@ class _StudioSessionScreenState extends ConsumerState<StudioSessionScreen> {
   /// Every video of the folder, in take order (then recording order), one after another on the timeline.
   Future<void> _loadFromFolder(String folderId) async {
     final allItems = ref.read(vaultItemsProvider).valueOrNull ?? [];
-    final videos = allItems
-        .where((i) => i.folderId == folderId && i.type == VaultItemType.video && (i.localPath?.isNotEmpty ?? false))
-        .toList()
-      ..sort((a, b) {
-        final t = (a.takeIndex ?? 1 << 30).compareTo(b.takeIndex ?? 1 << 30);
-        return t != 0 ? t : a.createdAt.compareTo(b.createdAt);
-      });
+    final videos =
+        allItems
+            .where(
+              (i) =>
+                  i.folderId == folderId &&
+                  i.type == VaultItemType.video &&
+                  (i.localPath?.isNotEmpty ?? false),
+            )
+            .toList()
+          ..sort((a, b) {
+            final t = (a.takeIndex ?? 1 << 30).compareTo(
+              b.takeIndex ?? 1 << 30,
+            );
+            return t != 0 ? t : a.createdAt.compareTo(b.createdAt);
+          });
     await _loadMany([for (final v in videos) v.localPath!]);
   }
 
@@ -175,7 +190,8 @@ class _StudioSessionScreenState extends ConsumerState<StudioSessionScreen> {
       try {
         await c.addVideoClip(path);
       } catch (e) {
-        if (mounted) showError(context, 'One clip could not be added: ${errorText(e)}');
+        if (mounted)
+          showError(context, 'One clip could not be added: ${errorText(e)}');
       }
     }
   }
@@ -221,7 +237,9 @@ class _StudioSessionScreenState extends ConsumerState<StudioSessionScreen> {
   Future<void> _saveDraft({bool popOnSuccess = false}) async {
     String? thumbPath;
     final firstClip = c.ir?.clips.firstOrNull;
-    final vidPath = firstClip != null ? (c.sourcePaths[firstClip.assetId] ?? c.sourcePath) : c.sourcePath;
+    final vidPath = firstClip != null
+        ? (c.sourcePaths[firstClip.assetId] ?? c.sourcePath)
+        : c.sourcePath;
     if (vidPath != null && VideoThumbnails.isLocalVideo(vidPath)) {
       try {
         final at = c.playheadMs > 0 ? c.playheadMs : 1000;
@@ -274,9 +292,13 @@ class _StudioSessionScreenState extends ConsumerState<StudioSessionScreen> {
       exists: (p) => File(p).existsSync(),
     );
     n.setTimeline(t.json, t.media);
-    if (!_playing && (n.positionMs - c.playheadMs).abs() > 20) unawaited(n.seek(c.playheadMs));
+    if (!_playing && (n.positionMs - c.playheadMs).abs() > 20)
+      unawaited(n.seek(c.playheadMs));
     // Caption fonts: the same files the export uses, fetched once per set of families.
-    final fontKey = {for (final cap in ir.captions) '${cap.style['fontFamily']}:${cap.style['fontWeight']}'}.join('|');
+    final fontKey = {
+      for (final cap in ir.captions)
+        '${cap.style['fontFamily']}:${cap.style['fontWeight']}',
+    }.join('|');
     if (fontKey != _nativeFontKey) {
       _nativeFontKey = fontKey;
       CaptionFonts.resolveForExport(ir).then((r) {
@@ -335,7 +357,9 @@ class _StudioSessionScreenState extends ConsumerState<StudioSessionScreen> {
     _xfBusy = true;
     try {
       final ir = c.ir;
-      final xf = ir == null || !_playing ? null : TimelineOps.crossfadeAt(ir, c.playheadMs, isStill: c.isStillAsset);
+      final xf = ir == null || !_playing
+          ? null
+          : TimelineOps.crossfadeAt(ir, c.playheadMs, isStill: c.isStillAsset);
       if (xf == null) {
         if (_xf != null) {
           _xf = null;
@@ -350,8 +374,10 @@ class _StudioSessionScreenState extends ConsumerState<StudioSessionScreen> {
         await _prepareCrossfade(path);
         final p = _xfPlayer;
         if (p == null) return;
-        if (p.value.playbackSpeed != clip.speed) await p.setPlaybackSpeed(clip.speed);
-        if (!p.value.isPlaying || (p.value.position.inMilliseconds - xf.sourceMs).abs() > 150) {
+        if (p.value.playbackSpeed != clip.speed)
+          await p.setPlaybackSpeed(clip.speed);
+        if (!p.value.isPlaying ||
+            (p.value.position.inMilliseconds - xf.sourceMs).abs() > 150) {
           await p.seekTo(Duration(milliseconds: xf.sourceMs));
           await p.play();
         }
@@ -368,7 +394,9 @@ class _StudioSessionScreenState extends ConsumerState<StudioSessionScreen> {
     _jlBusy = true;
     try {
       final ir = c.ir;
-      final n = stop || ir == null || !_playing || c.recordingVoiceover ? null : jlNeighbourAt(ir, c.playheadMs, isStill: c.isStillAsset);
+      final n = stop || ir == null || !_playing || c.recordingVoiceover
+          ? null
+          : jlNeighbourAt(ir, c.playheadMs, isStill: c.isStillAsset);
       if (n == null) {
         if (_jlPlayer?.value.isPlaying ?? false) await _jlPlayer!.pause();
         return;
@@ -390,9 +418,11 @@ class _StudioSessionScreenState extends ConsumerState<StudioSessionScreen> {
         _jlPlayer = p;
       }
       final p = _jlPlayer!;
-      if (p.value.playbackSpeed != clip.speed) await p.setPlaybackSpeed(clip.speed);
+      if (p.value.playbackSpeed != clip.speed)
+        await p.setPlaybackSpeed(clip.speed);
       await p.setVolume(n.gain);
-      if (!p.value.isPlaying || (p.value.position.inMilliseconds - n.sourceMs).abs() > 150) {
+      if (!p.value.isPlaying ||
+          (p.value.position.inMilliseconds - n.sourceMs).abs() > 150) {
         await p.seekTo(Duration(milliseconds: math.max(0, n.sourceMs)));
         await p.play();
       }
@@ -422,10 +452,18 @@ class _StudioSessionScreenState extends ConsumerState<StudioSessionScreen> {
         _voPlayers[v.assetId] = p;
         await p.initialize();
       }
-      double ramp(double t, double a, double b) => b <= a ? 1 : ((t - a) / (b - a)).clamp(0.0, 1.0);
+      double ramp(double t, double a, double b) =>
+          b <= a ? 1 : ((t - a) / (b - a)).clamp(0.0, 1.0);
       var g = math.pow(10, v.volumeDb / 20).toDouble();
       if (v.fadeInMs > 0) g *= ramp(rel.toDouble(), 0, v.fadeInMs.toDouble());
-      if (v.fadeOutMs > 0) g *= 1 - ramp(rel.toDouble(), (v.durationMs - v.fadeOutMs).toDouble(), v.durationMs.toDouble());
+      if (v.fadeOutMs > 0)
+        g *=
+            1 -
+            ramp(
+              rel.toDouble(),
+              (v.durationMs - v.fadeOutMs).toDouble(),
+              v.durationMs.toDouble(),
+            );
       await p.setVolume(g.clamp(0.0, 1.0));
       if (!p.value.isPlaying) {
         await p.seekTo(Duration(milliseconds: v.sourceStartMs + rel));
@@ -435,7 +473,11 @@ class _StudioSessionScreenState extends ConsumerState<StudioSessionScreen> {
   }
 
   Future<void> _disposePlayers() async {
-    final all = [_slotA, _slotB, ..._players.values].whereType<VideoPlayerController>().toSet().toList();
+    final all = [
+      _slotA,
+      _slotB,
+      ..._players.values,
+    ].whereType<VideoPlayerController>().toSet().toList();
     _players.clear();
     _slotA = null;
     _slotB = null;
@@ -448,7 +490,8 @@ class _StudioSessionScreenState extends ConsumerState<StudioSessionScreen> {
   }
 
   Future<VideoPlayerController> _createControllerForPath(String path) async {
-    final remote = kIsWeb || path.startsWith('http://') || path.startsWith('https://');
+    final remote =
+        kIsWeb || path.startsWith('http://') || path.startsWith('https://');
     final p = remote
         ? VideoPlayerController.networkUrl(Uri.parse(path))
         : VideoPlayerController.file(File(path));
@@ -494,7 +537,8 @@ class _StudioSessionScreenState extends ConsumerState<StudioSessionScreen> {
   Future<void> _activateAsset(String assetId) async {
     final path = c.previewPathForAsset(assetId);
     if (path == null || path.isEmpty) return;
-    if (_activeAsset == assetId && _player != null && _activeSlotPath == path) return;
+    if (_activeAsset == assetId && _player != null && _activeSlotPath == path)
+      return;
     final p = await _ensureActiveSlot(path);
     if (p == null || !mounted) return;
     setState(() {
@@ -516,10 +560,15 @@ class _StudioSessionScreenState extends ConsumerState<StudioSessionScreen> {
   /// play state. The export keeps reading the original (StudioController._assetPathForExport).
   Future<void> _hotSwapProxy(String assetId, String proxyPath) async {
     if (!mounted) return;
-    final originalPath = c.sourcePaths[assetId == 'primary' ? 'main' : assetId] ?? c.sourcePaths[assetId];
+    final originalPath =
+        c.sourcePaths[assetId == 'primary' ? 'main' : assetId] ??
+        c.sourcePaths[assetId];
     if (originalPath == null) return;
 
-    Future<VideoPlayerController?> swap(VideoPlayerController old, bool active) async {
+    Future<VideoPlayerController?> swap(
+      VideoPlayerController old,
+      bool active,
+    ) async {
       final VideoPlayerController next;
       try {
         next = VideoPlayerController.file(File(proxyPath));
@@ -585,7 +634,8 @@ class _StudioSessionScreenState extends ConsumerState<StudioSessionScreen> {
     setState(() {});
     if (_playing) return;
     final asset = c.assetAtPlayhead;
-    if (c.isStillAsset(asset)) return; // stills are drawn from the file, no player
+    if (c.isStillAsset(asset))
+      return; // stills are drawn from the file, no player
     final path = c.previewPathForAsset(asset);
     if (path != null) {
       _ensureActiveSlot(path).then((p) {
@@ -594,7 +644,8 @@ class _StudioSessionScreenState extends ConsumerState<StudioSessionScreen> {
         // Only seek when the frame shown is not already the one under the playhead (a drag on the preview notifies
         // every frame without moving the playhead).
         final target = c.sourcePositionMs;
-        if ((p.value.position.inMilliseconds - target).abs() > 20) p.seekTo(Duration(milliseconds: target));
+        if ((p.value.position.inMilliseconds - target).abs() > 20)
+          p.seekTo(Duration(milliseconds: target));
       });
     }
   }
@@ -627,14 +678,17 @@ class _StudioSessionScreenState extends ConsumerState<StudioSessionScreen> {
 
   Future<void> _prewarmNextSlot(int nextIndex) async {
     final ir = c.ir;
-    if (ir == null || nextIndex >= ir.clips.length || !_playing || !mounted) return;
+    if (ir == null || nextIndex >= ir.clips.length || !_playing || !mounted)
+      return;
     final nextClip = ir.clips[nextIndex];
     if (c.isStillAsset(nextClip.assetId)) return;
     final nextPath = c.previewPathForAsset(nextClip.assetId);
     if (nextPath == null || nextPath.isEmpty) return;
 
     if (_isSlotAPrimary) {
-      if (_slotB == null || _slotBPath != nextPath || !_slotB!.value.isInitialized) {
+      if (_slotB == null ||
+          _slotBPath != nextPath ||
+          !_slotB!.value.isInitialized) {
         final old = _slotB;
         final p = await _createControllerForPath(nextPath);
         if (!mounted || !_playing) {
@@ -652,7 +706,9 @@ class _StudioSessionScreenState extends ConsumerState<StudioSessionScreen> {
         await _slotB!.pause();
       }
     } else {
-      if (_slotA == null || _slotAPath != nextPath || !_slotA!.value.isInitialized) {
+      if (_slotA == null ||
+          _slotAPath != nextPath ||
+          !_slotA!.value.isInitialized) {
         final old = _slotA;
         final p = await _createControllerForPath(nextPath);
         if (!mounted || !_playing) {
@@ -690,7 +746,10 @@ class _StudioSessionScreenState extends ConsumerState<StudioSessionScreen> {
     }
     if (c.playheadMs >= ir.durationMs - 50) c.seek(0);
     setState(() => _playing = true);
-    _playClip(TimelineOps.clipIndexAt(ir, c.playheadMs), fromSourceMs: c.sourcePositionMs);
+    _playClip(
+      TimelineOps.clipIndexAt(ir, c.playheadMs),
+      fromSourceMs: c.sourcePositionMs,
+    );
   }
 
   Future<void> _playClip(int clipIndex, {int? fromSourceMs}) async {
@@ -712,7 +771,11 @@ class _StudioSessionScreenState extends ConsumerState<StudioSessionScreen> {
       // A still has no player: hold it for its length, then carry on.
       _slotA?.pause();
       _slotB?.pause();
-      final from = (c.playheadMs >= clip.timelineStartMs && c.playheadMs < clip.timelineEndMs) ? c.playheadMs : clip.timelineStartMs;
+      final from =
+          (c.playheadMs >= clip.timelineStartMs &&
+              c.playheadMs < clip.timelineEndMs)
+          ? c.playheadMs
+          : clip.timelineStartMs;
       final sw = Stopwatch()..start();
       _tick = Timer.periodic(const Duration(milliseconds: 16), (_) {
         if (!mounted || !_playing) return;
@@ -725,7 +788,10 @@ class _StudioSessionScreenState extends ConsumerState<StudioSessionScreen> {
         }
         c.playheadMs = now;
         final cur = c.ir;
-        if (_voFrame++ % 6 == 0 && cur != null && cur.audio.voiceovers.isNotEmpty) unawaited(_syncVoiceovers());
+        if (_voFrame++ % 6 == 0 &&
+            cur != null &&
+            cur.audio.voiceovers.isNotEmpty)
+          unawaited(_syncVoiceovers());
         setState(() {});
       });
       return;
@@ -738,7 +804,9 @@ class _StudioSessionScreenState extends ConsumerState<StudioSessionScreen> {
     _activeAsset = clip.assetId;
 
     // Load the other side of an upcoming crossfade before its window starts.
-    final next = clipIndex + 1 < ir.clips.length ? ir.clips[clipIndex + 1] : null;
+    final next = clipIndex + 1 < ir.clips.length
+        ? ir.clips[clipIndex + 1]
+        : null;
     if (next?.transitionIn != null && !c.isStillAsset(next!.assetId)) {
       final path = c.pathForAsset(next.assetId);
       if (path != null) unawaited(_prepareCrossfade(path));
@@ -748,7 +816,16 @@ class _StudioSessionScreenState extends ConsumerState<StudioSessionScreen> {
     await p.seekTo(Duration(milliseconds: startMs));
     await p.setPlaybackSpeed(clip.speed);
     final rel0 = (((startMs) - clip.sourceStartMs) / clip.speed).round();
-    await p.setVolume(c.recordingVoiceover ? 0 : clipPreviewGainJl(ir, clipIndex, clip.timelineStartMs + rel0, isStill: c.isStillAsset));
+    await p.setVolume(
+      c.recordingVoiceover
+          ? 0
+          : clipPreviewGainJl(
+              ir,
+              clipIndex,
+              clip.timelineStartMs + rel0,
+              isStill: c.isStillAsset,
+            ),
+    );
     await p.play();
 
     _playbackStopwatch.reset();
@@ -790,17 +867,29 @@ class _StudioSessionScreenState extends ConsumerState<StudioSessionScreen> {
           // Only swap to a slot that was pre-warmed for THIS clip (right file, parked at its in-point); otherwise
           // fall back to loading it, rather than showing the wrong footage after the cut.
           final nextSlotPath = _isSlotAPrimary ? _slotBPath : _slotAPath;
-          final ready = nextSlot != null &&
+          final ready =
+              nextSlot != null &&
               nextSlot.value.isInitialized &&
               !c.isStillAsset(nextCl.assetId) &&
               nextSlotPath == c.previewPathForAsset(nextCl.assetId) &&
-              (nextSlot.value.position.inMilliseconds - nextCl.sourceStartMs).abs() < 250;
+              (nextSlot.value.position.inMilliseconds - nextCl.sourceStartMs)
+                      .abs() <
+                  250;
           if (ready) {
             // Instantaneous zero-latency swap between slot A and slot B!
             _isSlotAPrimary = !_isSlotAPrimary;
             prevSlot?.pause();
             nextSlot.setPlaybackSpeed(nextCl.speed);
-            nextSlot.setVolume(c.recordingVoiceover ? 0 : clipPreviewGainJl(cur, nextIdx, nextCl.timelineStartMs, isStill: c.isStillAsset));
+            nextSlot.setVolume(
+              c.recordingVoiceover
+                  ? 0
+                  : clipPreviewGainJl(
+                      cur,
+                      nextIdx,
+                      nextCl.timelineStartMs,
+                      isStill: c.isStillAsset,
+                    ),
+            );
             nextSlot.play();
             _activeAsset = nextCl.assetId;
             _playbackStopwatch.reset();
@@ -814,13 +903,29 @@ class _StudioSessionScreenState extends ConsumerState<StudioSessionScreen> {
         _playClip(nextIdx);
         return;
       }
-      c.playheadMs = cl.timelineStartMs + ((effectiveSourceMs - cl.sourceStartMs).clamp(0, cl.sourceEndMs) / cl.speed).round();
+      c.playheadMs =
+          cl.timelineStartMs +
+          ((effectiveSourceMs - cl.sourceStartMs).clamp(0, cl.sourceEndMs) /
+                  cl.speed)
+              .round();
       // Volume, clip fades and transition fades, as in the export.
       // Footage sound is muted while a voiceover records, so the microphone does not pick it up.
       // J/L cuts: this clip fades under the neighbour's sound, which the J/L player plays (as in the export).
-      p.setVolume(c.recordingVoiceover ? 0 : clipPreviewGainJl(cur, clipIndex, c.playheadMs, isStill: c.isStillAsset));
-      if (_voFrame % 2 == 0 && cur.clips.any((x) => x.audioLeadMs > 0 || x.audioLagMs > 0)) unawaited(_syncJl());
-      if (_voFrame++ % 6 == 0 && cur.audio.voiceovers.isNotEmpty) unawaited(_syncVoiceovers());
+      p.setVolume(
+        c.recordingVoiceover
+            ? 0
+            : clipPreviewGainJl(
+                cur,
+                clipIndex,
+                c.playheadMs,
+                isStill: c.isStillAsset,
+              ),
+      );
+      if (_voFrame % 2 == 0 &&
+          cur.clips.any((x) => x.audioLeadMs > 0 || x.audioLagMs > 0))
+        unawaited(_syncJl());
+      if (_voFrame++ % 6 == 0 && cur.audio.voiceovers.isNotEmpty)
+        unawaited(_syncVoiceovers());
       unawaited(_syncCrossfade());
       setState(() {});
     });
@@ -848,7 +953,7 @@ class _StudioSessionScreenState extends ConsumerState<StudioSessionScreen> {
     if (tool == StudioTool.director) {
       await showModalBottomSheet<void>(
         context: context,
-    useRootNavigator: true,
+        useRootNavigator: true,
         isScrollControlled: true,
         backgroundColor: AppTheme.surface,
         builder: (_) => DirectorPanel(controller: c),
@@ -866,9 +971,11 @@ class _StudioSessionScreenState extends ConsumerState<StudioSessionScreen> {
 
     await showModalBottomSheet<void>(
       context: context,
-    useRootNavigator: true,
+      useRootNavigator: true,
       backgroundColor: AppTheme.surface,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (ctx) => SafeArea(
         child: Padding(
           padding: EdgeInsets.fromLTRB(20, 20, 20, 24),
@@ -876,25 +983,44 @@ class _StudioSessionScreenState extends ConsumerState<StudioSessionScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: AppTheme.primary.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(12),
+              Row(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: AppTheme.primary.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      Icons.bookmark_add_rounded,
+                      color: AppTheme.primary,
+                      size: 24,
+                    ),
                   ),
-                  child: Icon(Icons.bookmark_add_rounded, color: AppTheme.primary, size: 24),
-                ),
-                SizedBox(width: 14),
-                Expanded(
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('Save your draft?', style: Theme.of(ctx).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-                    SizedBox(height: 2),
-                    Text('Resume editing from where you left off on Studio.', style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
-                  ]),
-                ),
-              ]),
+                  SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Save your draft?',
+                          style: Theme.of(ctx).textTheme.titleMedium
+                              ?.copyWith(fontWeight: FontWeight.bold),
+                        ),
+                        SizedBox(height: 2),
+                        Text(
+                          'Resume editing from where you left off on Studio.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppTheme.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
               SizedBox(height: 20),
               FilledButton.icon(
                 icon: Icon(Icons.bookmark_added_rounded),
@@ -910,13 +1036,18 @@ class _StudioSessionScreenState extends ConsumerState<StudioSessionScreen> {
                   Navigator.pop(ctx);
                   context.pop();
                 },
-                style: OutlinedButton.styleFrom(foregroundColor: AppTheme.error),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppTheme.error,
+                ),
                 child: Text('Discard Edits & Leave'),
               ),
               SizedBox(height: 4),
               TextButton(
                 onPressed: () => Navigator.pop(ctx),
-                child: Text('Keep Editing', style: TextStyle(color: AppTheme.textSecondary)),
+                child: Text(
+                  'Keep Editing',
+                  style: TextStyle(color: AppTheme.textSecondary),
+                ),
               ),
             ],
           ),
@@ -954,7 +1085,11 @@ class _StudioSessionScreenState extends ConsumerState<StudioSessionScreen> {
           Expanded(
             child: Text(
               reply.isNotEmpty ? reply : 'AI Director prepared a brand-conscious cut for this script.',
-              style: TextStyle(fontSize: 12, color: AppTheme.textPrimary, height: 1.3),
+              style: TextStyle(
+                fontSize: 12,
+                color: AppTheme.textPrimary,
+                height: 1.3,
+              ),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
@@ -970,7 +1105,10 @@ class _StudioSessionScreenState extends ConsumerState<StudioSessionScreen> {
               c.applyProposal(index);
               setState(() {});
             },
-            child: const Text('Apply', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+            child: const Text(
+              'Apply',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+            ),
           ),
           const SizedBox(width: 4),
           IconButton(
@@ -1048,79 +1186,130 @@ class _StudioSessionScreenState extends ConsumerState<StudioSessionScreen> {
         body: _loading
             ? LoadingView(label: 'Opening video…')
             : ir == null
-                ? _Empty(error: _loadError, onPick: _pick, onRecord: () => context.pushReplacement(
-                    '/camera?projectId=${widget.projectId ?? ''}&postId=${widget.postId ?? ''}'))
-                : Column(children: [
-                    if (_unappliedProposalIndex case final idx?)
-                      _buildProposalBanner(context, idx),
-                    if (c.mediaDownload case final dl?)
-                      _MediaDownloadBanner(state: dl, onRetry: () => c.prefetchRemoteMedia(), onDismiss: c.dismissMediaDownload),
-                    Expanded(
-                      child: _Preview(
-                        controller: c,
-                        native: _native,
-                        player: _player,
-                        crossfade: _xf == null ? null : (player: _xfPlayer, clipIndex: _xf!.clipIndex, opacity: _xf!.opacity),
-                        playing: _playing,
-                        onOpenTool: _openTool,
-                        onEdit: _edit,
-                      ),
+            ? _Empty(
+                error: _loadError,
+                onPick: _pick,
+                onRecord: () => context.pushReplacement(
+                  '/camera?projectId=${widget.projectId ?? ''}&postId=${widget.postId ?? ''}',
+                ),
+              )
+            : Column(
+                children: [
+                  if (_unappliedProposalIndex case final idx?)
+                    _buildProposalBanner(context, idx),
+                  if (c.mediaDownload case final dl?)
+                    _MediaDownloadBanner(
+                      state: dl,
+                      onRetry: () => c.prefetchRemoteMedia(),
+                      onDismiss: c.dismissMediaDownload,
                     ),
-                    _TransportBar(controller: c, playing: _playing, onPlay: _togglePlay, onSplit: () => _edit((ir) => TimelineOps.split(ir, c.playheadMs))),
-                    _TranscriptChip(controller: c),
-                    StudioTimeline(
+                  Expanded(
+                    child: _Preview(
                       controller: c,
-                      onScrub: (ms) {
-                        _stop();
-                        c.seek(ms);
-                      },
-                      onEdit: _edit,
+                      native: _native,
+                      player: _player,
+                      crossfade: _xf == null
+                          ? null
+                          : (
+                              player: _xfPlayer,
+                              clipIndex: _xf!.clipIndex,
+                              opacity: _xf!.opacity,
+                            ),
+                      playing: _playing,
                       onOpenTool: _openTool,
+                      onEdit: _edit,
+                      safeZone: _safeZone,
+                      onCycleSafeZone: () =>
+                          setState(() => _safeZone = _safeZone.next()),
                     ),
-                    if (c.selectedClip case final sel? when sel < ir.clips.length)
-                      _ClipActions(
-                        index: sel,
-                        count: ir.clips.length,
-                        onTool: _openTool,
-                        onSplit: () => _edit((ir) => TimelineOps.split(ir, c.playheadMs)),
-                        onMove: (to) {
-                          if (_edit((ir) => TimelineOps.moveClip(ir, sel, to))) c.select(to);
-                        },
-                        onClose: () => c.select(null),
-                      ),
-                    _ToolBar(onTool: (t) {
+                  ),
+                  _TransportBar(
+                    controller: c,
+                    playing: _playing,
+                    onPlay: _togglePlay,
+                    onSplit: () =>
+                        _edit((ir) => TimelineOps.split(ir, c.playheadMs)),
+                  ),
+                  _TranscriptChip(controller: c),
+                  StudioTimeline(
+                    controller: c,
+                    onScrub: (ms) {
+                      _stop();
+                      c.seek(ms);
+                    },
+                    onEdit: _edit,
+                    onOpenTool: _openTool,
+                  ),
+                  if (c.selectedClip case final sel? when sel < ir.clips.length)
+                    _ClipActions(
+                      index: sel,
+                      count: ir.clips.length,
+                      onTool: _openTool,
+                      onSplit: () =>
+                          _edit((ir) => TimelineOps.split(ir, c.playheadMs)),
+                      onMove: (to) {
+                        if (_edit((ir) => TimelineOps.moveClip(ir, sel, to)))
+                          c.select(to);
+                      },
+                      onClose: () => c.select(null),
+                    ),
+                  _ToolBar(
+                    onTool: (t) {
                       // The toolbar's Text button adds a new title; tapping a text on the preview or timeline edits it.
                       if (t == StudioTool.text) c.clearItemSelection();
                       _openTool(t);
-                    }),
-                  ]),
+                    },
+                  ),
+                ],
+              ),
       ),
     );
   }
 }
 
 class _Empty extends StatelessWidget {
-  const _Empty({required this.error, required this.onPick, required this.onRecord});
+  const _Empty({
+    required this.error,
+    required this.onPick,
+    required this.onRecord,
+  });
   final Object? error;
   final VoidCallback onPick;
   final VoidCallback onRecord;
 
   @override
   Widget build(BuildContext context) => Center(
-        child: SingleChildScrollView(
-          padding: EdgeInsets.all(32),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            if (error != null) ...[ErrorView(error: error!, compact: true), SizedBox(height: 16)],
-            Icon(Icons.movie_edit, size: 48, color: AppTheme.textSecondary),
-            SizedBox(height: 12),
-            Text('Choose a video to edit', style: Theme.of(context).textTheme.titleLarge),
-            SizedBox(height: 20),
-            FilledButton.icon(onPressed: onPick, icon: Icon(Icons.video_library_rounded), label: Text('Choose from gallery')),
-            SizedBox(height: 8),
-            OutlinedButton.icon(onPressed: onRecord, icon: Icon(Icons.videocam_rounded), label: Text('Record with teleprompter')),
-          ]),
-        ),
-      );
+    child: SingleChildScrollView(
+      padding: EdgeInsets.all(32),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (error != null) ...[
+            ErrorView(error: error!, compact: true),
+            SizedBox(height: 16),
+          ],
+          Icon(Icons.movie_edit, size: 48, color: AppTheme.textSecondary),
+          SizedBox(height: 12),
+          Text(
+            'Choose a video to edit',
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
+          SizedBox(height: 20),
+          FilledButton.icon(
+            onPressed: onPick,
+            icon: Icon(Icons.video_library_rounded),
+            label: Text('Choose from gallery'),
+          ),
+          SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: onRecord,
+            icon: Icon(Icons.videocam_rounded),
+            label: Text('Record with teleprompter'),
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 /// Source frame at the playhead, cropped/letterboxed like the export, with text and zoom
@@ -1134,6 +1323,8 @@ class _Preview extends StatelessWidget {
     required this.playing,
     required this.onOpenTool,
     required this.onEdit,
+    this.safeZone = SafeZonePlatform.none,
+    this.onCycleSafeZone,
   });
 
   final StudioController controller;
@@ -1144,178 +1335,343 @@ class _Preview extends StatelessWidget {
   final NativePreviewController? native;
 
   /// The other side of a crossfade, drawn over the picture at [opacity] (same look as its clip).
-  final ({VideoPlayerController? player, int clipIndex, double opacity})? crossfade;
+  final ({VideoPlayerController? player, int clipIndex, double opacity})?
+  crossfade;
   final bool playing;
   final ValueChanged<StudioTool> onOpenTool;
   final EditFn onEdit;
+  final SafeZonePlatform safeZone;
+  final VoidCallback? onCycleSafeZone;
 
   @override
   Widget build(BuildContext context) {
     final ir = controller.ir!;
     final clip = ir.clips[TimelineOps.clipIndexAt(ir, controller.playheadMs)];
     final t = controller.playheadMs;
-    final captions = ir.captions.where((c) => t >= c.startMs && t < c.endMs).toList();
-    final zoom = ir.zooms.where((z) => t >= z.startMs && t < z.endMs).firstOrNull;
+    final captions = ir.captions
+        .where((c) => t >= c.startMs && t < c.endMs)
+        .toList();
+    final zoom = ir.zooms
+        .where((z) => t >= z.startMs && t < z.endMs)
+        .firstOrNull;
     // Every overlay active at the playhead, stacked in timeline order like the export (last = on top).
-    final brolls = ir.overlays.where((o) => t >= o.timelineStartMs && t < o.timelineEndMs).toList();
+    final brolls = ir.overlays
+        .where((o) => t >= o.timelineStartMs && t < o.timelineEndMs)
+        .toList();
     final broll = brolls.lastOrNull;
     final p = player;
     final canvasAspect = ir.canvas.width / ir.canvas.height;
-    final stillPath = !kIsWeb && controller.isStillAsset(clip.assetId) ? controller.pathForAsset(clip.assetId) : null;
-    final stillSrc = ir.sources.where((s) => s.assetId == clip.assetId).firstOrNull;
+    final stillPath = !kIsWeb && controller.isStillAsset(clip.assetId)
+        ? controller.pathForAsset(clip.assetId)
+        : null;
+    final stillSrc = ir.sources
+        .where((s) => s.assetId == clip.assetId)
+        .firstOrNull;
     Widget base() => _CroppedVideo(
-          player: p,
-          clip: clip,
-          filter: clip.filter,
-          stillPath: stillPath,
-          stillSize: stillPath == null ? null : Size((stillSrc?.width ?? 1080).toDouble(), (stillSrc?.height ?? 1920).toDouble()),
-        );
+      player: p,
+      clip: clip,
+      filter: clip.filter,
+      stillPath: stillPath,
+      stillSize: stillPath == null
+          ? null
+          : Size(
+              (stillSrc?.width ?? 1080).toDouble(),
+              (stillSrc?.height ?? 1920).toDouble(),
+            ),
+    );
 
     return Container(
       color: AppTheme.background,
-      padding: EdgeInsets.all(12),
-      child: Center(
-        child: AspectRatio(
-          aspectRatio: canvasAspect,
-          child: ClipRect(
-            child: Container(
-              color: _hex(ir.canvas.background),
-              child: Stack(fit: StackFit.expand, children: [
-                if (native case final n?) ...[
-                  Positioned.fill(child: NativeCompositionPreview(controller: n)),
-                  if (n.error case final err?)
-                    Positioned(
-                      left: 8,
-                      right: 8,
-                      bottom: 8,
-                      child: Container(
-                        padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        color: Colors.black.withValues(alpha: 0.75),
-                        child: Text('Preview: $err', style: TextStyle(fontSize: 11, color: AppTheme.warning), maxLines: 2),
+      padding: const EdgeInsets.fromLTRB(12, 6, 12, 10),
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  '${ir.canvas.aspect} · ${ir.canvas.width}×${ir.canvas.height}',
+                  style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                ),
+                InkWell(
+                  borderRadius: BorderRadius.circular(14),
+                  onTap: onCycleSafeZone,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: safeZone != SafeZonePlatform.none
+                          ? AppTheme.primary.withValues(alpha: 0.22)
+                          : AppTheme.surfaceElevated,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: safeZone != SafeZonePlatform.none
+                            ? AppTheme.primary
+                            : AppTheme.border,
+                        width: 1,
                       ),
                     ),
-                ],
-                // Base primary video
-                if (native == null && (stillPath != null || (p != null && p.value.isInitialized)))
-                  Transform.scale(
-                    scale: zoom?.scale ?? 1,
-                    alignment: Alignment(((zoom?.centerX ?? 0.5) * 2) - 1, ((zoom?.centerY ?? 0.5) * 2) - 1),
-                    child: Stack(fit: StackFit.expand, children: [
-                      base(),
-                      if ((clip.filter?.vignette ?? 0) > 0) ClipVignette(strength: clip.filter!.vignette),
-                      if (crossfade case final xf? when xf.clipIndex < ir.clips.length)
-                        () {
-                          final other = ir.clips[xf.clipIndex];
-                          final otherStill = !kIsWeb && controller.isStillAsset(other.assetId) ? controller.pathForAsset(other.assetId) : null;
-                          final otherSrc = ir.sources.where((s) => s.assetId == other.assetId).firstOrNull;
-                          if (otherStill == null && (xf.player == null || !xf.player!.value.isInitialized)) return const SizedBox.shrink();
-                          return Opacity(
-                            opacity: xf.opacity.clamp(0.0, 1.0),
-                            child: Stack(fit: StackFit.expand, children: [
-                              _CroppedVideo(
-                                player: xf.player,
-                                clip: other,
-                                filter: other.filter,
-                                stillPath: otherStill,
-                                stillSize: otherStill == null ? null : Size((otherSrc?.width ?? 1080).toDouble(), (otherSrc?.height ?? 1920).toDouble()),
-                              ),
-                              if ((other.filter?.vignette ?? 0) > 0) ClipVignette(strength: other.filter!.vignette),
-                            ]),
-                          );
-                        }(),
-                    ]),
-                  ),
-
-                // Native preview: the picture is native, so picture-in-picture / sticker layers only get invisible
-                // handles here (tap, drag to move, pinch to resize and rotate), placed with the export's maths.
-                if (native != null)
-                  for (final o in brolls.where((o) => o.isLayer))
-                    GhostLayerHandle(
-                      key: ValueKey('ghost_${o.id}'),
-                      overlay: o,
-                      playheadMs: t,
-                      controller: controller,
-                      onTap: () => onOpenTool(StudioTool.broll),
-                    ),
-                // B-roll Video or Image Overlay (the native preview composites them itself)
-                for (final o in native == null ? brolls : const <EditIrOverlay>[])
-                  if (o.isImage)
-                    _BrollOverlayImage(
-                      key: ValueKey('ov_${o.id}'),
-                      broll: o,
-                      playheadMs: t,
-                      controller: controller,
-                      onTap: () => onOpenTool(StudioTool.broll),
-                    )
-                  else
-                    _BrollOverlayVideo(
-                      key: ValueKey('ov_${o.id}'),
-                      broll: o,
-                      playheadMs: t,
-                      playing: playing,
-                      controller: controller,
-                      onTap: () => onOpenTool(StudioTool.broll),
-                    ),
-                if (broll != null) ...[
-
-                  // Overlay status chip with mute indicator & shortcut
-                  Positioned(
-                    top: 8,
-                    left: 8,
-                    child: InkWell(
-                      onTap: () => onOpenTool(StudioTool.broll),
-                      borderRadius: BorderRadius.circular(16),
-                      child: Container(
-                        padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.75),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: AppTheme.accentBlue.withValues(alpha: 0.5)),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.grid_goldenratio_rounded,
+                          size: 13,
+                          color: safeZone != SafeZonePlatform.none
+                              ? AppTheme.primary
+                              : AppTheme.textMuted,
                         ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(broll.isImage ? Icons.photo_rounded : Icons.layers_rounded, size: 14, color: AppTheme.accentBlue),
-                            SizedBox(width: 5),
-                            ConstrainedBox(
-                              constraints: BoxConstraints(maxWidth: 160),
-                              child: Text(
-                                '${broll.isImage ? 'Photo' : 'B-roll'}: ${broll.source['title'] ?? broll.source['query'] ?? broll.source['kind'] ?? 'Cutaway'}'
-                                '${brolls.length > 1 ? ' +${brolls.length - 1}' : ''}',
-                                style: TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.w600),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            if (!broll.isImage && broll.muted) ...[
-                              SizedBox(width: 4),
-                              Icon(Icons.volume_off_rounded, size: 12, color: AppTheme.warning),
-                            ],
-                            SizedBox(width: 4),
-                            Icon(Icons.tune_rounded, size: 12, color: AppTheme.textMuted),
-                          ],
+                        const SizedBox(width: 4),
+                        Text(
+                          'Safe: ${safeZone.label}',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: safeZone != SafeZonePlatform.none
+                                ? Colors.white
+                                : AppTheme.textSecondary,
+                          ),
                         ),
-                      ),
+                      ],
                     ),
                   ),
-                ],
-
-                // Draggable text / captions on top of the preview canvas
-                for (final cap in captions)
-                  _DraggableCaption(
-                    key: ValueKey('cap_${cap.id}'),
-                    caption: cap,
-                    t: t,
-                    canvasWidth: ir.canvas.width,
-                    controller: controller,
-                    ghost: native != null,
-                    // Tapping a title or a caption edits that one (text, style, timing, position).
-                    onTap: () => onOpenTool(StudioTool.text),
-                  ),
-              ]),
+                ),
+              ],
             ),
           ),
-        ),
+          Expanded(
+            child: Center(
+              child: AspectRatio(
+                aspectRatio: canvasAspect,
+                child: ClipRect(
+                  child: Container(
+                    color: _hex(ir.canvas.background),
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        if (native case final n?) ...[
+                          Positioned.fill(
+                            child: NativeCompositionPreview(controller: n),
+                          ),
+                          if (n.error case final err?)
+                            Positioned(
+                              left: 8,
+                              right: 8,
+                              bottom: 8,
+                              child: Container(
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
+                                color: Colors.black.withValues(alpha: 0.75),
+                                child: Text(
+                                  'Preview: $err',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: AppTheme.warning,
+                                  ),
+                                  maxLines: 2,
+                                ),
+                              ),
+                            ),
+                        ],
+                        // Base primary video
+                        if (native == null &&
+                            (stillPath != null ||
+                                (p != null && p.value.isInitialized)))
+                          Transform.scale(
+                            scale: zoom?.scale ?? 1,
+                            alignment: Alignment(
+                              ((zoom?.centerX ?? 0.5) * 2) - 1,
+                              ((zoom?.centerY ?? 0.5) * 2) - 1,
+                            ),
+                            child: Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                base(),
+                                if ((clip.filter?.vignette ?? 0) > 0)
+                                  ClipVignette(strength: clip.filter!.vignette),
+                                if (crossfade case final xf?
+                                    when xf.clipIndex < ir.clips.length)
+                                  () {
+                                    final other = ir.clips[xf.clipIndex];
+                                    final otherStill =
+                                        !kIsWeb &&
+                                            controller.isStillAsset(
+                                              other.assetId,
+                                            )
+                                        ? controller.pathForAsset(other.assetId)
+                                        : null;
+                                    final otherSrc = ir.sources
+                                        .where(
+                                          (s) => s.assetId == other.assetId,
+                                        )
+                                        .firstOrNull;
+                                    if (otherStill == null &&
+                                        (xf.player == null ||
+                                            !xf.player!.value.isInitialized))
+                                      return const SizedBox.shrink();
+                                    return Opacity(
+                                      opacity: xf.opacity.clamp(0.0, 1.0),
+                                      child: Stack(
+                                        fit: StackFit.expand,
+                                        children: [
+                                          _CroppedVideo(
+                                            player: xf.player,
+                                            clip: other,
+                                            filter: other.filter,
+                                            stillPath: otherStill,
+                                            stillSize: otherStill == null
+                                                ? null
+                                                : Size(
+                                                    (otherSrc?.width ?? 1080)
+                                                        .toDouble(),
+                                                    (otherSrc?.height ?? 1920)
+                                                        .toDouble(),
+                                                  ),
+                                          ),
+                                          if ((other.filter?.vignette ?? 0) > 0)
+                                            ClipVignette(
+                                              strength: other.filter!.vignette,
+                                            ),
+                                        ],
+                                      ),
+                                    );
+                                  }(),
+                              ],
+                            ),
+                          ),
+
+                        // Native preview: the picture is native, so picture-in-picture / sticker layers only get invisible
+                        // handles here (tap, drag to move, pinch to resize and rotate), placed with the export's maths.
+                        if (native != null)
+                          for (final o in brolls.where((o) => o.isLayer))
+                            GhostLayerHandle(
+                              key: ValueKey('ghost_${o.id}'),
+                              overlay: o,
+                              playheadMs: t,
+                              controller: controller,
+                              onTap: () => onOpenTool(StudioTool.broll),
+                            ),
+                        // B-roll Video or Image Overlay (the native preview composites them itself)
+                        for (final o
+                            in native == null
+                                ? brolls
+                                : const <EditIrOverlay>[])
+                          if (o.isImage)
+                            _BrollOverlayImage(
+                              key: ValueKey('ov_${o.id}'),
+                              broll: o,
+                              playheadMs: t,
+                              controller: controller,
+                              onTap: () => onOpenTool(StudioTool.broll),
+                            )
+                          else
+                            _BrollOverlayVideo(
+                              key: ValueKey('ov_${o.id}'),
+                              broll: o,
+                              playheadMs: t,
+                              playing: playing,
+                              controller: controller,
+                              onTap: () => onOpenTool(StudioTool.broll),
+                            ),
+                        if (broll != null) ...[
+                          // Overlay status chip with mute indicator & shortcut
+                          Positioned(
+                            top: 8,
+                            left: 8,
+                            child: InkWell(
+                              onTap: () => onOpenTool(StudioTool.broll),
+                              borderRadius: BorderRadius.circular(16),
+                              child: Container(
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: 0.75),
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(
+                                    color: AppTheme.accentBlue.withValues(
+                                      alpha: 0.5,
+                                    ),
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      broll.isImage
+                                          ? Icons.photo_rounded
+                                          : Icons.layers_rounded,
+                                      size: 14,
+                                      color: AppTheme.accentBlue,
+                                    ),
+                                    SizedBox(width: 5),
+                                    ConstrainedBox(
+                                      constraints: BoxConstraints(
+                                        maxWidth: 160,
+                                      ),
+                                      child: Text(
+                                        '${broll.isImage ? 'Photo' : 'B-roll'}: ${broll.source['title'] ?? broll.source['query'] ?? broll.source['kind'] ?? 'Cutaway'}'
+                                        '${brolls.length > 1 ? ' +${brolls.length - 1}' : ''}',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    if (!broll.isImage && broll.muted) ...[
+                                      SizedBox(width: 4),
+                                      Icon(
+                                        Icons.volume_off_rounded,
+                                        size: 12,
+                                        color: AppTheme.warning,
+                                      ),
+                                    ],
+                                    SizedBox(width: 4),
+                                    Icon(
+                                      Icons.tune_rounded,
+                                      size: 12,
+                                      color: AppTheme.textMuted,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+
+                        // Draggable text / captions on top of the preview canvas
+                        for (final cap in captions)
+                          _DraggableCaption(
+                            key: ValueKey('cap_${cap.id}'),
+                            caption: cap,
+                            t: t,
+                            canvasWidth: ir.canvas.width,
+                            controller: controller,
+                            ghost: native != null,
+                            // Tapping a title or a caption edits that one (text, style, timing, position).
+                            onTap: () => onOpenTool(StudioTool.text),
+                          ),
+
+                        // Safe zone guideline overlay on top
+                        if (safeZone != SafeZonePlatform.none)
+                          SafeZoneOverlayGuide(platform: safeZone),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1329,7 +1685,13 @@ class _Preview extends StatelessWidget {
 
 /// Photo overlay: a full-frame cutaway, or a layer (PiP / sticker) placed like the export places it.
 class _BrollOverlayImage extends StatefulWidget {
-  const _BrollOverlayImage({super.key, required this.broll, required this.playheadMs, required this.controller, required this.onTap});
+  const _BrollOverlayImage({
+    super.key,
+    required this.broll,
+    required this.playheadMs,
+    required this.controller,
+    required this.onTap,
+  });
   final EditIrOverlay broll;
   final int playheadMs;
   final StudioController controller;
@@ -1345,12 +1707,16 @@ class _BrollOverlayImageState extends State<_BrollOverlayImage> {
   ImageStreamListener? _listener;
 
   String? _resolvedFor;
-  String _sourceKey() => '${widget.broll.source}|${kIsWeb ? '' : widget.controller.localOverlayPath(widget.broll.source) ?? ''}';
+  String _sourceKey() =>
+      '${widget.broll.source}|${kIsWeb ? '' : widget.controller.localOverlayPath(widget.broll.source) ?? ''}';
 
   ImageProvider? _provider() {
     // Gallery photos and stickers are files on this phone; stock photos are URLs.
-    final local = kIsWeb ? null : widget.controller.localOverlayPath(widget.broll.source);
-    if (local != null) return ResizeImage.resizeIfNeeded(1080, null, FileImage(File(local)));
+    final local = kIsWeb
+        ? null
+        : widget.controller.localOverlayPath(widget.broll.source);
+    if (local != null)
+      return ResizeImage.resizeIfNeeded(1080, null, FileImage(File(local)));
     final url = widget.broll.source['url'] as String?;
     if (url == null || url.isEmpty) return null;
     return ResizeImage.resizeIfNeeded(1080, null, NetworkImage(url));
@@ -1366,7 +1732,8 @@ class _BrollOverlayImageState extends State<_BrollOverlayImage> {
   void didUpdateWidget(covariant _BrollOverlayImage old) {
     super.didUpdateWidget(old);
     // Re-resolve when the source changes or its download finishes (remote URL → cached file).
-    if (old.broll.source != widget.broll.source || _resolvedFor != _sourceKey()) _resolve();
+    if (old.broll.source != widget.broll.source || _resolvedFor != _sourceKey())
+      _resolve();
   }
 
   void _resolve() {
@@ -1377,7 +1744,8 @@ class _BrollOverlayImageState extends State<_BrollOverlayImage> {
     if (_stream?.key == next.key) return;
     if (_listener != null) _stream?.removeListener(_listener!);
     _listener = ImageStreamListener((info, _) {
-      if (mounted) setState(() => _aspect = info.image.width / info.image.height);
+      if (mounted)
+        setState(() => _aspect = info.image.width / info.image.height);
     }, onError: (_, _) {});
     _stream = next..addListener(_listener!);
   }
@@ -1394,10 +1762,13 @@ class _BrollOverlayImageState extends State<_BrollOverlayImage> {
     final provider = _provider();
     if (provider == null) return SizedBox.shrink();
     Widget img(BoxFit fit) => Image(
-          image: provider,
-          fit: fit,
-          errorBuilder: (_, o, s) => Container(color: Colors.black54, child: Icon(Icons.broken_image_rounded, color: AppTheme.textMuted)),
-        );
+      image: provider,
+      fit: fit,
+      errorBuilder: (_, o, s) => Container(
+        color: Colors.black54,
+        child: Icon(Icons.broken_image_rounded, color: AppTheme.textMuted),
+      ),
+    );
     if (broll.isLayer) {
       return LayerPlacement(
         overlay: broll,
@@ -1408,7 +1779,10 @@ class _BrollOverlayImageState extends State<_BrollOverlayImage> {
         child: img(BoxFit.fill),
       );
     }
-    final content = Opacity(opacity: broll.opacity.clamp(0.05, 1.0), child: img(broll.fit == 'contain' ? BoxFit.contain : BoxFit.cover));
+    final content = Opacity(
+      opacity: broll.opacity.clamp(0.05, 1.0),
+      child: img(broll.fit == 'contain' ? BoxFit.contain : BoxFit.cover),
+    );
     return GestureDetector(onTap: widget.onTap, child: content);
   }
 }
@@ -1463,7 +1837,11 @@ class _BrollOverlayVideoState extends State<_BrollOverlayVideo> {
   }
 
   /// Local file (gallery video) or remote URL for this overlay.
-  String? _url() => (kIsWeb ? null : widget.controller.localOverlayPath(widget.broll.source)) ?? widget.broll.source['url'] as String?;
+  String? _url() =>
+      (kIsWeb
+          ? null
+          : widget.controller.localOverlayPath(widget.broll.source)) ??
+      widget.broll.source['url'] as String?;
 
   Future<void> _initPlayer() async {
     final url = _url();
@@ -1474,7 +1852,11 @@ class _BrollOverlayVideoState extends State<_BrollOverlayVideo> {
     });
     await _controller?.dispose();
     try {
-      final isNet = url.startsWith('http://') || url.startsWith('https://') || url.startsWith('blob:') || kIsWeb;
+      final isNet =
+          url.startsWith('http://') ||
+          url.startsWith('https://') ||
+          url.startsWith('blob:') ||
+          kIsWeb;
       final c = isNet
           ? VideoPlayerController.networkUrl(Uri.parse(url))
           : VideoPlayerController.file(File(url));
@@ -1497,7 +1879,12 @@ class _BrollOverlayVideoState extends State<_BrollOverlayVideo> {
     final c = _controller;
     if (c == null || !c.value.isInitialized) return;
     c.setVolume(widget.broll.muted ? 0.0 : 1.0);
-    final targetMs = (widget.playheadMs - widget.broll.timelineStartMs).clamp(0, widget.broll.timelineEndMs - widget.broll.timelineStartMs) + widget.broll.sourceStartMs;
+    final targetMs =
+        (widget.playheadMs - widget.broll.timelineStartMs).clamp(
+          0,
+          widget.broll.timelineEndMs - widget.broll.timelineStartMs,
+        ) +
+        widget.broll.sourceStartMs;
     final curMs = c.value.position.inMilliseconds;
     if ((curMs - targetMs).abs() > 200) {
       c.seekTo(Duration(milliseconds: targetMs));
@@ -1514,7 +1901,9 @@ class _BrollOverlayVideoState extends State<_BrollOverlayVideo> {
     final c = _controller;
     final broll = widget.broll;
     final isPip = broll.isLayer;
-    final boxFit = isPip ? BoxFit.fill : (broll.fit == 'contain' ? BoxFit.contain : BoxFit.cover);
+    final boxFit = isPip
+        ? BoxFit.fill
+        : (broll.fit == 'contain' ? BoxFit.contain : BoxFit.cover);
 
     Widget content;
     if (c != null && c.value.isInitialized) {
@@ -1532,7 +1921,12 @@ class _BrollOverlayVideoState extends State<_BrollOverlayVideo> {
     } else {
       final thumb = broll.source['thumbnailUrl'] as String?;
       content = thumb != null
-          ? Image.network(thumb, cacheWidth: 1080, fit: boxFit, errorBuilder: (_, o, s) => _placeholder())
+          ? Image.network(
+              thumb,
+              cacheWidth: 1080,
+              fit: boxFit,
+              errorBuilder: (_, o, s) => _placeholder(),
+            )
           : _placeholder();
     }
 
@@ -1541,36 +1935,45 @@ class _BrollOverlayVideoState extends State<_BrollOverlayVideo> {
       return LayerPlacement(
         overlay: broll,
         playheadMs: widget.playheadMs,
-        mediaAspect: size == null || size.height == 0 ? 16 / 9 : size.width / size.height,
+        mediaAspect: size == null || size.height == 0
+            ? 16 / 9
+            : size.width / size.height,
         controller: widget.controller,
         onTap: widget.onTap,
         child: content,
       );
     }
 
-    content = Opacity(
-      opacity: broll.opacity.clamp(0.05, 1.0),
-      child: content,
-    );
+    content = Opacity(opacity: broll.opacity.clamp(0.05, 1.0), child: content);
 
-    return GestureDetector(
-      onTap: widget.onTap,
-      child: content,
-    );
+    return GestureDetector(onTap: widget.onTap, child: content);
   }
 
   Widget _placeholder() => Container(
-        color: Colors.black87,
-        child: Center(
-          child: _initializing
-              ? SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primary))
-              : Icon(Icons.movie_rounded, color: AppTheme.textMuted, size: 36),
-        ),
-      );
+    color: Colors.black87,
+    child: Center(
+      child: _initializing
+          ? SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: AppTheme.primary,
+              ),
+            )
+          : Icon(Icons.movie_rounded, color: AppTheme.textMuted, size: 36),
+    ),
+  );
 }
 
 class _CroppedVideo extends StatelessWidget {
-  const _CroppedVideo({this.player, required this.clip, this.filter, this.stillPath, this.stillSize});
+  const _CroppedVideo({
+    this.player,
+    required this.clip,
+    this.filter,
+    this.stillPath,
+    this.stillSize,
+  });
   final VideoPlayerController? player;
   final EditIrClip clip;
   final EditIrFilter? filter;
@@ -1581,13 +1984,20 @@ class _CroppedVideo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final size = stillSize ?? (player?.value.isInitialized == true ? player!.value.size : const Size(1920, 1080));
+    final size =
+        stillSize ??
+        (player?.value.isInitialized == true
+            ? player!.value.size
+            : const Size(1920, 1080));
     final sideways = clip.rotationDeg == 90 || clip.rotationDeg == 270;
     final srcW = sideways ? size.height : size.width;
     final srcH = sideways ? size.width : size.height;
     // Moving framing (cropKeyframes) follows the frame on screen: the player's source position, like the export.
-    final sourceMs = stillPath != null || player?.value.isInitialized != true ? clip.sourceStartMs : player!.value.position.inMilliseconds;
-    final crop = clip.cropAt(sourceMs) ?? EditIrCrop(x: 0, y: 0, width: 1, height: 1);
+    final sourceMs = stillPath != null || player?.value.isInitialized != true
+        ? clip.sourceStartMs
+        : player!.value.position.inMilliseconds;
+    final crop =
+        clip.cropAt(sourceMs) ?? EditIrCrop(x: 0, y: 0, width: 1, height: 1);
     Widget video = Transform(
       alignment: Alignment.center,
       transform: Matrix4.identity()
@@ -1597,14 +2007,30 @@ class _CroppedVideo extends StatelessWidget {
         width: size.width,
         height: size.height,
         child: stillPath != null
-            ? (!kIsWeb ? Image.file(File(stillPath!), fit: BoxFit.fill, gaplessPlayback: true) : const SizedBox.shrink())
-            : (player != null && player!.value.isInitialized ? VideoPlayer(player!) : const SizedBox.shrink()),
+            ? (!kIsWeb
+                  ? Image.file(
+                      File(stillPath!),
+                      fit: BoxFit.fill,
+                      gaplessPlayback: true,
+                    )
+                  : const SizedBox.shrink())
+            : (player != null && player!.value.isInitialized
+                  ? VideoPlayer(player!)
+                  : const SizedBox.shrink()),
       ),
     );
-    video = SizedBox(width: srcW, height: srcH, child: FittedBox(child: video));
+    video = SizedBox(
+      width: srcW,
+      height: srcH,
+      child: FittedBox(child: video),
+    );
     final f = filter;
     // Same colour matrix as the export (color_grade.dart ⇄ ColorGrade.kt).
-    if (f != null && !f.isNeutral) video = ColorFiltered(colorFilter: ColorFilter.matrix(gradeMatrix(f)), child: video);
+    if (f != null && !f.isNeutral)
+      video = ColorFiltered(
+        colorFilter: ColorFilter.matrix(gradeMatrix(f)),
+        child: video,
+      );
     // Show only the crop rect, scaled to fill (crop) or fit (no crop) the canvas.
     return FittedBox(
       fit: clip.crop == null ? BoxFit.contain : BoxFit.cover,
@@ -1617,7 +2043,10 @@ class _CroppedVideo extends StatelessWidget {
             alignment: Alignment.topLeft,
             maxWidth: srcW,
             maxHeight: srcH,
-            child: Transform.translate(offset: Offset(-srcW * crop.x, -srcH * crop.y), child: video),
+            child: Transform.translate(
+              offset: Offset(-srcW * crop.x, -srcH * crop.y),
+              child: video,
+            ),
           ),
         ),
       ),
@@ -1634,8 +2063,14 @@ Widget captionPreviewLayer({
   required int canvasWidth,
   required StudioController controller,
   VoidCallback? onTap,
-}) =>
-    _DraggableCaption(key: key, caption: caption, t: t, canvasWidth: canvasWidth, controller: controller, onTap: onTap ?? () {});
+}) => _DraggableCaption(
+  key: key,
+  caption: caption,
+  t: t,
+  canvasWidth: canvasWidth,
+  controller: controller,
+  onTap: onTap ?? () {},
+);
 
 /// CapCut-style draggable text overlay on top of the preview canvas. Laid out like the export: the text block is
 /// centred on (positionX, positionY) of the canvas and wraps at maxWidthFraction of its width.
@@ -1694,80 +2129,120 @@ class _DraggableCaptionState extends State<_DraggableCaption> {
     final posX = (st['positionX'] as num?)?.toDouble() ?? 0.5;
     final posY = (st['positionY'] as num?)?.toDouble() ?? 0.72;
     // Drawn where the transform puts it (keyframed position); a drag still moves the style's position.
-    final tr = textTransformAt(st, widget.caption.startMs, widget.caption.endMs, widget.t);
-    final maxWidthFraction = ((st['maxWidthFraction'] as num?)?.toDouble() ?? 0.86).clamp(0.1, 1.0);
+    final tr = textTransformAt(
+      st,
+      widget.caption.startMs,
+      widget.caption.endMs,
+      widget.t,
+    );
+    final maxWidthFraction =
+        ((st['maxWidthFraction'] as num?)?.toDouble() ?? 0.86).clamp(0.1, 1.0);
 
-    return LayoutBuilder(builder: (context, box) {
-      final w = box.maxWidth, h = box.maxHeight;
-      if (!w.isFinite || !h.isFinite || w <= 0 || h <= 0) return const SizedBox.shrink();
-      // Canvas pixels → preview pixels, exactly as the renderer scales canvas pixels to its frame.
-      final scale = EditIrCaption.canvasPxScale(w, widget.canvasWidth);
-      return Stack(clipBehavior: Clip.none, children: [
-        Positioned(
-          left: tr.positionX * w,
-          top: tr.positionY * h,
-          child: FractionalTranslation(
-            translation: const Offset(-0.5, -0.5),
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              // Start at the touch-down point: the text then follows the finger exactly (no lag by the drag slop).
-              dragStartBehavior: DragStartBehavior.down,
-              onTap: () {
-                widget.controller.selectTrackItem(widget.caption.id, widget.caption.kind == 'text' ? TrackKind.text : TrackKind.captions);
-                widget.onTap();
-              },
-              onPanStart: (d) {
-                widget.controller.beginLiveEdit();
-                _dragFrom = (finger: d.globalPosition, x: posX, y: posY);
-                setState(() => _active = true);
-              },
-              onPanUpdate: (d) {
-                final from = _dragFrom;
-                if (from == null) return;
-                final moved = d.globalPosition - from.finger;
-                widget.controller.applyWithoutHistory((ir) => TimelineOps.updateCaptionPosition(
-                      ir,
+    return LayoutBuilder(
+      builder: (context, box) {
+        final w = box.maxWidth, h = box.maxHeight;
+        if (!w.isFinite || !h.isFinite || w <= 0 || h <= 0)
+          return const SizedBox.shrink();
+        // Canvas pixels → preview pixels, exactly as the renderer scales canvas pixels to its frame.
+        final scale = EditIrCaption.canvasPxScale(w, widget.canvasWidth);
+        return Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Positioned(
+              left: tr.positionX * w,
+              top: tr.positionY * h,
+              child: FractionalTranslation(
+                translation: const Offset(-0.5, -0.5),
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  // Start at the touch-down point: the text then follows the finger exactly (no lag by the drag slop).
+                  dragStartBehavior: DragStartBehavior.down,
+                  onTap: () {
+                    widget.controller.selectTrackItem(
                       widget.caption.id,
-                      positionX: (from.x + moved.dx / w).clamp(0.05, 0.95),
-                      positionY: (from.y + moved.dy / h).clamp(0.05, 0.95),
-                    ));
-              },
-              onPanEnd: (_) => _endDrag(),
-              onPanCancel: _endDrag,
-              child: DecoratedBox(
-                position: DecorationPosition.foreground,
-                decoration: BoxDecoration(
-                  border: _active ? Border.all(color: AppTheme.primary, width: 1.5) : null,
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: _withMotion(
-                  Size(w, h),
-                  tr,
-                  widget.ghost
-                      ? Opacity(
-                          opacity: 0,
-                          child: _CaptionPreview(caption: widget.caption, t: widget.t, scale: scale, maxTextWidth: maxWidthFraction * w),
-                        )
-                      : _CaptionPreview(caption: widget.caption, t: widget.t, scale: scale, maxTextWidth: maxWidthFraction * w),
+                      widget.caption.kind == 'text'
+                          ? TrackKind.text
+                          : TrackKind.captions,
+                    );
+                    widget.onTap();
+                  },
+                  onPanStart: (d) {
+                    widget.controller.beginLiveEdit();
+                    _dragFrom = (finger: d.globalPosition, x: posX, y: posY);
+                    setState(() => _active = true);
+                  },
+                  onPanUpdate: (d) {
+                    final from = _dragFrom;
+                    if (from == null) return;
+                    final moved = d.globalPosition - from.finger;
+                    widget.controller.applyWithoutHistory(
+                      (ir) => TimelineOps.updateCaptionPosition(
+                        ir,
+                        widget.caption.id,
+                        positionX: (from.x + moved.dx / w).clamp(0.05, 0.95),
+                        positionY: (from.y + moved.dy / h).clamp(0.05, 0.95),
+                      ),
+                    );
+                  },
+                  onPanEnd: (_) => _endDrag(),
+                  onPanCancel: _endDrag,
+                  child: DecoratedBox(
+                    position: DecorationPosition.foreground,
+                    decoration: BoxDecoration(
+                      border: _active
+                          ? Border.all(color: AppTheme.primary, width: 1.5)
+                          : null,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: _withMotion(
+                      Size(w, h),
+                      tr,
+                      widget.ghost
+                          ? Opacity(
+                              opacity: 0,
+                              child: _CaptionPreview(
+                                caption: widget.caption,
+                                t: widget.t,
+                                scale: scale,
+                                maxTextWidth: maxWidthFraction * w,
+                              ),
+                            )
+                          : _CaptionPreview(
+                              caption: widget.caption,
+                              t: widget.t,
+                              scale: scale,
+                              maxTextWidth: maxWidthFraction * w,
+                            ),
+                    ),
+                  ),
                 ),
               ),
             ),
-          ),
-        ),
-      ]);
-    });
+          ],
+        );
+      },
+    );
   }
 
   /// In / out / loop motion and the text transform, identical to the Android renderer (text_motion.dart): moved,
   /// then rotated (transform + motion) and scaled (transform x motion) about the block's centre.
   Widget _withMotion(Size canvas, TextTransform tr, Widget child) {
-    final m = textMotionAt(widget.caption.style, widget.caption.startMs, widget.caption.endMs, widget.t);
-    if (identical(m, TextMotion.none) && tr.rotationDeg == 0 && tr.scale == 1) return child;
+    final m = textMotionAt(
+      widget.caption.style,
+      widget.caption.startMs,
+      widget.caption.endMs,
+      widget.t,
+    );
+    if (identical(m, TextMotion.none) && tr.rotationDeg == 0 && tr.scale == 1)
+      return child;
     return Transform.translate(
       offset: Offset(m.dx * canvas.width, m.dy * canvas.height),
       child: Transform.rotate(
         angle: (tr.rotationDeg + m.rotationDeg) * math.pi / 180,
-        child: Transform.scale(scale: tr.scale * m.scale, child: Opacity(opacity: m.opacity, child: child)),
+        child: Transform.scale(
+          scale: tr.scale * m.scale,
+          child: Opacity(opacity: m.opacity, child: child),
+        ),
       ),
     );
   }
@@ -1778,14 +2253,22 @@ Color _contractColor(Object? v, Color fallback) {
   if (v is! String) return fallback;
   final h = v.trim().replaceFirst('#', '');
   if (h.length != 6 && h.length != 8) return fallback;
-  final n = int.tryParse(h.length == 6 ? 'FF$h' : h.substring(6) + h.substring(0, 6), radix: 16);
+  final n = int.tryParse(
+    h.length == 6 ? 'FF$h' : h.substring(6) + h.substring(0, 6),
+    radix: 16,
+  );
   return n == null ? fallback : Color(n);
 }
 
 /// One caption or title drawn like the export (VideoEffects.kt CaptionOverlay): font, size, outline, shadow / glow,
 /// background box and per-word highlight / pop / box / reveal. Canvas-pixel sizes are multiplied by [scale].
 class _CaptionPreview extends StatelessWidget {
-  const _CaptionPreview({required this.caption, required this.t, required this.scale, required this.maxTextWidth});
+  const _CaptionPreview({
+    required this.caption,
+    required this.t,
+    required this.scale,
+    required this.maxTextWidth,
+  });
   final EditIrCaption caption;
   final int t;
 
@@ -1800,25 +2283,54 @@ class _CaptionPreview extends StatelessWidget {
     final st = caption.style;
     final upper = st['uppercase'] == true;
     final text = _contractColor(st['textColor'], Colors.white);
-    final hi = _contractColor(st['highlightColor'], caption.kind == 'text' ? text : const Color(0xFFFFE600));
+    final hi = _contractColor(
+      st['highlightColor'],
+      caption.kind == 'text' ? text : const Color(0xFFFFE600),
+    );
     final strokeColor = _contractColor(st['strokeColor'], Colors.black);
-    final stroke2Color = st['stroke2Color'] != null ? _contractColor(st['stroke2Color'], Colors.black) : null;
-    final anim = (st['animation'] as String?) ?? (caption.kind == 'text' ? 'none' : 'word_pop');
-    final activeWordMotion = (st['activeWordMotion'] as String?) ?? (anim == 'word_pop' ? 'scale-spring' : 'none');
-    final fontSize = math.max(1.0, ((st['fontSizePx'] as num?)?.toDouble() ?? 72) * scale);
+    final stroke2Color = st['stroke2Color'] != null
+        ? _contractColor(st['stroke2Color'], Colors.black)
+        : null;
+    final anim =
+        (st['animation'] as String?) ??
+        (caption.kind == 'text' ? 'none' : 'word_pop');
+    final activeWordMotion =
+        (st['activeWordMotion'] as String?) ??
+        (anim == 'word_pop' ? 'scale-spring' : 'none');
+    final fontSize = math.max(
+      1.0,
+      ((st['fontSizePx'] as num?)?.toDouble() ?? 72) * scale,
+    );
     final strokeW = ((st['strokeWidthPx'] as num?)?.toDouble() ?? 0) * scale;
-    final stroke2W = stroke2Color != null ? strokeW + (((st['stroke2WidthPx'] as num?)?.toDouble() ?? 0) * scale) : 0.0;
+    final stroke2W = stroke2Color != null
+        ? strokeW + (((st['stroke2WidthPx'] as num?)?.toDouble() ?? 0) * scale)
+        : 0.0;
     final bgSpec = st['background'];
-    final bg = bgSpec is Map ? _contractColor(bgSpec['color'], const Color(0xB3000000)) : null;
-    final bgPad = bgSpec is Map ? ((bgSpec['paddingPx'] as num?)?.toDouble() ?? 16) * scale : 0.0;
-    final bgRadius = bgSpec is Map ? ((bgSpec['radiusPx'] as num?)?.toDouble() ?? 16) * scale : 0.0;
-    final bgMode = (st['backgroundMode'] as String?) ?? (bg != null ? 'pill' : 'none');
+    final bg = bgSpec is Map
+        ? _contractColor(bgSpec['color'], const Color(0xB3000000))
+        : null;
+    final bgPad = bgSpec is Map
+        ? ((bgSpec['paddingPx'] as num?)?.toDouble() ?? 16) * scale
+        : 0.0;
+    final bgRadius = bgSpec is Map
+        ? ((bgSpec['radiusPx'] as num?)?.toDouble() ?? 16) * scale
+        : 0.0;
+    final bgMode =
+        (st['backgroundMode'] as String?) ?? (bg != null ? 'pill' : 'none');
 
     // Typewriter (enter motion): the same character count as the renderer, cut at that point.
     var words = caption.displayWords;
     final reveal = textMotionAt(st, caption.startMs, caption.endMs, t).reveal;
     if (reveal < 1) {
-      var left = (words.fold<int>(0, (n, w) => n + (w.text == EditIrCaption.lineBreak ? 0 : w.text.length)) * reveal).ceil();
+      var left =
+          (words.fold<int>(
+                    0,
+                    (n, w) =>
+                        n +
+                        (w.text == EditIrCaption.lineBreak ? 0 : w.text.length),
+                  ) *
+                  reveal)
+              .ceil();
       final shown = <EditIrWord>[];
       for (final w in words) {
         if (left <= 0) break;
@@ -1828,9 +2340,18 @@ class _CaptionPreview extends StatelessWidget {
         }
         final take = math.min(left, w.text.length);
         left -= take;
-        shown.add(take == w.text.length
-            ? w
-            : EditIrWord(text: w.text.substring(0, take), startMs: w.startMs, endMs: w.endMs, highlight: w.highlight, color: w.color, scale: w.scale));
+        shown.add(
+          take == w.text.length
+              ? w
+              : EditIrWord(
+                  text: w.text.substring(0, take),
+                  startMs: w.startMs,
+                  endMs: w.endMs,
+                  highlight: w.highlight,
+                  color: w.color,
+                  scale: w.scale,
+                ),
+        );
       }
       words = shown;
     }
@@ -1838,9 +2359,15 @@ class _CaptionPreview extends StatelessWidget {
 
     bool active(EditIrWord w) => t >= w.startMs && t < w.endMs;
     // Word states: active, spoken, emphasis, resting
-    final wordActiveColor = st['wordActiveColor'] != null ? _contractColor(st['wordActiveColor'], hi) : null;
-    final wordSpokenColor = st['wordSpokenColor'] != null ? _contractColor(st['wordSpokenColor'], hi) : null;
-    final wordEmphasisColor = st['wordEmphasisColor'] != null ? _contractColor(st['wordEmphasisColor'], hi) : null;
+    final wordActiveColor = st['wordActiveColor'] != null
+        ? _contractColor(st['wordActiveColor'], hi)
+        : null;
+    final wordSpokenColor = st['wordSpokenColor'] != null
+        ? _contractColor(st['wordSpokenColor'], hi)
+        : null;
+    final wordEmphasisColor = st['wordEmphasisColor'] != null
+        ? _contractColor(st['wordEmphasisColor'], hi)
+        : null;
 
     Color wordColor(EditIrWord w) {
       final actColor = _contractColor(w.color, wordActiveColor ?? hi);
@@ -1856,10 +2383,19 @@ class _CaptionPreview extends StatelessWidget {
     }
 
     double pop(EditIrWord w) {
-      if (!active(w)) return w.highlight ? ((st['wordEmphasisScale'] as num?)?.toDouble() ?? 1.0) : 1.0;
+      if (!active(w))
+        return w.highlight
+            ? ((st['wordEmphasisScale'] as num?)?.toDouble() ?? 1.0)
+            : 1.0;
       if (activeWordMotion == 'scale-spring') {
-        final spr = easeSpring((t - w.startMs) / 1000.0, stiffness: 320.0, damping: 16.0);
-        final targetScale = (st['wordActiveScale'] as num?)?.toDouble() ?? math.max(1.15, w.scale);
+        final spr = easeSpring(
+          (t - w.startMs) / 1000.0,
+          stiffness: 320.0,
+          damping: 16.0,
+        );
+        final targetScale =
+            (st['wordActiveScale'] as num?)?.toDouble() ??
+            math.max(1.15, w.scale);
         return 1.0 + (targetScale - 1.0) * spr.clamp(0.0, 1.6);
       }
       if (anim == 'word_pop') {
@@ -1882,33 +2418,45 @@ class _CaptionPreview extends StatelessWidget {
         final isCased = EditIrCaption.isCasedScript(w.text);
         final label = upper && isCased ? w.text.toUpperCase() : w.text;
         final size = fontSize * pop(w);
-        final boxed = (anim == 'word_box' || bgMode == 'word') && active(w) && strokeMode == 0;
+        final boxed =
+            (anim == 'word_box' || bgMode == 'word') &&
+            active(w) &&
+            strokeMode == 0;
         final Paint? stroke = strokeMode == 2
             ? (Paint()
-              ..style = PaintingStyle.stroke
-              ..strokeWidth = stroke2W * 2
-              ..strokeJoin = StrokeJoin.round
-              ..color = hidden ? Colors.transparent : stroke2Color!)
+                ..style = PaintingStyle.stroke
+                ..strokeWidth = stroke2W * 2
+                ..strokeJoin = StrokeJoin.round
+                ..color = hidden ? Colors.transparent : stroke2Color!)
             : (strokeMode == 1
-                ? (Paint()
-                  ..style = PaintingStyle.stroke
-                  ..strokeWidth = strokeW * 2
-                  ..strokeJoin = StrokeJoin.round
-                  ..color = hidden ? Colors.transparent : strokeColor)
-                : null);
-        out.add(TextSpan(
-          text: label,
-          style: TextStyle(
-            fontSize: size,
-            color: strokeMode > 0 ? null : (hidden ? Colors.transparent : wordColor(w)),
-            foreground: stroke,
-            background: boxed ? (Paint()..color = _contractColor(w.color, wordActiveColor ?? hi)) : null,
-            shadows: strokeMode > 0 || hidden ? const [] : null,
+                  ? (Paint()
+                      ..style = PaintingStyle.stroke
+                      ..strokeWidth = strokeW * 2
+                      ..strokeJoin = StrokeJoin.round
+                      ..color = hidden ? Colors.transparent : strokeColor)
+                  : null);
+        out.add(
+          TextSpan(
+            text: label,
+            style: TextStyle(
+              fontSize: size,
+              color: strokeMode > 0
+                  ? null
+                  : (hidden ? Colors.transparent : wordColor(w)),
+              foreground: stroke,
+              background: boxed
+                  ? (Paint()
+                      ..color = _contractColor(w.color, wordActiveColor ?? hi))
+                  : null,
+              shadows: strokeMode > 0 || hidden ? const [] : null,
+            ),
           ),
-        ));
+        );
         final next = i + 1 < words.length ? words[i + 1] : null;
         if (next != null && next.text != EditIrCaption.lineBreak) {
-          final noSpace = EditIrCaption.isNoSpaceScript(w.text) && EditIrCaption.isNoSpaceScript(next.text);
+          final noSpace =
+              EditIrCaption.isNoSpaceScript(w.text) &&
+              EditIrCaption.isNoSpaceScript(next.text);
           if (!noSpace) out.add(const TextSpan(text: ' '));
         }
       }
@@ -1916,36 +2464,55 @@ class _CaptionPreview extends StatelessWidget {
     }
 
     final glowRadius = (st['glowRadiusPx'] as num?)?.toDouble() ?? 0.0;
-    final glowColor = st['glowColor'] != null ? _contractColor(st['glowColor'], hi) : hi;
+    final glowColor = st['glowColor'] != null
+        ? _contractColor(st['glowColor'], hi)
+        : hi;
     final shadowBlur = ((st['shadowBlur'] as num?)?.toDouble() ?? 6.0) * scale;
     final shadowX = ((st['shadowX'] as num?)?.toDouble() ?? 0.0) * scale;
     final shadowY = ((st['shadowY'] as num?)?.toDouble() ?? 4.0) * scale;
-    final shadowColor = st['shadowColor'] != null ? _contractColor(st['shadowColor'], const Color(0xA0000000)) : const Color(0xA0000000);
+    final shadowColor = st['shadowColor'] != null
+        ? _contractColor(st['shadowColor'], const Color(0xA0000000))
+        : const Color(0xA0000000);
 
     final shadows = <Shadow>[
       if (st['glow'] == true || glowRadius > 0)
-        Shadow(blurRadius: glowRadius > 0 ? glowRadius * scale : fontSize * 0.25, color: glowColor)
+        Shadow(
+          blurRadius: glowRadius > 0 ? glowRadius * scale : fontSize * 0.25,
+          color: glowColor,
+        )
       else if (st['shadow'] != false)
-        Shadow(blurRadius: shadowBlur, offset: Offset(shadowX, shadowY), color: shadowColor),
+        Shadow(
+          blurRadius: shadowBlur,
+          offset: Offset(shadowX, shadowY),
+          color: shadowColor,
+        ),
     ];
-    final base = CaptionFonts.textStyle(st, fontSize: fontSize, shadows: shadows).copyWith(height: 1.1);
+    final base = CaptionFonts.textStyle(
+      st,
+      fontSize: fontSize,
+      shadows: shadows,
+    ).copyWith(height: 1.1);
 
     final isRtl = EditIrCaption.hasRtl(caption.text);
     Widget layer({required int strokeMode}) => Text.rich(
-          TextSpan(children: spans(strokeMode: strokeMode)),
-          textAlign: TextAlign.center,
-          textDirection: isRtl ? TextDirection.rtl : TextDirection.ltr,
-          style: strokeMode > 0 ? base.copyWith(shadows: const []) : base,
-        );
+      TextSpan(children: spans(strokeMode: strokeMode)),
+      textAlign: TextAlign.center,
+      textDirection: isRtl ? TextDirection.rtl : TextDirection.ltr,
+      style: strokeMode > 0 ? base.copyWith(shadows: const []) : base,
+    );
 
     Widget fillLayer = layer(strokeMode: 0);
     // Vertical gradient fill if configured
     final gradTop = st['gradientTopColor'] != null
         ? _contractColor(st['gradientTopColor'], Colors.white)
-        : (st['gradient'] is Map ? _contractColor(st['gradient']['top'], Colors.white) : null);
+        : (st['gradient'] is Map
+              ? _contractColor(st['gradient']['top'], Colors.white)
+              : null);
     final gradBottom = st['gradientBottomColor'] != null
         ? _contractColor(st['gradientBottomColor'], Colors.white)
-        : (st['gradient'] is Map ? _contractColor(st['gradient']['bottom'], Colors.white) : null);
+        : (st['gradient'] is Map
+              ? _contractColor(st['gradient']['bottom'], Colors.white)
+              : null);
     if (gradTop != null && gradBottom != null) {
       fillLayer = ShaderMask(
         shaderCallback: (bounds) => LinearGradient(
@@ -1965,12 +2532,17 @@ class _CaptionPreview extends StatelessWidget {
 
     Widget textBlock = ConstrainedBox(
       constraints: BoxConstraints(maxWidth: math.max(fontSize, maxTextWidth)),
-      child: layers.length > 1 ? Stack(alignment: Alignment.center, children: layers) : fillLayer,
+      child: layers.length > 1
+          ? Stack(alignment: Alignment.center, children: layers)
+          : fillLayer,
     );
     if (bg != null && bgMode != 'none') {
       textBlock = Container(
         padding: EdgeInsets.all(bgPad),
-        decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(bgRadius)),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(bgRadius),
+        ),
         child: textBlock,
       );
     }
@@ -1979,7 +2551,12 @@ class _CaptionPreview extends StatelessWidget {
 }
 
 class _TransportBar extends StatelessWidget {
-  const _TransportBar({required this.controller, required this.playing, required this.onPlay, required this.onSplit});
+  const _TransportBar({
+    required this.controller,
+    required this.playing,
+    required this.onPlay,
+    required this.onSplit,
+  });
   final StudioController controller;
   final bool playing;
   final VoidCallback onPlay;
@@ -1988,20 +2565,40 @@ class _TransportBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ir = controller.ir!;
-    final mono = GoogleFonts.jetBrainsMono(fontSize: 13, color: AppTheme.textPrimary);
+    final mono = GoogleFonts.jetBrainsMono(
+      fontSize: 13,
+      color: AppTheme.textPrimary,
+    );
     return Container(
       color: AppTheme.surface,
       padding: EdgeInsets.symmetric(horizontal: 8),
       height: 48,
-      child: Row(children: [
-        IconButton(tooltip: playing ? 'Pause' : 'Play', onPressed: onPlay, icon: Icon(playing ? Icons.pause_rounded : Icons.play_arrow_rounded)),
-        Text(timecode(controller.playheadMs), style: mono),
-        Text(' / ${timecode(ir.durationMs)}', style: mono.copyWith(color: AppTheme.textMuted)),
-        Spacer(),
-        Text('${ir.canvas.aspect} · ${ir.clips.length} clip${ir.clips.length == 1 ? '' : 's'}',
-            style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
-        IconButton(tooltip: 'Split at playhead', onPressed: onSplit, icon: Icon(Icons.content_cut_rounded)),
-      ]),
+      child: Row(
+        children: [
+          IconButton(
+            tooltip: playing ? 'Pause' : 'Play',
+            onPressed: onPlay,
+            icon: Icon(
+              playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+            ),
+          ),
+          Text(timecode(controller.playheadMs), style: mono),
+          Text(
+            ' / ${timecode(ir.durationMs)}',
+            style: mono.copyWith(color: AppTheme.textMuted),
+          ),
+          Spacer(),
+          Text(
+            '${ir.canvas.aspect} · ${ir.clips.length} clip${ir.clips.length == 1 ? '' : 's'}',
+            style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+          ),
+          IconButton(
+            tooltip: 'Split at playhead',
+            onPressed: onSplit,
+            icon: Icon(Icons.content_cut_rounded),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -2014,9 +2611,21 @@ class _TranscriptChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = controller;
     final (label, color, icon) = switch (c.transcriptState) {
-      TranscriptState.running => ('Transcribing speech…', AppTheme.accentBlue, Icons.graphic_eq_rounded),
-      TranscriptState.ready => ('Transcript ready · ${c.words.length} words', AppTheme.success, Icons.check_circle_rounded),
-      TranscriptState.failed => ('No transcript: ${errorText(c.transcriptError ?? '')}', AppTheme.warning, Icons.info_rounded),
+      TranscriptState.running => (
+        'Transcribing speech…',
+        AppTheme.accentBlue,
+        Icons.graphic_eq_rounded,
+      ),
+      TranscriptState.ready => (
+        'Transcript ready · ${c.words.length} words',
+        AppTheme.success,
+        Icons.check_circle_rounded,
+      ),
+      TranscriptState.failed => (
+        'No transcript: ${errorText(c.transcriptError ?? '')}',
+        AppTheme.warning,
+        Icons.info_rounded,
+      ),
       TranscriptState.idle => ('', AppTheme.textMuted, Icons.info_rounded),
     };
     if (label.isEmpty) return SizedBox.shrink();
@@ -2024,13 +2633,23 @@ class _TranscriptChip extends StatelessWidget {
       width: double.infinity,
       color: AppTheme.surface,
       padding: EdgeInsets.fromLTRB(12, 0, 4, 4),
-      child: Row(children: [
-        Icon(icon, size: 14, color: color),
-        SizedBox(width: 6),
-        Expanded(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: color))),
-        if (c.transcriptState == TranscriptState.failed && (c.meta?.hasAudio ?? false))
-          TextButton(onPressed: c.transcribe, child: Text('Retry')),
-      ]),
+      child: Row(
+        children: [
+          Icon(icon, size: 14, color: color),
+          SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 12, color: color),
+            ),
+          ),
+          if (c.transcriptState == TranscriptState.failed &&
+              (c.meta?.hasAudio ?? false))
+            TextButton(onPressed: c.transcribe, child: Text('Retry')),
+        ],
+      ),
     );
   }
 }
@@ -2055,38 +2674,107 @@ class _ClipActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Widget action(String label, IconData icon, VoidCallback? onTap, {Color? color}) => InkWell(
-          onTap: onTap,
-          child: SizedBox(
-            width: 60,
-            child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-              Icon(icon, size: 20, color: onTap == null ? AppTheme.textMuted : (color ?? AppTheme.textPrimary)),
-              SizedBox(height: 2),
-              Text(label, maxLines: 1, style: TextStyle(fontSize: 10, color: onTap == null ? AppTheme.textMuted : AppTheme.textSecondary)),
-            ]),
-          ),
-        );
+    Widget action(
+      String label,
+      IconData icon,
+      VoidCallback? onTap, {
+      Color? color,
+    }) => InkWell(
+      onTap: onTap,
+      child: SizedBox(
+        width: 60,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              size: 20,
+              color: onTap == null
+                  ? AppTheme.textMuted
+                  : (color ?? AppTheme.textPrimary),
+            ),
+            SizedBox(height: 2),
+            Text(
+              label,
+              maxLines: 1,
+              style: TextStyle(
+                fontSize: 10,
+                color: onTap == null
+                    ? AppTheme.textMuted
+                    : AppTheme.textSecondary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
     return Container(
       height: 52,
-      decoration: BoxDecoration(color: AppTheme.surfaceElevated, border: Border(top: BorderSide(color: AppTheme.primary.withValues(alpha: 0.5)))),
-      child: Row(children: [
-        Padding(
-          padding: EdgeInsets.only(left: 12, right: 4),
-          child: Text('Clip ${index + 1}', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.primary)),
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceElevated,
+        border: Border(
+          top: BorderSide(color: AppTheme.primary.withValues(alpha: 0.5)),
         ),
-        Expanded(
-          child: ListView(scrollDirection: Axis.horizontal, children: [
-            action('Split', Icons.content_cut_rounded, onSplit),
-            action('Trim', Icons.straighten_rounded, () => onTool(StudioTool.trim)),
-            action('Speed', Icons.speed_rounded, () => onTool(StudioTool.speed)),
-            action('Copy', Icons.copy_all_rounded, () => onTool(StudioTool.duplicate)),
-            action('Earlier', Icons.arrow_back_rounded, index == 0 ? null : () => onMove(index - 1)),
-            action('Later', Icons.arrow_forward_rounded, index >= count - 1 ? null : () => onMove(index + 1)),
-            action('Delete', Icons.delete_outline_rounded, count < 2 ? null : () => onTool(StudioTool.delete), color: AppTheme.error),
-          ]),
-        ),
-        IconButton(tooltip: 'Deselect clip', onPressed: onClose, icon: Icon(Icons.close_rounded, size: 18)),
-      ]),
+      ),
+      child: Row(
+        children: [
+          Padding(
+            padding: EdgeInsets.only(left: 12, right: 4),
+            child: Text(
+              'Clip ${index + 1}',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.primary,
+              ),
+            ),
+          ),
+          Expanded(
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: [
+                action('Split', Icons.content_cut_rounded, onSplit),
+                action(
+                  'Trim',
+                  Icons.straighten_rounded,
+                  () => onTool(StudioTool.trim),
+                ),
+                action(
+                  'Speed',
+                  Icons.speed_rounded,
+                  () => onTool(StudioTool.speed),
+                ),
+                action(
+                  'Copy',
+                  Icons.copy_all_rounded,
+                  () => onTool(StudioTool.duplicate),
+                ),
+                action(
+                  'Earlier',
+                  Icons.arrow_back_rounded,
+                  index == 0 ? null : () => onMove(index - 1),
+                ),
+                action(
+                  'Later',
+                  Icons.arrow_forward_rounded,
+                  index >= count - 1 ? null : () => onMove(index + 1),
+                ),
+                action(
+                  'Delete',
+                  Icons.delete_outline_rounded,
+                  count < 2 ? null : () => onTool(StudioTool.delete),
+                  color: AppTheme.error,
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: 'Deselect clip',
+            onPressed: onClose,
+            icon: Icon(Icons.close_rounded, size: 18),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -2098,33 +2786,60 @@ class _ToolBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        decoration: BoxDecoration(color: AppTheme.surface, border: Border(top: BorderSide(color: AppTheme.border))),
-        child: SafeArea(
-          top: false,
-          child: SizedBox(
-            height: 68,
-            child: ListView(scrollDirection: Axis.horizontal, padding: EdgeInsets.symmetric(horizontal: 4), children: [
-              for (final t in StudioTool.values)
-                InkWell(
-                  onTap: () => onTool(t),
-                  child: SizedBox(
-                    width: 64,
-                    child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                      Icon(t.icon, color: t == StudioTool.director ? AppTheme.primary : AppTheme.textPrimary, size: 22),
+    decoration: BoxDecoration(
+      color: AppTheme.surface,
+      border: Border(top: BorderSide(color: AppTheme.border)),
+    ),
+    child: SafeArea(
+      top: false,
+      child: SizedBox(
+        height: 68,
+        child: ListView(
+          scrollDirection: Axis.horizontal,
+          padding: EdgeInsets.symmetric(horizontal: 4),
+          children: [
+            for (final t in StudioTool.values)
+              InkWell(
+                onTap: () => onTool(t),
+                child: SizedBox(
+                  width: 64,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        t.icon,
+                        color: t == StudioTool.director
+                            ? AppTheme.primary
+                            : AppTheme.textPrimary,
+                        size: 22,
+                      ),
                       SizedBox(height: 4),
-                      Text(t.label, style: TextStyle(fontSize: 10, color: AppTheme.textSecondary), maxLines: 1),
-                    ]),
+                      Text(
+                        t.label,
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: AppTheme.textSecondary,
+                        ),
+                        maxLines: 1,
+                      ),
+                    ],
                   ),
                 ),
-            ]),
-          ),
+              ),
+          ],
         ),
-      );
+      ),
+    ),
+  );
 }
 
 /// Progress of the timeline's online media (Director picks / reopened drafts) and a retry when some failed.
 class _MediaDownloadBanner extends StatelessWidget {
-  const _MediaDownloadBanner({required this.state, required this.onRetry, required this.onDismiss});
+  const _MediaDownloadBanner({
+    required this.state,
+    required this.onRetry,
+    required this.onDismiss,
+  });
   final ({int done, int total, Map<String, String> failed}) state;
   final VoidCallback onRetry;
 
@@ -2136,34 +2851,64 @@ class _MediaDownloadBanner extends StatelessWidget {
     final failed = state.failed;
     final running = state.done < state.total;
     return Container(
-      color: failed.isNotEmpty && !running ? AppTheme.error.withValues(alpha: 0.12) : AppTheme.surfaceElevated,
+      color: failed.isNotEmpty && !running
+          ? AppTheme.error.withValues(alpha: 0.12)
+          : AppTheme.surfaceElevated,
       padding: EdgeInsets.fromLTRB(12, 8, 8, 8),
-      child: Row(children: [
-        Icon(running ? Icons.cloud_download_rounded : Icons.cloud_off_rounded, size: 20, color: running ? AppTheme.primary : AppTheme.error),
-        SizedBox(width: 10),
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-            Text(
-              running
-                  ? 'Downloading media ${state.done}/${state.total}…'
-                  : '${failed.length} item${failed.length == 1 ? '' : 's'} could not be downloaded: ${failed.keys.take(2).join(', ')}',
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 13),
+      child: Row(
+        children: [
+          Icon(
+            running ? Icons.cloud_download_rounded : Icons.cloud_off_rounded,
+            size: 20,
+            color: running ? AppTheme.primary : AppTheme.error,
+          ),
+          SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  running
+                      ? 'Downloading media ${state.done}/${state.total}…'
+                      : '${failed.length} item${failed.length == 1 ? '' : 's'} could not be downloaded: ${failed.keys.take(2).join(', ')}',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 13),
+                ),
+                if (running) ...[
+                  SizedBox(height: 6),
+                  LinearProgressIndicator(
+                    value: state.total == 0 ? null : state.done / state.total,
+                  ),
+                ] else
+                  Text(
+                    failed.values.first,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: AppTheme.textSecondary,
+                    ),
+                  ),
+              ],
             ),
-            if (running) ...[
-              SizedBox(height: 6),
-              LinearProgressIndicator(value: state.total == 0 ? null : state.done / state.total),
-            ] else
-              Text(failed.values.first, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
-          ]),
-        ),
-        if (!running && failed.isNotEmpty) ...[
-          SizedBox(height: 44, child: TextButton(onPressed: onRetry, child: Text('Retry'))),
-          SizedBox(height: 44, child: TextButton(onPressed: onDismiss, child: Text('Continue without'))),
+          ),
+          if (!running && failed.isNotEmpty) ...[
+            SizedBox(
+              height: 44,
+              child: TextButton(onPressed: onRetry, child: Text('Retry')),
+            ),
+            SizedBox(
+              height: 44,
+              child: TextButton(
+                onPressed: onDismiss,
+                child: Text('Continue without'),
+              ),
+            ),
+          ],
         ],
-      ]),
+      ),
     );
   }
 }
-
