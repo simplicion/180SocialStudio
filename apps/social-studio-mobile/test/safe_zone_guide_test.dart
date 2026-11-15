@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:social_studio_mobile/core/native_engine/edit_ir.dart';
 import 'package:social_studio_mobile/core/network/audio_transcription_service.dart';
 import 'package:social_studio_mobile/features/studio/safe_zone_guide.dart';
 import 'package:social_studio_mobile/features/studio/timeline_ops.dart';
@@ -27,7 +26,7 @@ void main() {
       final shorts = SafeZoneOverlayGuide.margins[SafeZonePlatform.shorts]!;
       expect(
         (shorts.top, shorts.bottom, shorts.left, shorts.right),
-        (200, 460, 60, 140),
+        (240, 600, 60, 140), // same as caption-style-v2.ts, TextMotion.kt and the Swift renderer,
       );
 
       final none = SafeZoneOverlayGuide.margins[SafeZonePlatform.none]!;

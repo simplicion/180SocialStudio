@@ -191,6 +191,24 @@ Future<List<double>> regionMean(String jpg, List<double> region, {List<double>? 
   return [for (final v in sum) v / n];
 }
 
+/// Fraction of pixels in [region] (x0, y0, x1, y1 fractions) brighter than [threshold] (0-255 luma).
+Future<double> brightFraction(String jpg, List<double> region, {int threshold = 200}) async {
+  final codec = await ui.instantiateImageCodec(File(jpg).readAsBytesSync());
+  final img = (await codec.getNextFrame()).image;
+  final bytes = (await img.toByteData(format: ui.ImageByteFormat.rawRgba))!;
+  final w = img.width, h = img.height;
+  var bright = 0, n = 0;
+  for (var y = (region[1] * h).floor(); y < (region[3] * h).floor(); y++) {
+    for (var x = (region[0] * w).floor(); x < (region[2] * w).floor(); x++) {
+      final i = (y * w + x) * 4;
+      final luma = 0.299 * bytes.getUint8(i) + 0.587 * bytes.getUint8(i + 1) + 0.114 * bytes.getUint8(i + 2);
+      if (luma > threshold) bright++;
+      n++;
+    }
+  }
+  return bright / n;
+}
+
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
@@ -313,7 +331,9 @@ void main() {
       'captions': [
         titled('m1', 0, 2000, 'SLIDE AND FADE', {'enter': {'type': 'slide_up', 'durationMs': 400}, 'exit': {'type': 'fade', 'durationMs': 400}}),
         titled('m2', 0, 4000, 'PULSE', {'loop': {'type': 'pulse', 'periodMs': 800}}),
-        titled('m3', 2000, 4000, 'typewriter reveal', {'enter': {'type': 'typewriter', 'durationMs': 1200}, 'exit': {'type': 'pop', 'durationMs': 300}}),
+        // Over the black letterbox (y 0.15), apart from the other titles, so its pixels can be counted.
+        {...titled('m3', 2000, 4000, 'typewriter reveal', {'enter': {'type': 'typewriter', 'durationMs': 1200}, 'exit': {'type': 'pop', 'durationMs': 300}}),
+          'style': {...captionStyle(animation: 'none', y: 0.15), 'enter': {'type': 'typewriter', 'durationMs': 1200}, 'exit': {'type': 'pop', 'durationMs': 300}}},
       ],
       'audio': {'originalTrack': {'volumeDb': 0}},
     };
@@ -325,6 +345,13 @@ void main() {
     final frames = await MediaEngineService.generateThumbnails(
       sourcePath: out, outputDir: '${evidence.path}/text_motion_frames', timesMs: [100, 300, 1000, 1900, 2500, 3500], maxWidth: 540, exact: true);
     expect(frames, hasLength(6));
+    // Typewriter: 500 ms into the 1.2 s reveal part of the title is drawn; once revealed (3.5 s) all of it is.
+    const band = [0.0, 0.10, 1.0, 0.20];
+    final partial = await brightFraction(frames[4], band);
+    final full = await brightFraction(frames[5], band);
+    report['typewriter'] = {'partial': partial, 'full': full};
+    expect(partial, greaterThan(0.0), reason: 'the reveal has started at 2.5 s');
+    expect(partial, lessThan(full * 0.8), reason: 'only part of the title is revealed at 2.5 s');
   });
 
   testWidgets('clips from different files render from their own files (multi-asset timeline)', (tester) async {

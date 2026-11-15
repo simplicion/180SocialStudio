@@ -243,8 +243,10 @@ void main() {
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
     expect(find.byType(CaptionPresetCard), findsWidgets);
-    final hormozi = find.bySemanticsLabel(RegExp('^Caption style Hormozi Viral'));
-    await tester.dragUntilVisible(hormozi, find.byType(ListView), const Offset(-120, 0));
+    final hormozi = find.bySemanticsLabel(RegExp('^Caption style Punchy Bounce'));
+    // The preset row is the horizontal list (the sheet also lists caption lines for keyword highlights).
+    final presetRow = find.byWidgetPredicate((w) => w is ListView && w.scrollDirection == Axis.horizontal);
+    await tester.dragUntilVisible(hormozi, presetRow, const Offset(-120, 0));
     await tester.tap(hormozi);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Apply to all captions'));

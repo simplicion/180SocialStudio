@@ -3,8 +3,8 @@
   "ops": {
     "addBroll": "insertBroll",
     "addCaption": "addCaption",
-    "addMusicBed": "addBackgroundMusic",
     "addEffect": "addEffect",
+    "addMusicBed": "addBackgroundMusic",
     "addSfx": "addSoundEffect",
     "addSticker": "addSticker",
     "addText": "addText",
@@ -60,6 +60,7 @@
     "speedRamp": "speedRamp",
     "split": "splitClip",
     "styleCaptions": "styleCaption",
+    "toggleWordHighlight": "emphasizeWord",
     "trim": "trimClip",
     "updateCaptionPosition": "updateTextStyle",
     "updateMusic": "updateMusic",

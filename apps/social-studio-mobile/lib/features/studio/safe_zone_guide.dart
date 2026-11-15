@@ -38,7 +38,7 @@ class SafeZoneOverlayGuide extends StatelessWidget {
       >{
         SafeZonePlatform.tiktok: (top: 220, bottom: 480, left: 60, right: 140),
         SafeZonePlatform.reels: (top: 270, bottom: 670, left: 65, right: 120),
-        SafeZonePlatform.shorts: (top: 200, bottom: 460, left: 60, right: 140),
+        SafeZonePlatform.shorts: (top: 240, bottom: 600, left: 60, right: 140),
         SafeZonePlatform.none: (top: 0, bottom: 0, left: 0, right: 0),
       };
 

@@ -278,14 +278,18 @@ export class DeterministicPlanner {
     const activeCaptionHighlight = classifiedScope.captionColorOverride || resolvedStyle.captionColors.highlight;
     const hasExistingCaptions = (context.existingCaptionsCount ?? 0) > 0;
     const namedTemplate = findCaptionTemplateInText(prompt);
-    const templateId = namedTemplate?.id || (resolvedStyle.captionPreset === "HORMOZI_BOUNCE" ? "HORMOZI_BOUNCE" : "ALI_ABDAAL_CLEAN");
 
     if (wantsCaptions && hasExistingCaptions && !p.includes("redo") && !p.includes("regenerate") && !p.includes("from scratch")) {
-      operations.push({
-        type: "styleCaption",
-        preset: templateId,
-        ...(classifiedScope.captionColorOverride ? { highlightColor: classifiedScope.captionColorOverride } : {}),
-      });
+      // Existing captions are the creator's: a full restyle only when they named a look ("hormozi style"); otherwise
+      // only the fields asked for change ("make captions yellow" = the colour), and nothing at all when none were.
+      const colour = classifiedScope.captionColorOverride;
+      if (namedTemplate || colour) {
+        operations.push({
+          type: "styleCaption",
+          ...(namedTemplate ? { preset: namedTemplate.id } : {}),
+          ...(colour ? { highlightColor: colour } : {}),
+        });
+      }
     } else if (wantsCaptions && graph.transcript.length > 0) {
       const words = graph.transcript;
       const chunkSize = targetAspect === "9:16" ? 4 : 5;

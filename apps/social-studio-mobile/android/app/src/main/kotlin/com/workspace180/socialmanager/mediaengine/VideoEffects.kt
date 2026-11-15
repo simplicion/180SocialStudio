@@ -287,6 +287,22 @@ internal fun isNoSpaceScript(text: String): Boolean {
     return false
 }
 
+/**
+ * End offsets (exclusive, UTF-16) of each grapheme cluster in [text], so a reveal never cuts an Indic conjunct, an
+ * Arabic joined letter, a combining mark or an emoji in half.
+ */
+internal fun graphemeEnds(text: String): IntArray {
+    val it = java.text.BreakIterator.getCharacterInstance()
+    it.setText(text)
+    val ends = ArrayList<Int>()
+    var end = it.next()
+    while (end != java.text.BreakIterator.DONE) {
+        ends.add(end)
+        end = it.next()
+    }
+    return ends.toIntArray()
+}
+
 /** True when the text contains strong right-to-left characters (Arabic, Urdu, Persian, Sindhi, Hebrew). */
 internal fun hasRtl(text: String): Boolean {
     for (i in 0 until text.length) {
@@ -529,18 +545,7 @@ class CaptionOverlay(
         val baseSize = (st.fontSizePx * scaleFactor).toFloat()
 
         val allWords = wordsCache.getOrPut(cap.id) { displayWords(cap) }
-        val words = if (motion.reveal >= 1.0) allWords else {
-            var left = kotlin.math.ceil(allWords.sumOf { if (it.text == LINE_BREAK) 0 else it.text.length } * motion.reveal).toInt()
-            allWords.mapNotNull { wd ->
-                if (wd.text == LINE_BREAK) return@mapNotNull if (left > 0) wd else null
-                if (left <= 0) null else {
-                    val take = minOf(left, wd.text.length)
-                    left -= take
-                    if (take == wd.text.length) wd else wd.copy(text = wd.text.substring(0, take))
-                }
-            }
-        }
-        if (words.isEmpty()) return
+        if (allWords.isEmpty() || motion.reveal <= 0.0) return
 
         // Compute or retrieve cached layout with auto-fit downscaling for maxLines
         val layout = layoutCache.getOrPut(cap.id + "_" + scaleFactor) {
@@ -639,6 +644,22 @@ class CaptionOverlay(
                 fmDescent = finalDescent,
                 fmAscent = finalAscent,
             )
+        }
+
+        // Typewriter / mask-wipe reveal: the layout stays the full caption (no reflow while typing); each token shows
+        // the prefix of its text that the reveal has reached, counted in grapheme clusters in reading order.
+        val revealed: java.util.IdentityHashMap<Token, String>? = if (motion.reveal >= 1.0) null else {
+            val all = layout.lines.flatten()
+            val clusters = all.map { graphemeEnds(it.text) }
+            var budget = kotlin.math.ceil(clusters.sumOf { it.size } * motion.reveal).toInt()
+            java.util.IdentityHashMap<Token, String>().also { map ->
+                all.forEachIndexed { i, tok ->
+                    val ends = clusters[i]
+                    val take = minOf(budget, ends.size)
+                    budget -= take
+                    map[tok] = if (take == 0) "" else tok.text.substring(0, ends[take - 1])
+                }
+            }
         }
 
         val size = layout.effectiveSize
@@ -748,9 +769,16 @@ class CaptionOverlay(
                     x += tok.slot
                     continue
                 }
+                val shown = revealed?.get(tok) ?: tok.text
+                if (shown.isEmpty()) {
+                    x += tok.slot
+                    continue
+                }
                 val (color, scale) = styleFor(tok.word, st, t)
                 canvas.save()
-                val textX = x + (tok.slot - tok.width) / 2f
+                // A partly revealed right-to-left word grows from its right edge.
+                val partialShift = if (shown.length < tok.text.length && hasRtl(tok.text)) tok.width - fill.measureText(shown) else 0f
+                val textX = x + (tok.slot - tok.width) / 2f + partialShift
                 val wordCx = x + tok.slot / 2f
                 val wordCy = baseline + (layout.fmAscent + layout.fmDescent) / 2f
                 canvas.scale(scale, scale, wordCx, wordCy)
@@ -771,14 +799,14 @@ class CaptionOverlay(
                     stroke2.strokeWidth = stroke2Width * 2f
                     stroke2.color = st.stroke2Color
                     stroke2.alpha = (Color.alpha(st.stroke2Color) * alpha / 255).coerceIn(0, 255)
-                    canvas.drawText(tok.text, textX, baseline, stroke2)
+                    canvas.drawText(shown, textX, baseline, stroke2)
                 }
                 // Inner stroke (stroke 1)
                 if (st.strokeWidthPx > 0) {
                     stroke.strokeWidth = strokeWidth * 2f
                     stroke.color = st.strokeColor
                     stroke.alpha = (Color.alpha(st.strokeColor) * alpha / 255).coerceIn(0, 255)
-                    canvas.drawText(tok.text, textX, baseline, stroke)
+                    canvas.drawText(shown, textX, baseline, stroke)
                 }
 
                 // Text fill (solid or vertical gradient)
@@ -792,7 +820,7 @@ class CaptionOverlay(
                     fill.color = color
                     fill.alpha = (Color.alpha(color) * alpha / 255).coerceIn(0, 255)
                 }
-                canvas.drawText(tok.text, textX, baseline, fill)
+                canvas.drawText(shown, textX, baseline, fill)
 
                 canvas.restore()
                 x += tok.slot

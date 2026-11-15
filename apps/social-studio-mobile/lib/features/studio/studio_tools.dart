@@ -3645,12 +3645,15 @@ class _CaptionsSheetState extends State<_CaptionsSheet> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                'Tap words to toggle keyword highlight',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.textSecondary,
+              Expanded(
+                child: Text(
+                  'Tap words to toggle keyword highlight',
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.textSecondary,
+                  ),
                 ),
               ),
               Text(

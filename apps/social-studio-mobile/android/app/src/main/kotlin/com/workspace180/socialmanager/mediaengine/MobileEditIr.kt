@@ -157,7 +157,7 @@ data class IrCaptionStyle(
     val glowStrength: Double = 0.8,
     val backgroundMode: String = "pill",
     val backgroundOpacity: Double = 1.0,
-    val safeZone: String = "tiktok",
+    val safeZone: String = "none",
     val faceAvoid: Boolean = true,
     val maxLines: Int = 2,
     val align: String = "center",
@@ -492,7 +492,8 @@ data class MobileEditIr(
                         glowStrength = glowObj?.optDouble("strength", 0.8) ?: 0.8,
                         backgroundMode = bgObj?.optString("mode", "pill") ?: "pill",
                         backgroundOpacity = bgObj?.optDouble("opacity", 1.0) ?: 1.0,
-                        safeZone = layObj?.optString("safeZone", s.optString("safeZone", "tiktok")) ?: s.optString("safeZone", "tiktok"),
+                        // Only a v2 spec opts into a safe zone: a v1 caption was placed by hand and stays exactly where it is.
+                        safeZone = layObj?.optString("safeZone", "tiktok") ?: s.optString("safeZone", "none"),
                         faceAvoid = layObj?.optBoolean("faceAvoid", s.optBoolean("faceAvoid", true)) ?: s.optBoolean("faceAvoid", true),
                         maxLines = layObj?.optInt("maxLines", s.optInt("maxLines", 2)) ?: s.optInt("maxLines", 2),
                         align = layObj?.optString("align", "center") ?: "center",
