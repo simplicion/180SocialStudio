@@ -226,6 +226,11 @@ export const MobileCaptionSchema = z.object({
   /** Timed words of a speech caption. A title (`kind: text`) is drawn from `text`; its words are informational. */
   words: z.array(MobileCaptionWordSchema).default([]),
   style: MobileCaptionStyleSchema.default({}),
+  /**
+   * BCP-47 language of the text (added with captions v2; optional). Both renderers use it for locale-aware case
+   * (Turkish / Azeri i) and the paragraph direction (an Urdu caption that starts with an English word stays RTL).
+   */
+  language: z.string().min(2).max(35).optional(),
 });
 
 export const MobileZoomSchema = z.object({
@@ -321,6 +326,15 @@ export const MobileEditIRSchema = z.object({
   zooms: z.array(MobileZoomSchema),
   /** Optional effects lane; omitted when empty. */
   effects: z.array(MobileEffectSchema).max(60).optional(),
+  /**
+   * Optional face track on the OUTPUT timeline (added with captions v2): face-box centre (x, y) and size (w, h) as
+   * canvas fractions at timeline tMs. v2 captions with `layout.faceAvoid` move just above / below the faces seen
+   * during the caption (Android export and Flutter preview). Absent = no face avoidance.
+   */
+  faceBoxes: z
+    .array(z.object({ tMs: ms, x: z.number().min(0).max(1), y: z.number().min(0).max(1), w: z.number().min(0).max(1), h: z.number().min(0).max(1) }))
+    .max(2000)
+    .optional(),
   audio: z.object({
     originalTrack: z.object({ volumeDb: z.number() }),
     /** Up to 4 music beds (added 2026-11, Phase 6.6: a music change or a stinger); they must not overlap. */
