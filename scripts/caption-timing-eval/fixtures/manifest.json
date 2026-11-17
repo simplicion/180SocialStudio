@@ -1,0 +1,1240 @@
+{
+ "version": 1,
+ "clips": [
+  {
+   "id": "en-1089-134686-0000",
+   "language": "en",
+   "audio": "audio/librispeech-1089-134686-0000.flac",
+   "sha256": "30885601173f96b0d8ddd020dc959b055c6c1582b85a33e3fcab8c4b08ed94c2",
+   "durationMs": 10435,
+   "transcript": "he hoped there would be stew for dinner turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick peppered flour fattened sauce",
+   "source": "LibriSpeech test-clean 1089-134686-0000 (speaker 1089, M)",
+   "licence": "audio CC BY 4.0 (LibriSpeech, Panayotov et al.); alignment CC BY 4.0 (Lugosch, MFA)",
+   "referenceMethod": "MFA",
+   "reference": [
+    {
+     "text": "he",
+     "startMs": 500,
+     "endMs": 620
+    },
+    {
+     "text": "hoped",
+     "startMs": 620,
+     "endMs": 1010
+    },
+    {
+     "text": "there",
+     "startMs": 1010,
+     "endMs": 1130
+    },
+    {
+     "text": "would",
+     "startMs": 1130,
+     "endMs": 1310
+    },
+    {
+     "text": "be",
+     "startMs": 1310,
+     "endMs": 1440
+    },
+    {
+     "text": "stew",
+     "startMs": 1440,
+     "endMs": 1830
+    },
+    {
+     "text": "for",
+     "startMs": 1830,
+     "endMs": 1990
+    },
+    {
+     "text": "dinner",
+     "startMs": 1990,
+     "endMs": 2360
+    },
+    {
+     "text": "turnips",
+     "startMs": 2580,
+     "endMs": 3070
+    },
+    {
+     "text": "and",
+     "startMs": 3070,
+     "endMs": 3240
+    },
+    {
+     "text": "carrots",
+     "startMs": 3240,
+     "endMs": 3770
+    },
+    {
+     "text": "and",
+     "startMs": 3770,
+     "endMs": 3980
+    },
+    {
+     "text": "bruised",
+     "startMs": 3980,
+     "endMs": 4380
+    },
+    {
+     "text": "potatoes",
+     "startMs": 4380,
+     "endMs": 5050
+    },
+    {
+     "text": "and",
+     "startMs": 5050,
+     "endMs": 5230
+    },
+    {
+     "text": "fat",
+     "startMs": 5230,
+     "endMs": 5600
+    },
+    {
+     "text": "mutton",
+     "startMs": 5600,
+     "endMs": 6020
+    },
+    {
+     "text": "pieces",
+     "startMs": 6020,
+     "endMs": 6510
+    },
+    {
+     "text": "to",
+     "startMs": 6510,
+     "endMs": 6630
+    },
+    {
+     "text": "be",
+     "startMs": 6630,
+     "endMs": 6800
+    },
+    {
+     "text": "ladled",
+     "startMs": 6800,
+     "endMs": 7250
+    },
+    {
+     "text": "out",
+     "startMs": 7250,
+     "endMs": 7570
+    },
+    {
+     "text": "in",
+     "startMs": 7570,
+     "endMs": 7680
+    },
+    {
+     "text": "thick",
+     "startMs": 7680,
+     "endMs": 8150
+    },
+    {
+     "text": "peppered",
+     "startMs": 8210,
+     "endMs": 8640
+    },
+    {
+     "text": "flour",
+     "startMs": 8640,
+     "endMs": 9110
+    },
+    {
+     "text": "fattened",
+     "startMs": 9110,
+     "endMs": 9560
+    },
+    {
+     "text": "sauce",
+     "startMs": 9560,
+     "endMs": 10120
+    }
+   ]
+  },
+  {
+   "id": "en-1188-133604-0000",
+   "language": "en",
+   "audio": "audio/librispeech-1188-133604-0000.flac",
+   "sha256": "4a10149395cb5af8aa5d04ef3adb49b3980baa93114d0851046e6343744b26cb",
+   "durationMs": 10725,
+   "transcript": "you will find me continually speaking of four men titian holbein turner and tintoret in almost the same terms",
+   "source": "LibriSpeech test-clean 1188-133604-0000 (speaker 1188, M)",
+   "licence": "audio CC BY 4.0 (LibriSpeech, Panayotov et al.); alignment CC BY 4.0 (Lugosch, MFA)",
+   "referenceMethod": "MFA",
+   "reference": [
+    {
+     "text": "you",
+     "startMs": 530,
+     "endMs": 670
+    },
+    {
+     "text": "will",
+     "startMs": 670,
+     "endMs": 780
+    },
+    {
+     "text": "find",
+     "startMs": 780,
+     "endMs": 1040
+    },
+    {
+     "text": "me",
+     "startMs": 1040,
+     "endMs": 1130
+    },
+    {
+     "text": "continually",
+     "startMs": 1130,
+     "endMs": 1850
+    },
+    {
+     "text": "speaking",
+     "startMs": 1850,
+     "endMs": 2270
+    },
+    {
+     "text": "of",
+     "startMs": 2270,
+     "endMs": 2360
+    },
+    {
+     "text": "four",
+     "startMs": 2360,
+     "endMs": 2640
+    },
+    {
+     "text": "men",
+     "startMs": 2640,
+     "endMs": 3000
+    },
+    {
+     "text": "titian",
+     "startMs": 3900,
+     "endMs": 4400
+    },
+    {
+     "text": "holbein",
+     "startMs": 5110,
+     "endMs": 5730
+    },
+    {
+     "text": "turner",
+     "startMs": 5760,
+     "endMs": 6310
+    },
+    {
+     "text": "and",
+     "startMs": 6850,
+     "endMs": 7020
+    },
+    {
+     "text": "tintoret",
+     "startMs": 7020,
+     "endMs": 7750
+    },
+    {
+     "text": "in",
+     "startMs": 8630,
+     "endMs": 8770
+    },
+    {
+     "text": "almost",
+     "startMs": 8770,
+     "endMs": 9100
+    },
+    {
+     "text": "the",
+     "startMs": 9100,
+     "endMs": 9180
+    },
+    {
+     "text": "same",
+     "startMs": 9180,
+     "endMs": 9490
+    },
+    {
+     "text": "terms",
+     "startMs": 9490,
+     "endMs": 10200
+    }
+   ]
+  },
+  {
+   "id": "en-121-123852-0000",
+   "language": "en",
+   "audio": "audio/librispeech-121-123852-0000.flac",
+   "sha256": "58d6350b52675d6d19616bc0347afc52a1535f8ea8be82aabb7275e6919a2598",
+   "durationMs": 17695,
+   "transcript": "those pretty wrongs that liberty commits when i am sometime absent from thy heart thy beauty and thy years full well befits for still temptation follows where thou art",
+   "source": "LibriSpeech test-clean 121-123852-0000 (speaker 121, F)",
+   "licence": "audio CC BY 4.0 (LibriSpeech, Panayotov et al.); alignment CC BY 4.0 (Lugosch, MFA)",
+   "referenceMethod": "MFA",
+   "reference": [
+    {
+     "text": "those",
+     "startMs": 300,
+     "endMs": 860
+    },
+    {
+     "text": "pretty",
+     "startMs": 890,
+     "endMs": 1310
+    },
+    {
+     "text": "wrongs",
+     "startMs": 1310,
+     "endMs": 1940
+    },
+    {
+     "text": "that",
+     "startMs": 1940,
+     "endMs": 2150
+    },
+    {
+     "text": "liberty",
+     "startMs": 2150,
+     "endMs": 2650
+    },
+    {
+     "text": "commits",
+     "startMs": 2650,
+     "endMs": 3360
+    },
+    {
+     "text": "when",
+     "startMs": 4530,
+     "endMs": 4780
+    },
+    {
+     "text": "i",
+     "startMs": 4780,
+     "endMs": 4960
+    },
+    {
+     "text": "am",
+     "startMs": 4960,
+     "endMs": 5160
+    },
+    {
+     "text": "sometime",
+     "startMs": 5160,
+     "endMs": 6030
+    },
+    {
+     "text": "absent",
+     "startMs": 6030,
+     "endMs": 6640
+    },
+    {
+     "text": "from",
+     "startMs": 6640,
+     "endMs": 6890
+    },
+    {
+     "text": "thy",
+     "startMs": 6890,
+     "endMs": 7110
+    },
+    {
+     "text": "heart",
+     "startMs": 7110,
+     "endMs": 7680
+    },
+    {
+     "text": "thy",
+     "startMs": 8750,
+     "endMs": 9100
+    },
+    {
+     "text": "beauty",
+     "startMs": 9100,
+     "endMs": 9790
+    },
+    {
+     "text": "and",
+     "startMs": 10190,
+     "endMs": 10450
+    },
+    {
+     "text": "thy",
+     "startMs": 10450,
+     "endMs": 10680
+    },
+    {
+     "text": "years",
+     "startMs": 10680,
+     "endMs": 11330
+    },
+    {
+     "text": "full",
+     "startMs": 11330,
+     "endMs": 11730
+    },
+    {
+     "text": "well",
+     "startMs": 11730,
+     "endMs": 12100
+    },
+    {
+     "text": "befits",
+     "startMs": 12100,
+     "endMs": 12850
+    },
+    {
+     "text": "for",
+     "startMs": 13650,
+     "endMs": 13920
+    },
+    {
+     "text": "still",
+     "startMs": 13920,
+     "endMs": 14410
+    },
+    {
+     "text": "temptation",
+     "startMs": 14410,
+     "endMs": 15380
+    },
+    {
+     "text": "follows",
+     "startMs": 15380,
+     "endMs": 16050
+    },
+    {
+     "text": "where",
+     "startMs": 16050,
+     "endMs": 16420
+    },
+    {
+     "text": "thou",
+     "startMs": 16420,
+     "endMs": 16800
+    },
+    {
+     "text": "art",
+     "startMs": 16830,
+     "endMs": 17320
+    }
+   ]
+  },
+  {
+   "id": "en-1221-135766-0000",
+   "language": "en",
+   "audio": "audio/librispeech-1221-135766-0000.flac",
+   "sha256": "1f6b9ba126dc0f0a3cb813b04e2c970ff9583beeaf8cfaa8f7c8199244aa2514",
+   "durationMs": 12435,
+   "transcript": "how strange it seemed to the sad woman as she watched the growth and the beauty that became every day more brilliant and the intelligence that threw its quivering sunshine over the tiny features of this child",
+   "source": "LibriSpeech test-clean 1221-135766-0000 (speaker 1221, F)",
+   "licence": "audio CC BY 4.0 (LibriSpeech, Panayotov et al.); alignment CC BY 4.0 (Lugosch, MFA)",
+   "referenceMethod": "MFA",
+   "reference": [
+    {
+     "text": "how",
+     "startMs": 310,
+     "endMs": 470
+    },
+    {
+     "text": "strange",
+     "startMs": 470,
+     "endMs": 910
+    },
+    {
+     "text": "it",
+     "startMs": 910,
+     "endMs": 1010
+    },
+    {
+     "text": "seemed",
+     "startMs": 1010,
+     "endMs": 1580
+    },
+    {
+     "text": "to",
+     "startMs": 1610,
+     "endMs": 1760
+    },
+    {
+     "text": "the",
+     "startMs": 1760,
+     "endMs": 1860
+    },
+    {
+     "text": "sad",
+     "startMs": 1860,
+     "endMs": 2180
+    },
+    {
+     "text": "woman",
+     "startMs": 2210,
+     "endMs": 2570
+    },
+    {
+     "text": "as",
+     "startMs": 2900,
+     "endMs": 3060
+    },
+    {
+     "text": "she",
+     "startMs": 3060,
+     "endMs": 3190
+    },
+    {
+     "text": "watched",
+     "startMs": 3190,
+     "endMs": 3550
+    },
+    {
+     "text": "the",
+     "startMs": 3550,
+     "endMs": 3640
+    },
+    {
+     "text": "growth",
+     "startMs": 3640,
+     "endMs": 4110
+    },
+    {
+     "text": "and",
+     "startMs": 4110,
+     "endMs": 4250
+    },
+    {
+     "text": "the",
+     "startMs": 4250,
+     "endMs": 4340
+    },
+    {
+     "text": "beauty",
+     "startMs": 4340,
+     "endMs": 4730
+    },
+    {
+     "text": "that",
+     "startMs": 4730,
+     "endMs": 4890
+    },
+    {
+     "text": "became",
+     "startMs": 4890,
+     "endMs": 5300
+    },
+    {
+     "text": "every",
+     "startMs": 5300,
+     "endMs": 5610
+    },
+    {
+     "text": "day",
+     "startMs": 5610,
+     "endMs": 5850
+    },
+    {
+     "text": "more",
+     "startMs": 5850,
+     "endMs": 6050
+    },
+    {
+     "text": "brilliant",
+     "startMs": 6050,
+     "endMs": 6670
+    },
+    {
+     "text": "and",
+     "startMs": 6960,
+     "endMs": 7110
+    },
+    {
+     "text": "the",
+     "startMs": 7110,
+     "endMs": 7240
+    },
+    {
+     "text": "intelligence",
+     "startMs": 7240,
+     "endMs": 7980
+    },
+    {
+     "text": "that",
+     "startMs": 7980,
+     "endMs": 8180
+    },
+    {
+     "text": "threw",
+     "startMs": 8180,
+     "endMs": 8460
+    },
+    {
+     "text": "its",
+     "startMs": 8460,
+     "endMs": 8660
+    },
+    {
+     "text": "quivering",
+     "startMs": 8660,
+     "endMs": 9140
+    },
+    {
+     "text": "sunshine",
+     "startMs": 9140,
+     "endMs": 9820
+    },
+    {
+     "text": "over",
+     "startMs": 10110,
+     "endMs": 10270
+    },
+    {
+     "text": "the",
+     "startMs": 10270,
+     "endMs": 10380
+    },
+    {
+     "text": "tiny",
+     "startMs": 10380,
+     "endMs": 10730
+    },
+    {
+     "text": "features",
+     "startMs": 10730,
+     "endMs": 11300
+    },
+    {
+     "text": "of",
+     "startMs": 11330,
+     "endMs": 11470
+    },
+    {
+     "text": "this",
+     "startMs": 11470,
+     "endMs": 11720
+    },
+    {
+     "text": "child",
+     "startMs": 11720,
+     "endMs": 12180
+    }
+   ]
+  },
+  {
+   "id": "en-1284-1180-0008",
+   "language": "en",
+   "audio": "audio/librispeech-1284-1180-0008.flac",
+   "sha256": "eb61532402137b2abbea52d424f46ee114b96e568717aeb5c3a4a9c58aef8bd3",
+   "durationMs": 10490,
+   "transcript": "all the morning they trudged up the mountain path and at noon unc and ojo sat on a fallen tree trunk and ate the last of the bread which the old munchkin had placed in his pocket",
+   "source": "LibriSpeech test-clean 1284-1180-0008 (speaker 1284, F)",
+   "licence": "audio CC BY 4.0 (LibriSpeech, Panayotov et al.); alignment CC BY 4.0 (Lugosch, MFA)",
+   "referenceMethod": "MFA",
+   "reference": [
+    {
+     "text": "all",
+     "startMs": 330,
+     "endMs": 620
+    },
+    {
+     "text": "the",
+     "startMs": 620,
+     "endMs": 730
+    },
+    {
+     "text": "morning",
+     "startMs": 730,
+     "endMs": 1140
+    },
+    {
+     "text": "they",
+     "startMs": 1140,
+     "endMs": 1280
+    },
+    {
+     "text": "trudged",
+     "startMs": 1280,
+     "endMs": 1770
+    },
+    {
+     "text": "up",
+     "startMs": 1770,
+     "endMs": 1960
+    },
+    {
+     "text": "the",
+     "startMs": 1960,
+     "endMs": 2080
+    },
+    {
+     "text": "mountain",
+     "startMs": 2080,
+     "endMs": 2450
+    },
+    {
+     "text": "path",
+     "startMs": 2450,
+     "endMs": 2890
+    },
+    {
+     "text": "and",
+     "startMs": 2890,
+     "endMs": 3050
+    },
+    {
+     "text": "at",
+     "startMs": 3050,
+     "endMs": 3150
+    },
+    {
+     "text": "noon",
+     "startMs": 3150,
+     "endMs": 3570
+    },
+    {
+     "text": "unc",
+     "startMs": 3570,
+     "endMs": 3910
+    },
+    {
+     "text": "and",
+     "startMs": 3910,
+     "endMs": 4080
+    },
+    {
+     "text": "ojo",
+     "startMs": 4080,
+     "endMs": 4540
+    },
+    {
+     "text": "sat",
+     "startMs": 4540,
+     "endMs": 4880
+    },
+    {
+     "text": "on",
+     "startMs": 4880,
+     "endMs": 5030
+    },
+    {
+     "text": "a",
+     "startMs": 5030,
+     "endMs": 5100
+    },
+    {
+     "text": "fallen",
+     "startMs": 5100,
+     "endMs": 5510
+    },
+    {
+     "text": "tree",
+     "startMs": 5510,
+     "endMs": 5770
+    },
+    {
+     "text": "trunk",
+     "startMs": 5770,
+     "endMs": 6170
+    },
+    {
+     "text": "and",
+     "startMs": 6410,
+     "endMs": 6670
+    },
+    {
+     "text": "ate",
+     "startMs": 6670,
+     "endMs": 6840
+    },
+    {
+     "text": "the",
+     "startMs": 6840,
+     "endMs": 6910
+    },
+    {
+     "text": "last",
+     "startMs": 6910,
+     "endMs": 7300
+    },
+    {
+     "text": "of",
+     "startMs": 7300,
+     "endMs": 7410
+    },
+    {
+     "text": "the",
+     "startMs": 7410,
+     "endMs": 7500
+    },
+    {
+     "text": "bread",
+     "startMs": 7500,
+     "endMs": 7860
+    },
+    {
+     "text": "which",
+     "startMs": 7860,
+     "endMs": 8050
+    },
+    {
+     "text": "the",
+     "startMs": 8050,
+     "endMs": 8200
+    },
+    {
+     "text": "old",
+     "startMs": 8200,
+     "endMs": 8440
+    },
+    {
+     "text": "munchkin",
+     "startMs": 8440,
+     "endMs": 8940
+    },
+    {
+     "text": "had",
+     "startMs": 8940,
+     "endMs": 9100
+    },
+    {
+     "text": "placed",
+     "startMs": 9100,
+     "endMs": 9440
+    },
+    {
+     "text": "in",
+     "startMs": 9440,
+     "endMs": 9530
+    },
+    {
+     "text": "his",
+     "startMs": 9530,
+     "endMs": 9700
+    },
+    {
+     "text": "pocket",
+     "startMs": 9700,
+     "endMs": 10220
+    }
+   ]
+  },
+  {
+   "id": "de_-E31VeOj-iE-01042-00345798-00346244",
+   "language": "de",
+   "audio": "audio/lemas/-E31VeOj-iE-01042-00345798-00346244.mp3",
+   "url": "https://huggingface.co/datasets/LEMAS-Project/LEMAS-Dataset-eval/resolve/main/eval/de/-E31VeOj-iE-01042-00345798-00346244.mp3",
+   "sha256": "118acf364af56cd9c19f1c795008420fc21bc97389056c856a60c93a69cf1788",
+   "durationMs": 4460,
+   "transcript": "an Rheinland Pfalz die hatten damals nur ein prozent oder an Thüringen",
+   "source": "LEMAS-Dataset-eval de_-E31VeOj-iE-01042-00345798-00346244 (YODAS, YouTube video -E31VeOj-iE)",
+   "licence": "timings CC BY 4.0 (LEMAS-Project); audio CC BY 3.0 (YODAS / the YouTube creator)",
+   "referenceMethod": "MMS-CTC",
+   "reference": [
+    {
+     "text": "an",
+     "startMs": 422,
+     "endMs": 542
+    },
+    {
+     "text": "Rheinland",
+     "startMs": 643,
+     "endMs": 1085
+    },
+    {
+     "text": "Pfalz",
+     "startMs": 1105,
+     "endMs": 1467
+    },
+    {
+     "text": "die",
+     "startMs": 1708,
+     "endMs": 1828
+    },
+    {
+     "text": "hatten",
+     "startMs": 1848,
+     "endMs": 2089
+    },
+    {
+     "text": "damals",
+     "startMs": 2130,
+     "endMs": 2471
+    },
+    {
+     "text": "nur",
+     "startMs": 2531,
+     "endMs": 2632
+    },
+    {
+     "text": "ein",
+     "startMs": 2732,
+     "endMs": 2853
+    },
+    {
+     "text": "prozent",
+     "startMs": 2913,
+     "endMs": 3315
+    },
+    {
+     "text": "oder",
+     "startMs": 3596,
+     "endMs": 3777
+    },
+    {
+     "text": "an",
+     "startMs": 3817,
+     "endMs": 3918
+    },
+    {
+     "text": "Thüringen",
+     "startMs": 3998,
+     "endMs": 4460
+    }
+   ]
+  },
+  {
+   "id": "es_-Gf9FocdIc4-00005-00003352-00003853",
+   "language": "es",
+   "audio": "audio/lemas/-Gf9FocdIc4-00005-00003352-00003853.mp3",
+   "url": "https://huggingface.co/datasets/LEMAS-Project/LEMAS-Dataset-eval/resolve/main/eval/es/-Gf9FocdIc4-00005-00003352-00003853.mp3",
+   "sha256": "bd1c51d8f9df4cf1f13b78a9452f15b8b5acf52640012843380852148cc9a9e7",
+   "durationMs": 5010,
+   "transcript": "Por eso, en términos financieros, al dinero que tiene la empresa se le llama Liquidez.",
+   "source": "LEMAS-Dataset-eval es_-Gf9FocdIc4-00005-00003352-00003853 (YODAS, YouTube video -Gf9FocdIc4)",
+   "licence": "timings CC BY 4.0 (LEMAS-Project); audio CC BY 3.0 (YODAS / the YouTube creator)",
+   "referenceMethod": "MMS-CTC",
+   "reference": [
+    {
+     "text": "Por",
+     "startMs": 20,
+     "endMs": 140
+    },
+    {
+     "text": "eso,",
+     "startMs": 160,
+     "endMs": 341
+    },
+    {
+     "text": "en",
+     "startMs": 501,
+     "endMs": 581
+    },
+    {
+     "text": "términos",
+     "startMs": 641,
+     "endMs": 1082
+    },
+    {
+     "text": "financieros,",
+     "startMs": 1122,
+     "endMs": 1764
+    },
+    {
+     "text": "al",
+     "startMs": 1924,
+     "endMs": 2024
+    },
+    {
+     "text": "dinero",
+     "startMs": 2064,
+     "endMs": 2405
+    },
+    {
+     "text": "que",
+     "startMs": 2745,
+     "endMs": 2826
+    },
+    {
+     "text": "tiene",
+     "startMs": 2866,
+     "endMs": 3046
+    },
+    {
+     "text": "la",
+     "startMs": 3086,
+     "endMs": 3146
+    },
+    {
+     "text": "empresa",
+     "startMs": 3186,
+     "endMs": 3527
+    },
+    {
+     "text": "se",
+     "startMs": 3848,
+     "endMs": 3948
+    },
+    {
+     "text": "le",
+     "startMs": 3968,
+     "endMs": 4048
+    },
+    {
+     "text": "llama",
+     "startMs": 4068,
+     "endMs": 4329
+    },
+    {
+     "text": "Liquidez.",
+     "startMs": 4629,
+     "endMs": 5010
+    }
+   ]
+  },
+  {
+   "id": "fr_-F1WW3J6oQQ-00033-00011486-00011922",
+   "language": "fr",
+   "audio": "audio/lemas/-F1WW3J6oQQ-00033-00011486-00011922.mp3",
+   "url": "https://huggingface.co/datasets/LEMAS-Project/LEMAS-Dataset-eval/resolve/main/eval/fr/-F1WW3J6oQQ-00033-00011486-00011922.mp3",
+   "sha256": "16663bfea7818ab6992b9bc02e84ed54f8af5700740655c229cc6d2a53151b43",
+   "durationMs": 4360,
+   "transcript": "Maintenant, je vais te dire c est quoi une ouverture maximum?",
+   "source": "LEMAS-Dataset-eval fr_-F1WW3J6oQQ-00033-00011486-00011922 (YODAS, YouTube video -F1WW3J6oQQ)",
+   "licence": "timings CC BY 4.0 (LEMAS-Project); audio CC BY 3.0 (YODAS / the YouTube creator)",
+   "referenceMethod": "MMS-CTC",
+   "reference": [
+    {
+     "text": "Maintenant,",
+     "startMs": 80,
+     "endMs": 542
+    },
+    {
+     "text": "je",
+     "startMs": 1266,
+     "endMs": 1346
+    },
+    {
+     "text": "vais",
+     "startMs": 1366,
+     "endMs": 1487
+    },
+    {
+     "text": "te",
+     "startMs": 1507,
+     "endMs": 1607
+    },
+    {
+     "text": "dire",
+     "startMs": 1869,
+     "endMs": 2150
+    },
+    {
+     "text": "c",
+     "startMs": 2632,
+     "endMs": 2652
+    },
+    {
+     "text": "est",
+     "startMs": 2692,
+     "endMs": 2793
+    },
+    {
+     "text": "quoi",
+     "startMs": 2833,
+     "endMs": 2994
+    },
+    {
+     "text": "une",
+     "startMs": 3154,
+     "endMs": 3255
+    },
+    {
+     "text": "ouverture",
+     "startMs": 3275,
+     "endMs": 3737
+    },
+    {
+     "text": "maximum?",
+     "startMs": 3898,
+     "endMs": 4360
+    }
+   ]
+  },
+  {
+   "id": "it_-CXLW8sQqDY-00009-00005586-00006204",
+   "language": "it",
+   "audio": "audio/lemas/-CXLW8sQqDY-00009-00005586-00006204.mp3",
+   "url": "https://huggingface.co/datasets/LEMAS-Project/LEMAS-Dataset-eval/resolve/main/eval/it/-CXLW8sQqDY-00009-00005586-00006204.mp3",
+   "sha256": "b8bde0f903d258cc5254b4779ad8a2f0123954ec1966f65d54a1371bc82dec43",
+   "durationMs": 6180,
+   "transcript": "correlata alla keyword research, ovvero alla ricerca delle parole chiave. Noi siamo un sito,",
+   "source": "LEMAS-Dataset-eval it_-CXLW8sQqDY-00009-00005586-00006204 (YODAS, YouTube video -CXLW8sQqDY)",
+   "licence": "timings CC BY 4.0 (LEMAS-Project); audio CC BY 3.0 (YODAS / the YouTube creator)",
+   "referenceMethod": "MMS-CTC",
+   "reference": [
+    {
+     "text": "correlata",
+     "startMs": 341,
+     "endMs": 923
+    },
+    {
+     "text": "alla",
+     "startMs": 1023,
+     "endMs": 1184
+    },
+    {
+     "text": "keyword",
+     "startMs": 1284,
+     "endMs": 1706
+    },
+    {
+     "text": "research,",
+     "startMs": 1866,
+     "endMs": 2348
+    },
+    {
+     "text": "ovvero",
+     "startMs": 2488,
+     "endMs": 2729
+    },
+    {
+     "text": "alla",
+     "startMs": 2769,
+     "endMs": 2929
+    },
+    {
+     "text": "ricerca",
+     "startMs": 3050,
+     "endMs": 3592
+    },
+    {
+     "text": "delle",
+     "startMs": 3973,
+     "endMs": 4153
+    },
+    {
+     "text": "parole",
+     "startMs": 4194,
+     "endMs": 4474
+    },
+    {
+     "text": "chiave.",
+     "startMs": 4535,
+     "endMs": 4856
+    },
+    {
+     "text": "Noi",
+     "startMs": 5137,
+     "endMs": 5337
+    },
+    {
+     "text": "siamo",
+     "startMs": 5538,
+     "endMs": 5759
+    },
+    {
+     "text": "un",
+     "startMs": 5819,
+     "endMs": 5879
+    },
+    {
+     "text": "sito,",
+     "startMs": 5939,
+     "endMs": 6180
+    }
+   ]
+  },
+  {
+   "id": "pt_-1XqvK0h5Yo-00013-00006570-00007264",
+   "language": "pt",
+   "audio": "audio/lemas/-1XqvK0h5Yo-00013-00006570-00007264.mp3",
+   "url": "https://huggingface.co/datasets/LEMAS-Project/LEMAS-Dataset-eval/resolve/main/eval/pt/-1XqvK0h5Yo-00013-00006570-00007264.mp3",
+   "sha256": "79fa39962b75eec74ad67230c2385ac421f9a5a1151f8bfac802355170e603b7",
+   "durationMs": 6950,
+   "transcript": "Hoje no Sport, o armador notificou o Atlético cobrando multa de vinte milhões de reais e pode tentar.",
+   "source": "LEMAS-Dataset-eval pt_-1XqvK0h5Yo-00013-00006570-00007264 (YODAS, YouTube video -1XqvK0h5Yo)",
+   "licence": "timings CC BY 4.0 (LEMAS-Project); audio CC BY 3.0 (YODAS / the YouTube creator)",
+   "referenceMethod": "MMS-CTC",
+   "reference": [
+    {
+     "text": "Hoje",
+     "startMs": 40,
+     "endMs": 300
+    },
+    {
+     "text": "no",
+     "startMs": 340,
+     "endMs": 401
+    },
+    {
+     "text": "Sport,",
+     "startMs": 521,
+     "endMs": 921
+    },
+    {
+     "text": "o",
+     "startMs": 1342,
+     "endMs": 1362
+    },
+    {
+     "text": "armador",
+     "startMs": 1442,
+     "endMs": 1883
+    },
+    {
+     "text": "notificou",
+     "startMs": 1943,
+     "endMs": 2484
+    },
+    {
+     "text": "o",
+     "startMs": 2504,
+     "endMs": 2524
+    },
+    {
+     "text": "Atlético",
+     "startMs": 2584,
+     "endMs": 3084
+    },
+    {
+     "text": "cobrando",
+     "startMs": 3365,
+     "endMs": 3745
+    },
+    {
+     "text": "multa",
+     "startMs": 3826,
+     "endMs": 4146
+    },
+    {
+     "text": "de",
+     "startMs": 4186,
+     "endMs": 4286
+    },
+    {
+     "text": "vinte",
+     "startMs": 4386,
+     "endMs": 4647
+    },
+    {
+     "text": "milhões",
+     "startMs": 4687,
+     "endMs": 5047
+    },
+    {
+     "text": "de",
+     "startMs": 5087,
+     "endMs": 5147
+    },
+    {
+     "text": "reais",
+     "startMs": 5187,
+     "endMs": 5648
+    },
+    {
+     "text": "e",
+     "startMs": 6029,
+     "endMs": 6049
+    },
+    {
+     "text": "pode",
+     "startMs": 6169,
+     "endMs": 6509
+    },
+    {
+     "text": "tentar.",
+     "startMs": 6589,
+     "endMs": 6930
+    }
+   ]
+  }
+ ]
+}

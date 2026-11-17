@@ -1,0 +1,35 @@
+Caption word-timing evaluation fixtures: sources, licences, attribution
+=====================================================================
+
+English (5 clips; audio committed under audio/librispeech-*.flac)
+  Audio:      LibriSpeech ASR corpus, test-clean. V. Panayotov, G. Chen, D. Povey, S. Khudanpur,
+              "LibriSpeech: an ASR corpus based on public domain audio books", ICASSP 2015.
+              https://www.openslr.org/12  Licence: CC BY 4.0. (Recordings from LibriVox, public domain.)
+  Timings:    "LibriSpeech Alignments" v1.0, Loren Lugosch (Mila), made with the Montreal Forced Aligner
+              (McAuliffe et al., Interspeech 2017). https://zenodo.org/records/2619474  Licence: CC BY 4.0.
+              Read from the parsed copy https://huggingface.co/datasets/gilkeyio/librispeech-alignments (CC BY 4.0).
+  Changes:    utterances copied unchanged (FLAC); word list with empty (silence) entries removed; seconds -> ms.
+
+German, Spanish, French, Italian, Portuguese (1 clip each; audio NOT committed: fetch_fixtures.py downloads it and
+checks the SHA-256 in manifest.json)
+  Timings:    LEMAS-Dataset-eval, LEMAS-Project (Zhao et al., "LEMAS: A 150K-Hour Large-scale Extensible
+              Multilingual Audio Suite with Generative Speech Models", arXiv:2601.04233, 2026).
+              https://huggingface.co/datasets/LEMAS-Project/LEMAS-Dataset-eval  Licence: CC BY 4.0.
+  Audio:      the LEMAS eval MP3s of these utterances come from YODAS (Li et al., ASRU 2023; Creative-Commons YouTube
+              videos), dataset licence CC BY 3.0; each clip's YouTube video id is in manifest.json `source` and
+              its key, and is the attribution to its creator.
+  Changes:    none (timings seconds -> ms).
+
+LIMITATIONS (read before quoting any number)
+  - No timing in these fixtures was checked by hand by us. LibriSpeech/MFA timings are forced alignments with an
+    HMM-GMM model (an algorithm independent of the CTC aligner under test); published MFA benchmarks put most word
+    boundaries within a few tens of ms of hand labels, so the reference carries an error of that order (not measured
+    by us). LibriSpeech is read audiobook speech, cleaner and slower than social-video speech.
+  - The non-English references were produced by the authors with the Meta MMS forced aligner, which is a wav2vec2 CTC
+    model like ours: errors common to CTC aligners (for example word ends placed early) are invisible against this
+    reference, so the non-English numbers are optimistic. They were filtered to high-confidence alignments (mean word
+    score > 0.9), and about 20% were checked by hand by the dataset authors, not by us.
+  - No openly licensed, hand-verified word-timing set was found for Hindi or other Indic languages, Arabic, CJK or
+    Thai (TIMIT and Buckeye are English-only and not free); those languages are not measured.
+  - 10 clips, 220 reference words: enough to see whether the target is met by a wide margin, not to separate
+    systems that are within ~10 ms of each other.

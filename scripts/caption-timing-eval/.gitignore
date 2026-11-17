@@ -1,0 +1,5 @@
+# YODAS audio is downloaded by fetch_fixtures.py (checksums in fixtures/manifest.json), not committed.
+fixtures/audio/lemas/
+__pycache__/
+.pytest_cache/
+results/
