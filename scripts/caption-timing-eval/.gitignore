@@ -3,3 +3,6 @@ fixtures/audio/lemas/
 __pycache__/
 .pytest_cache/
 results/
+
+# Small CC BY 4.0 eval fixtures (see fixtures/ATTRIBUTION) are committed despite the root *.flac rule.
+!fixtures/audio/librispeech-*.flac
