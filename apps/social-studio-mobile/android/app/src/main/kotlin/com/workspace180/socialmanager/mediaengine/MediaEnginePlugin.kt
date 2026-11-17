@@ -147,6 +147,16 @@ class MediaEnginePlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventC
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         try {
             when (call.method) {
+                // Test / diagnostics: the export's caption renderer drawn into PNGs (caption parity test).
+                "renderCaptionFrames" -> {
+                    val json = call.req<String>("editIrJson")
+                    val fonts = call.argument<Map<String, String>>("fontPaths") ?: emptyMap()
+                    val times = call.req<List<Number>>("timesMs").map { it.toLong() }
+                    val out = call.req<String>("outputDir")
+                    val prefix = call.argument<String>("prefix") ?: "caption"
+                    val perf = call.argument<Number>("perfFrames")?.toInt() ?: 0
+                    background(result) { CaptionFrameRenderer.render(context, json, fonts, times, out, prefix, perf) }
+                }
                 "getVideoInfo" -> {
                     val path = call.req<String>("sourcePath")
                     background(result) { MediaTools.getVideoInfo(path) }

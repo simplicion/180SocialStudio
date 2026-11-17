@@ -287,6 +287,33 @@ class MediaEngineService {
     ];
   }
 
+  /// Error code of an export whose captions have characters no font can draw (the export fails instead of drawing
+  /// empty boxes). The message names the script, the font and the characters.
+  static const captionGlyphsMissing = 'CAPTION_GLYPHS_MISSING';
+
+  /// Test / diagnostics (Android): the export's own caption renderer (CaptionOverlay) drawn over a transparent
+  /// canvas-size bitmap at each of [timesMs], saved as `<outputDir>/<prefix>_<t>.png`. Returns the paths, the caption
+  /// timing (`firstFrameMs`, `msPerFrame` over [perfFrames] frames) and the glyph-coverage check.
+  static Future<Map<String, dynamic>> renderCaptionFrames({
+    required String editIrJson,
+    required List<int> timesMs,
+    required String outputDir,
+    Map<String, String> fontPaths = const {},
+    String prefix = 'caption',
+    int perfFrames = 0,
+  }) async {
+    final r = await _invoke<Map<Object?, Object?>>('renderCaptionFrames', {
+      'editIrJson': editIrJson,
+      'timesMs': timesMs,
+      'outputDir': outputDir,
+      'fontPaths': fontPaths,
+      'prefix': prefix,
+      'perfFrames': perfFrames,
+    });
+    if (r == null) throw MediaEngineException('NATIVE_ERROR', 'renderCaptionFrames returned no result');
+    return r.cast<String, dynamic>();
+  }
+
   /// Detects faces on the device (Google ML Kit, bundled model; no network, no server tokens) in
   /// one frame every [sampleEveryMs]. Returns one [FaceSample] per face: the box centre and size as
   /// 0..1 fractions of the display-oriented frame. A frame without faces contributes nothing.

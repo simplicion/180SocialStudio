@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../../core/native_engine/caption_v2.dart';
 import '../../core/native_engine/edit_ir.dart';
 
 /// Caption fonts: the same Google Fonts family drives the in-app preview and the Android export.
@@ -29,6 +30,97 @@ class CaptionFonts {
     'Playfair Display',
     'Space Grotesk',
   };
+
+  /// Licence of every family a caption may be drawn with. Only fonts whose licence allows embedding in a commercial
+  /// app (SIL OFL 1.1 or Apache 2.0, all served by Google Fonts) are fetched; any other family falls back to Inter with
+  /// a warning. Every "Noto Sans …" / "Noto Serif …" family is OFL. Tested in test/caption_fonts_licence_test.dart.
+  static const licences = <String, String>{
+    'Inter': 'OFL-1.1',
+    'Anton': 'OFL-1.1',
+    'Bebas Neue': 'OFL-1.1',
+    'Montserrat': 'OFL-1.1',
+    'Poppins': 'OFL-1.1',
+    'Syne': 'OFL-1.1',
+    'Outfit': 'OFL-1.1',
+    'Roboto': 'OFL-1.1',
+    'Baloo 2': 'OFL-1.1',
+    'Playfair Display': 'OFL-1.1',
+    'Space Grotesk': 'OFL-1.1',
+    'Mukta': 'OFL-1.1',
+    'Hind': 'OFL-1.1',
+    'Tiro Devanagari Hindi': 'OFL-1.1',
+    'Cairo': 'OFL-1.1',
+    'Tajawal': 'OFL-1.1',
+    'Kanit': 'OFL-1.1',
+    'Prompt': 'OFL-1.1',
+    'Oswald': 'OFL-1.1',
+    'DM Sans': 'OFL-1.1',
+    'DM Serif Display': 'OFL-1.1',
+    'Archivo Black': 'OFL-1.1',
+    'Bangers': 'OFL-1.1',
+    'Fredoka': 'OFL-1.1',
+    'Lilita One': 'OFL-1.1',
+    'Luckiest Guy': 'Apache-2.0',
+    'Rubik': 'OFL-1.1',
+    'Manrope': 'OFL-1.1',
+    'Sora': 'OFL-1.1',
+    'Lora': 'OFL-1.1',
+    'EB Garamond': 'OFL-1.1',
+    'Cormorant Garamond': 'OFL-1.1',
+    'Libre Baskerville': 'OFL-1.1',
+    'Barlow': 'OFL-1.1',
+    'Barlow Condensed': 'OFL-1.1',
+    'League Spartan': 'OFL-1.1',
+    'Plus Jakarta Sans': 'OFL-1.1',
+    'Open Sans': 'OFL-1.1',
+    'Lato': 'OFL-1.1',
+  };
+
+  /// The licence of [family], or null when it is not an allowed caption font.
+  static String? licenceOf(String family) =>
+      licences[family] ?? (family.startsWith('Noto Sans') || family.startsWith('Noto Serif') || family.startsWith('Noto Kufi') ? 'OFL-1.1' : null);
+
+  /// The family the Android v1 path draws a caption with (VideoEffects.kt fontForText): the style's family, or the
+  /// script font for non-Latin text.
+  static String v1FamilyFor(String text, String family) {
+    for (final c in text.runes) {
+      final s = CaptionScripts.ofCodePoint(c);
+      switch (s) {
+        case null || 'cyrillic':
+          continue;
+        case 'devanagari':
+          return family == 'Poppins' || family == 'Baloo 2' ? family : 'Noto Sans Devanagari';
+        case 'arabic':
+          return family == 'Cairo' || family == 'Tajawal' ? family : 'Noto Sans Arabic';
+        case 'thai':
+          return family == 'Kanit' || family == 'Prompt' ? family : 'Noto Sans Thai';
+        case 'cjk-sc':
+          return family == 'Noto Sans JP' ? family : 'Noto Sans SC';
+        default:
+          return kDefaultScriptFonts[s]!;
+      }
+    }
+    return family;
+  }
+
+  /// Every (family, weight) the renderers draw [ir]'s captions with: v2 captions use the template's font for each
+  /// word's script (font stack, else DEFAULT_SCRIPT_FONTS), v1 captions their family or its script fallback.
+  static Set<(String, int)> familiesFor(MobileEditIr ir) {
+    final out = <(String, int)>{};
+    for (final c in ir.captions) {
+      final spec = c.styleV2;
+      if (spec == null) {
+        out.add((v1FamilyFor(c.text, (c.style['fontFamily'] as String?) ?? 'Inter'), weightOf(c.style['fontWeight']).value));
+        continue;
+      }
+      for (final w in c.displayWords) {
+        if (w.text == EditIrCaption.lineBreak) continue;
+        final text = CaptionScripts.applyCase(w.text, spec.textCase, c.effectiveLanguage);
+        out.add((spec.fontFor(CaptionScripts.forToken(text, c.text, c.effectiveLanguage)), spec.weight));
+      }
+    }
+    return out;
+  }
 
   static FontWeight weightOf(Object? w) {
     final v = ((w as num?)?.toInt() ?? 800).clamp(100, 900);
@@ -69,15 +161,18 @@ class CaptionFonts {
     MobileEditIr ir, {
     Duration timeout = const Duration(seconds: 20),
   }) async {
-    final wanted = <(String, int)>{
-      for (final c in ir.captions)
-        (
-          (c.style['fontFamily'] as String?) ?? 'Inter',
-          weightOf(c.style['fontWeight']).value,
-        ),
-    }.where((f) => f.$1.toLowerCase() != 'inter').toList();
+    // Every script present gets its own font (a Hindi or Arabic caption is not drawn with the Latin family).
     final paths = <String, String>{};
     final warnings = <String>[];
+    final wanted = <(String, int)>[];
+    for (final f in familiesFor(ir)) {
+      if (f.$1.toLowerCase() == 'inter') continue;
+      if (licenceOf(f.$1) == null) {
+        warnings.add('The "${f.$1}" caption font is not on the allowed (OFL / Apache) list, so captions use Inter instead.');
+        continue;
+      }
+      wanted.add(f);
+    }
     if (wanted.isEmpty || kIsWeb) return (paths, warnings);
     Directory? dir;
     try {
@@ -131,7 +226,8 @@ class CaptionFonts {
       final bytes = <int>[];
       await for (final chunk in res) {
         bytes.addAll(chunk);
-        if (bytes.length > 5 * 1024 * 1024)
+        // CJK fonts are 5-10 MB per weight.
+        if (bytes.length > 24 * 1024 * 1024)
           throw HttpException('font too large');
       }
       return bytes;
