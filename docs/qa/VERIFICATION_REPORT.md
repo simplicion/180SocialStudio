@@ -161,12 +161,12 @@ Every file below was exported on the emulator and probed on the host with ffprob
 | Check | Result | Evidence |
 |---|---|---|
 | Engine suite `media_engine_render_test.dart` | 24/25, **25/25 after F-7** | 25 on-device tests (cuts, speed, crop, B-roll, captions, zoom, ducking, fades, grade, layers, stickers, freeze, chroma, masks, reverse, cut-out, crossfade, stabilise, 15 fps, export settings, voiceover, narration, cleanup, cancel, missing media) |
-| Export formats suite | 4/5 | silent, mixed, HDR (typed `HDR_NOT_SUPPORTED` on the emulator's decoder, as designed), **new** 9:16 / 1:1 / 16:9 PASS; **new** Studio loudness FAIL (O-7) |
+| Export formats suite | 4/5 → **6/6 after F-8** | silent, mixed, HDR (typed `HDR_NOT_SUPPORTED` on the emulator's decoder, as designed), **new** 9:16 / 1:1 / 16:9 PASS; **new** Studio loudness PASS after F-8 (was FAIL, O-7); **new** stated-loudness test PASS |
 | Duration = timeline ± 250 ms | PASS (36 files) | worst +65 ms (`format_16x9`); Director render 11 156 / 11 150 ms; manual edit 28 075 / 28 066 ms |
 | Resolution / aspect | PASS | 1080x1920, 1080x1080, 1280x720, 720x1280 (720p setting) as requested. 9:16 files are stored 1920x1080 with a -90° rotation tag (Media3 picks the encoder's landscape orientation); players display 1080x1920. Info, not a defect |
 | fps | PASS | 29.7–30.0 for the 30 fps canvas, 24.1 for the 24 fps setting; the 15 fps test passes |
 | Audio present | PASS | AAC in every file with sound; the video-only source correctly exports without a track |
-| Loudness ≈ -14 LUFS, true peak < -1 dBTP with platform loudness on | **FAIL** (O-7) | Studio default export: **-20.0 LUFS**, true peak -2.5 dBFS (ffmpeg and the on-device meter agree). Exports without the setting sit at -30…-33 LUFS (source level, as designed) |
+| Loudness ≈ -14 LUFS, true peak < -1 dBTP with platform loudness on | **PASS after F-8** (was FAIL, O-7) | Was **-20.0 LUFS**, true peak -2.5 dBFS (ffmpeg and the on-device meter agree); now **-14.23 LUFS**, -1.74 dBTP. Exports without the setting sit at -30…-33 LUFS (source level, as designed) |
 | No black > 500 ms | PASS | none in 36 files |
 | No frozen > 1 s | PASS | only `freeze.mp4` 2.13–4.00 s (the freeze-frame feature) and the pre-fix `chroma_keyed.mp4` (the unkeyed green frame) |
 | Frames at cuts, caption changes, zoom peak, B-roll midpoint | PASS, 1 cosmetic | `docs/qa/frames/director_sheet.jpg` (8 frames). Caption text matches the planned speech at each moment, no tofu, inside the frame, below the face; the 1.3x zoom keeps the whole head; B-roll shows at its midpoint. Cosmetic: the word-pop layout leaves uneven gaps between words ("FOR   BEING   HERE"), Prompt B scope |
@@ -179,15 +179,18 @@ Every file below was exported on the emulator and probed on the host with ffprob
 |---|---|---|---|
 | F-7 | **Production bug (regression).** Image layers are drawn by `ImageLayersOverlay` (a canvas overlay), which honoured `mask` but ignored `chromaKey`. A keyed photo / PNG layer ("Remove green" in the inspector, or the Director's `insertBroll.greenScreen` on an image) was exported as a solid green frame covering the video. It was verified at 0.2/255 on 2026-10-02 (`EDITOR_CAPCUT_PARITY_PLAN.md`) and broke when image layers moved to the overlay path. The layer bitmap is now keyed once on load with the shader's exact maths (`ChromaKeyCpu`). | `android/.../mediaengine/ChromaKey.kt`, `VideoEffects.kt` | on device: background difference 164 → **0.21/255**, subject 253 red; new Kotlin `ChromaKeyCpuTest` (2 tests); Kotlin 32/32 |
 
-**O-7: Studio exports are about 6 dB under platform loudness.**
-- **What happens:** the voice measures -25.5 LUFS with a -4.3 dBFS peak, a peak-to-loudness ratio of about 21 dB. The
-  engine applies +11.5 dB of make-up gain. A no-lookahead peak limiter (instant attack, 120 ms release, -2 dBFS
-  ceiling) then has to take about 9 dB off every syllable's peak. It stays engaged for most of the speech and costs
-  about 6 dB. Nothing measures the result.
-- **Consequence:** the engine's warning ("mix normalised … to -14 LUFS") is untrue.
-- **Fix options:** a compressor stage before the limiter, or a gain search that simulates the limiter on the decoded
-  voice; then correct the warning.
-- **Why not fixed here:** it's an audio-quality design choice (how much squash is acceptable on speech).
+**O-7: Studio exports were about 6 dB under platform loudness. FIXED 2026-11-18 (F-8).**
+- **First diagnosis (wrong):** this section first blamed the peak limiter ("costs about 6 dB"). Re-checking with an
+  offline copy of the limiter maths showed the limiter costs only ~0.7 dB on this voice.
+- **Real cause:** the loudness pass measured the WHOLE source file (-25.5 LUFS), but the timeline played only its first
+  10 s, which is 6 dB quieter (-31.4 LUFS). The gain was computed for the wrong audio.
+- **Fix (F-8):** measure only the source ranges the timeline plays. Then run the voice through the export's own limiter
+  at a few gains in the same pass, and pick the gain that lands on the target. The message now states the predicted
+  result, e.g. "about -14.1 LUFS", not a fixed claim.
+- **Device result:** -20.0 → **-14.23 LUFS**, true peak -2.5 → **-1.74 dBTP**. The original "-14 LUFS" test is unchanged
+  and now passes. A new test checks the stated loudness matches the file (-14.1 predicted, -14.23 measured).
+- **Limit:** the boost is capped at +18 dB. A voice quieter than about -32 LUFS on the timeline stays below -14, and the
+  message says so.
 
 ---
 
@@ -227,7 +230,7 @@ Every file below was exported on the emulator and probed on the host with ffprob
 | 2 Provider health | 5 | 4 | 0 | 0 | live quality (no OpenAI credits, O-5) |
 | 3 Director behaviour | 10 | 10 | 0 | 1 (F-6) | model judgement (O-5) |
 | 4 Manual editor | 25 ops | 23 | 1 (O-6, emulator) | 0 | flip export; duplicate and SFX export (timeline only) |
-| 5 Render truth | 12 | 10 | 1 (loudness, O-7) | 1 (F-7) | preview-vs-export golden, iOS |
+| 5 Render truth | 12 | 11 | 0 | 2 (F-7, F-8) | iOS; preview-vs-export parity has 8/48 frames over tolerance (see captions v2 below) |
 | 6 Languages | 5 | 2 | 1 (CJK/Thai spacing, O-8) | 0 | transcription and translation (O-5), RTL on screen |
 | 7 Performance | 9 | 4 | 1 (O-6) | 0 | latency, memory, network, app kill, long/VFR/rotated source (device) |
 
@@ -237,8 +240,7 @@ Not every row is PASS, so the product does **not** fully verify yet.
 
 1. **O-5: the OpenAI account has no credits.** Every real Director turn falls back to the (labelled) deterministic
    planner. Transcription, translation and live quality can't be checked. Needs a user action.
-2. **O-7: Studio exports are about 6 dB under platform loudness** (-20 vs -14 LUFS), and the warning claims -14. This
-   affects every export.
+2. ~~O-7: Studio exports about 6 dB under platform loudness.~~ **Fixed (F-8)**: -14.23 LUFS on the device.
 3. **O-6: the full manual edit fails to export on the emulator** (decoder exhausted by crossfade + B-roll + sticker).
    Unknown on phones. Needs a device run, then a decoder budget or retry.
 4. **O-8: Chinese, Japanese and Thai captions get spaces between words.** Prompt B.
@@ -255,4 +257,53 @@ Not every row is PASS, so the product does **not** fully verify yet.
 
 F-1 `basePrisma` export (website builder crash) · F-2 test import · F-3 device registry lost devices across a Redis
 blip · F-4 Prisma internals leaked in 500s · F-5 analytics test · **F-6 filler cuts left a frame of the "um"** ·
-**F-7 green screen ignored on photo layers in export**.
+**F-7 green screen ignored on photo layers in export** · **F-8 Studio export loudness measured the wrong audio
+(-20 → -14.2 LUFS)**.
+
+---
+
+## Captions v2 (Prompt B), device verification 2026-11-18
+
+After merging the four captions v2 branches (27b5555, aab672c, 8c08189, 19cface):
+- **Unit suites:** contracts 188/188, AI 280 + 1 skipped, backend 135 + 1 skipped, Flutter 454/454, Kotlin 60/60,
+  align worker 12 + 1 skipped, timing eval 7/7.
+- **Device:** `media_engine_render_test.dart` 25/25 (the export path is intact after the renderer changes);
+  `export_formats_render_test.dart` 6/6.
+
+**Preview vs export parity** (`integration_test/caption_parity_test.dart`):
+- **Setup:** 3 templates × Latin/Hindi/Arabic/Japanese × 4 instants. The Android export renderer and the Flutter
+  preview painter each draw each frame at 1080×1920, with the same OFL font files.
+
+| Check | Result | Evidence |
+|---|---|---|
+| Word tokens (so word timing) identical | PASS | Thai, Japanese, Chinese, mixed Hindi + Latin |
+| Missing glyph raises `CAPTION_GLYPHS_MISSING` | PASS | private-use characters reported, nothing drawn |
+| Drawing time at 1080×1920 (emulator, indicative) | 2.8–4.5 ms/frame | target < 2 ms on a mid-range phone, not yet measured on one |
+| Frames within tolerance (text-box IoU ≥ 0.90, mean abs diff ≤ 10/255) | **40/48**, test FAILS | evidence PNGs and report.json in `docs/qa/evidence/caption-parity/` |
+
+The 8 frames over tolerance were checked by eye, by pixel diff, and by re-scoring offline:
+- **Layout and animation agree.** Every text box matches within 1 px, and the fade-out timing matches (median alpha
+  ratio 0.98–1.00) for Impact and Glass.
+- **5 mid-word / word-change frames** (Impact Latin and Japanese, Glass Hindi) differ along every glyph and outline
+  edge:
+  - The export rasterises glyphs about 3% bolder (Android's text renderer vs Flutter's).
+  - A 3×3 blur does not remove it, so it is not sub-pixel noise.
+  - It is invisible at viewing size (side-by-side PNGs), but it is a real difference. The test is left strict.
+- **Gradient template during the fade-out:** the export is about 17% more transparent than the preview (median alpha
+  ratio 0.83). Both apply the fade the same way on paper; cause not found yet. Open.
+- **Arabic Glass exit frame:** it failed only because the box finder's alpha-64 threshold sits mid-fade. With a lower
+  threshold both frames match (IoU 0.994, diff 0.88).
+
+**Face avoidance input (F-9):**
+- Before: no part of the app produced `faceBoxes`, so both renderers' face avoidance never had data.
+- Now: `FaceTrack.toTimeline` maps the phone's on-device face detections onto the output timeline (cuts, speed, moving
+  crop, flip, letterboxing; rotated clips are skipped). The editor preview and every export use it.
+- Tests: `test/face_track_test.dart`, 6 cases.
+
+**Still open for captions v2:**
+- The parity differences above.
+- Template thumbnails and a demo export per template.
+- Golden images per language and an end-to-end transcribe → export test.
+- iOS renderer parity (needs a Mac).
+- Production STT word timing (needs OpenAI credits).
+- Alignment models and references for Indic, Arabic and CJK languages.
