@@ -51,6 +51,16 @@ DEFAULT_MODELS: dict[str, tuple[str, str | None]] = {
 }
 
 
+# Systematic offsets (ms) added to aligned (start, end), per model. CTC models emit a word's first letter a little
+# after the word begins and its last letter before it ends (peaky outputs). Measured only where an independent
+# reference exists: en on 20 held-out LibriSpeech test-clean utterances (502 words, speakers disjoint from the eval
+# clips) against Montreal Forced Aligner timings: median signed error start +50 ms, end -30 ms. The other models have
+# no independent reference yet (their eval reference is itself CTC), so they stay uncorrected.
+CALIBRATION_MS: dict[str, tuple[float, float]] = {
+    "facebook/wav2vec2-base-960h": (-50.0, 30.0),
+}
+
+
 def model_for(language: str) -> tuple[str, str | None] | None:
     lang = (language or "").lower().split("-")[0]
     override = os.environ.get(f"ALIGN_MODEL_{lang.upper()}")
@@ -118,6 +128,7 @@ class Wav2Vec2Model:
         ratio = getattr(self.model.config, "inputs_to_logits_ratio", 320)
         self.frame_sec = ratio / SAMPLE_RATE
         self.model_id = model_id
+        self.calibration_ms = CALIBRATION_MS.get(model_id, (0.0, 0.0))
 
     def log_probs(self, samples: np.ndarray) -> np.ndarray:
         torch = self._torch
@@ -211,6 +222,7 @@ class Aligner:
 
     def align(self, samples: np.ndarray, words: list[dict], language: str) -> AlignResult:
         model = self.model(language)
+        off_s, off_e = getattr(model, "calibration_ms", (0.0, 0.0))
         duration = len(samples) / SAMPLE_RATE
         words = [{"text": str(w.get("text", "")), "startMs": float(w.get("startMs", 0) or 0), "endMs": float(w.get("endMs", 0) or 0)} for w in words]
         has_anchors = any(w["endMs"] > 0 for w in words)
@@ -247,8 +259,8 @@ class Aligner:
                     per_word.setdefault(o, []).extend([sp.start, sp.end])
             for pos, frames in per_word.items():
                 k = idx[pos]
-                s = (w0 + min(frames) * model.frame_sec) * 1000
-                e = (w0 + max(frames) * model.frame_sec) * 1000
+                s = max(0.0, (w0 + min(frames) * model.frame_sec) * 1000 + off_s)
+                e = min(duration * 1000, (w0 + max(frames) * model.frame_sec) * 1000 + off_e)
                 if has_anchors and (abs(s - words[k]["startMs"]) > MAX_SHIFT_SEC * 1000 or abs(e - words[k]["endMs"]) > MAX_SHIFT_SEC * 1000):
                     continue
                 out[k].update(startMs=s, endMs=e, aligned=True)
@@ -272,7 +284,12 @@ def _fill_unaligned(words: list[dict], has_anchors: bool, duration_ms: float) ->
     # Monotonic: a kept provider time never overlaps an aligned neighbour.
     for i in range(1, len(words)):
         if words[i]["startMs"] < words[i - 1]["endMs"]:
-            if words[i]["aligned"] and not words[i - 1]["aligned"]:
+            if words[i]["aligned"] and words[i - 1]["aligned"]:
+                # Calibration widened both words into a short gap: meet in the middle.
+                mid = (words[i]["startMs"] + words[i - 1]["endMs"]) / 2
+                words[i - 1]["endMs"] = max(words[i - 1]["startMs"], mid)
+                words[i]["startMs"] = min(max(mid, words[i - 1]["endMs"]), words[i]["endMs"])
+            elif words[i]["aligned"] and not words[i - 1]["aligned"]:
                 words[i - 1]["endMs"] = max(words[i - 1]["startMs"], words[i]["startMs"])
             else:
                 words[i]["startMs"] = words[i - 1]["endMs"]

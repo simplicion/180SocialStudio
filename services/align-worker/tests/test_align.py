@@ -135,6 +135,20 @@ def test_long_audio_is_aligned_in_windows_under_the_limit():
     assert max(abs(w["startMs"] - s * 1000) for w, (_, s, _) in zip(res.words, script)) <= 20
 
 
+def test_calibration_offsets_apply_and_touching_words_meet_in_the_middle():
+    script = [("one", 0.50, 0.80), ("two", 0.84, 1.20)]  # 40 ms gap
+    model = FakeModel(script)
+    model.calibration_ms = (-50.0, 30.0)
+    aligner = A.Aligner(loader=lambda mid, rev: model)
+    samples = np.zeros(int(2.0 * A.SAMPLE_RATE), dtype=np.float32)
+    words = [{"text": t, "startMs": 0, "endMs": 0} for t, _, _ in script]
+    res = aligner_align_with_offsets(aligner, model, samples, words, "en")
+    a, b = res.words
+    assert abs(a["startMs"] - 450) <= 20 and abs(b["endMs"] - 1230) <= 20
+    # end of "one" (+30) and start of "two" (-50) would overlap: they meet between the two
+    assert a["endMs"] == b["startMs"] and 800 <= a["endMs"] <= 840
+
+
 # ── HTTP ──
 
 @pytest.fixture
