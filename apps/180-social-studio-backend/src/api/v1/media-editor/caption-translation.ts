@@ -2,8 +2,8 @@ import type { Request, Response } from "express";
 import {
   MAX_TRANSLATE_CAPTIONS,
   MAX_CAPTION_CHARS,
-  CAPTION_TARGET_LANGUAGES,
   CaptionScript,
+  findCaptionLanguage,
   translateCaptionLines,
 } from "@workspace/video-contracts";
 
@@ -32,8 +32,10 @@ export interface TranslateCaptionsBody {
 
 /** Validated request body, or the reason it is invalid. */
 export function parseTranslateCaptionsBody(body: any): TranslateCaptionsBody | { error: string } {
-  const targetLanguage = typeof body?.targetLanguage === "string" ? body.targetLanguage.trim().toLowerCase() : "";
-  if (!CAPTION_TARGET_LANGUAGES[targetLanguage]) return { error: "targetLanguage is not a supported language code" };
+  // Case-insensitive, aliases resolved: "HI" → "hi", "zh" / "ZH-HANS" → "zh-Hans" (caption-languages.ts).
+  const lang = findCaptionLanguage(typeof body?.targetLanguage === "string" ? body.targetLanguage : "");
+  if (!lang) return { error: "targetLanguage is not a supported language code" };
+  const targetLanguage = lang.code;
   const script: CaptionScript = body?.script === "roman" ? "roman" : "native";
   const raw = Array.isArray(body?.captions) ? body.captions : null;
   if (!raw || raw.length === 0) return { error: "captions must be a non-empty array" };
