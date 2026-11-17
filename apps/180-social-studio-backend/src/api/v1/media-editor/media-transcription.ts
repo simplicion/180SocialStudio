@@ -51,6 +51,12 @@ export interface TranscriptionResponse {
   speakers?: number;
   /** labelled: words carry `speaker`; off: not configured; unavailable / failed: the words have no speakers. */
   diarization?: "labelled" | "off" | "unavailable" | "failed";
+  /**
+   * Word times refined by forced alignment (ALIGN_WORKER_URL): aligned. Otherwise the provider's times are kept and this
+   * says why: off (not configured), unsupported (no model for the language), unavailable (worker down / loading) or
+   * failed (bad answer).
+   */
+  alignment?: "aligned" | "off" | "unsupported" | "unavailable" | "failed";
 }
 
 export interface SpeakerTurn {
@@ -124,7 +130,57 @@ export function labelWordsWithSpeakers(words: WordTimestamp[], turns: SpeakerTur
   });
 }
 
-/** Transcript plus speakers: STT and diarization run at the same time; a diarization failure never fails the transcript. */
+export class AlignmentUnavailableError extends Error {}
+export class AlignmentUnsupportedError extends Error {}
+
+/**
+ * Word times refined by the align worker (services/align-worker: wav2vec2 CTC forced alignment). Sends the same
+ * extracted audio /transcribe received, plus the provider's words. Null when ALIGN_WORKER_URL is not set; throws when
+ * the worker is down, has no model for the language, or answers with something that does not match the words sent.
+ * The caller keeps the provider's times in every one of those cases.
+ */
+export async function alignWordTimes(
+  audio: Buffer,
+  filename: string,
+  mimeType: string,
+  words: WordTimestamp[],
+  language: string,
+  fetchImpl: typeof fetch = fetch,
+  env: Record<string, string | undefined> = process.env
+): Promise<WordTimestamp[] | null> {
+  const url = (env.ALIGN_WORKER_URL || "").replace(/\/+$/, "");
+  if (!url) return null;
+  if (!words.length) return words;
+  const secret = env.ALIGN_WORKER_SECRET || env.TREND_WORKER_SECRET || "";
+  const form = new FormData();
+  form.append("audio", new Blob([new Uint8Array(audio)], { type: mimeType }), filename || "audio.m4a");
+  form.append("words", JSON.stringify(words.map((w) => ({ text: w.text, startMs: w.startMs, endMs: w.endMs }))));
+  form.append("language", language);
+  const res = await fetchImpl(`${url}/align`, {
+    method: "POST",
+    headers: { "X-Worker-Secret": secret },
+    body: form,
+    signal: AbortSignal.timeout(Number(env.ALIGN_TIMEOUT_MS) || 60_000),
+  });
+  if (res.status === 422) throw new AlignmentUnsupportedError(`align worker has no model for "${language}"`);
+  if (!res.ok) throw new AlignmentUnavailableError(`align worker answered ${res.status}`);
+  const data: any = await res.json();
+  const out: any[] = Array.isArray(data?.words) ? data.words : [];
+  if (out.length !== words.length) throw new Error(`align worker returned ${out.length} words for ${words.length}`);
+  return words.map((w, i) => {
+    const s = Number(out[i]?.startMs);
+    const e = Number(out[i]?.endMs);
+    // Text always stays the provider's; a malformed time keeps the provider's time for that word.
+    if (!Number.isFinite(s) || !Number.isFinite(e) || s < 0 || e < s) return w;
+    return { ...w, startMs: Math.round(s), endMs: Math.round(e) };
+  });
+}
+
+/**
+ * Transcript plus speakers: STT and diarization run at the same time; a diarization failure never fails the transcript.
+ * When ALIGN_WORKER_URL is set the word times are then refined by forced alignment (before speakers are assigned, so
+ * labels follow the refined times); an alignment failure keeps the provider's times.
+ */
 export async function transcribeWithSpeakers(
   audio: Buffer,
   filename: string,
@@ -138,7 +194,16 @@ export async function transcribeWithSpeakers(
     (turns) => ({ turns, error: undefined as unknown }),
     (error) => ({ turns: undefined, error })
   );
-  const transcript = await transcribeAudioBuffer(audio, filename, mimeType, language, fetchImpl, credentialsOverride);
+  const provided = await transcribeAudioBuffer(audio, filename, mimeType, language, fetchImpl, credentialsOverride);
+  let transcript: TranscriptionResponse;
+  try {
+    const refined = await alignWordTimes(audio, filename, mimeType, provided.words, provided.language, fetchImpl, env);
+    transcript = refined ? { ...provided, words: refined, alignment: "aligned" } : { ...provided, alignment: "off" };
+  } catch (err: any) {
+    console.warn("[Transcribe] alignment skipped:", err?.message || err);
+    const why = err instanceof AlignmentUnsupportedError ? "unsupported" : err instanceof AlignmentUnavailableError ? "unavailable" : "failed";
+    transcript = { ...provided, alignment: why };
+  }
   const d = await diar;
   if (d.error !== undefined) {
     console.warn("[Transcribe] diarization skipped:", (d.error as any)?.message || d.error);

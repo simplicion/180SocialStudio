@@ -1,0 +1,27 @@
+[project]
+name = "align-worker"
+version = "0.1.0"
+description = "180 Social Studio forced-alignment sidecar: refines STT word times against the audio (wav2vec2 CTC, Apache-2.0 models)"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.115,<1",
+    "uvicorn[standard]>=0.30,<1",
+    "python-multipart>=0.0.9,<1",
+    "numpy>=1.26,<3",
+]
+
+[project.optional-dependencies]
+# The models. setup.sh installs CPU-only PyTorch first (no CUDA download). Tests do not need them (fake models).
+model = ["torch>=2.2", "transformers>=4.40,<5"]
+dev = ["pytest>=8,<10", "httpx>=0.27,<1"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["app"]

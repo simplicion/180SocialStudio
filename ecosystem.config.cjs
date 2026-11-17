@@ -75,5 +75,25 @@ module.exports = {
           },
         }]
       : []),
+    // Forced-alignment sidecar (wav2vec2 CTC, Apache-2.0 models): refines the STT word times for caption sync.
+    // One-time setup: services/align-worker/setup.sh. Listed only once its venv exists; without it the backend keeps the
+    // provider's word times (alignment: "off").
+    ...(fs.existsSync(path.join(__dirname, 'services/align-worker/.venv/bin/uvicorn'))
+      ? [{
+          name: '180socialstudio-align-worker',
+          script: '.venv/bin/uvicorn',
+          args: 'app.main:app --host 127.0.0.1 --port 4030',
+          cwd: `${__dirname}/services/align-worker`,
+          interpreter: 'none',
+          exec_mode: 'fork',
+          instances: 1,
+          autorestart: true,
+          watch: false,
+          max_memory_restart: '3000M',
+          env: {
+            ...pick('ALIGN_WORKER_SECRET', 'TREND_WORKER_SECRET', 'ALIGN_PRELOAD', 'ALIGN_THREADS', 'ALIGN_MAX_MODELS', 'ALIGN_MAX_AUDIO_SEC'),
+          },
+        }]
+      : []),
   ],
 };

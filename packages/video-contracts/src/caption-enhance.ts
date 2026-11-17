@@ -3,7 +3,7 @@
  * and intelligent grouping with bottom-heavy pyramid line balance.
  * Deterministic and shared between the AI Director compiler and mobile client.
  */
-import { scriptOf, GROUPING_DEFAULTS_BY_SCRIPT } from "./caption-style-v2";
+import { scriptOf, GROUPING_DEFAULTS_BY_SCRIPT, NO_SPACE_SCRIPTS } from "./caption-style-v2";
 
 const STOP = new Set([
   "because", "should", "would", "could", "really", "actually", "basically", "literally", "something", "anything",
@@ -123,113 +123,177 @@ export interface GroupingOptions {
   wordsPerCaption?: number;
   maxCharsPerLine?: number;
   maxLines?: number;
+  /** Reading-speed cap (chars/s); default: the group's script default (GROUPING_DEFAULTS_BY_SCRIPT). */
   maxCharsPerSecond?: number;
+  /** A pause longer than this starts a new group (default 0.5 s; captionOps passes the style's pauseBreakMs). */
   maxPauseSec?: number;
+  /** A group never lasts longer than this (default: GroupingSchema's maxDurationMs, 3 s). */
+  maxDurationSec?: number;
   shotBoundariesSec?: number[];
+  /** false: shot changes do not split groups (default true). */
+  breakOnShotChange?: boolean;
+  breakOnPunctuation?: boolean;
+}
+
+const SEGMENTER: { segment(s: string): Iterable<unknown> } | null = (() => {
+  try {
+    const S = (Intl as unknown as { Segmenter?: new (l?: string, o?: { granularity: string }) => { segment(s: string): Iterable<unknown> } }).Segmenter;
+    return S ? new S(undefined, { granularity: "grapheme" }) : null;
+  } catch {
+    return null;
+  }
+})();
+
+/** User-perceived characters (grapheme clusters): "नमस्ते" is 3, an emoji with a skin tone is 1. */
+export function graphemeLength(text: string): number {
+  if (!SEGMENTER) return Array.from(text).length;
+  let n = 0;
+  for (const _ of SEGMENTER.segment(text)) n++;
+  return n;
+}
+
+/** Characters a group shows on screen: graphemes, plus one space between words in spaced scripts. */
+export function captionCharCount(words: string[]): number {
+  if (words.length === 0) return 0;
+  const letters = words.reduce((s, w) => s + graphemeLength(w), 0);
+  return NO_SPACE_SCRIPTS.has(scriptOf(words.join(""))) ? letters : letters + words.length - 1;
+}
+
+/** True when a shot change lies between two consecutive words (a cut inside a word goes to the side holding most of it). */
+function cutBetween(cuts: number[], prev: CaptionTimedWord, next: CaptionTimedWord): boolean {
+  const a = (prev.startSeconds + prev.endSeconds) / 2;
+  const b = (next.startSeconds + next.endSeconds) / 2;
+  return cuts.some((c) => c > a && c <= b);
 }
 
 /**
- * Groups timed words into cinematic caption pages respecting:
- * - Sentence terminals [.!?。！？।؟]
- * - Speech pauses (> maxPauseSec, default 0.5s)
- * - Camera cuts / shot boundaries (never straddles a cut)
- * - Reading speed & character limits per script (Netflix style guide)
- * - Maximum words per caption
+ * Groups timed words into caption pages. A new group starts at:
+ * - sentence terminals [.!?。！？।؟]
+ * - speech pauses (> maxPauseSec)
+ * - shot changes (a group never straddles a cut; a cut inside a word goes with the larger half of the word)
+ * - maxWords, the 2-line character budget, maxDurationSec
+ * - the reading-speed cap of the group's own script (detected per group, so a Hindi phrase after English words gets
+ *   the Hindi limits). Reading speed is measured over the time the group can stay on screen (until the next word
+ *   starts, at most maxDurationSec), not over the bare speech span: that is what the old 1.8× multiplier on the
+ *   speech span approximated, and it is removed.
+ * A single word is never split.
  */
 export function groupWordsForCaptions<T extends CaptionTimedWord>(words: T[], options: GroupingOptions = {}): T[][] {
   if (words.length === 0) return [];
   const maxWords = options.wordsPerCaption ?? 3;
   const maxLines = options.maxLines ?? 2;
   const maxPause = options.maxPauseSec ?? 0.5;
-  const cuts = options.shotBoundariesSec ?? [];
+  const maxDur = options.maxDurationSec ?? 3;
+  const cuts = options.breakOnShotChange === false ? [] : options.shotBoundariesSec ?? [];
+  const onPunct = options.breakOnPunctuation !== false;
 
   const groups: T[][] = [];
   let chunk: T[] = [];
-
-  const script = scriptOf(words[0]?.word ?? "");
-  const defaults = GROUPING_DEFAULTS_BY_SCRIPT[script] ?? GROUPING_DEFAULTS_BY_SCRIPT.fallback;
-  const maxCharsPerLine = options.maxCharsPerLine ?? defaults.maxCharsPerLine;
-  const maxCharsPerSecond = options.maxCharsPerSecond ?? defaults.maxCharsPerSecond;
-  const maxCharsGroup = maxCharsPerLine * maxLines;
-
   const flush = () => {
-    if (chunk.length > 0) {
-      groups.push(chunk);
-      chunk = [];
-    }
+    if (chunk.length > 0) groups.push(chunk);
+    chunk = [];
   };
 
   for (let i = 0; i < words.length; i++) {
     const w = words[i];
     const prev = chunk[chunk.length - 1];
-
     if (prev) {
-      // 1. Pause check
-      if (w.startSeconds - prev.endSeconds > maxPause) {
+      const candidate = [...chunk.map((c) => c.word), w.word];
+      const defaults = GROUPING_DEFAULTS_BY_SCRIPT[scriptOf(candidate.join(""))] ?? GROUPING_DEFAULTS_BY_SCRIPT.fallback;
+      const maxCharsGroup = (options.maxCharsPerLine ?? defaults.maxCharsPerLine) * maxLines;
+      const maxCps = options.maxCharsPerSecond ?? defaults.maxCharsPerSecond;
+      const chars = captionCharCount(candidate);
+      const start = chunk[0].startSeconds;
+      const next = words[i + 1];
+      const onScreenEnd = next ? Math.max(w.endSeconds, Math.min(next.startSeconds, start + maxDur)) : Math.max(w.endSeconds, start + maxDur);
+      const onScreen = Math.max(0.3, onScreenEnd - start);
+      if (
+        w.startSeconds - prev.endSeconds > maxPause ||
+        (onPunct && /[.!?。！？।؟]["'”’)]*$/u.test(prev.word)) ||
+        cutBetween(cuts, prev, w) ||
+        chunk.length >= maxWords ||
+        chars > maxCharsGroup ||
+        w.endSeconds - start > maxDur ||
+        chars / onScreen > maxCps
+      ) {
         flush();
-      }
-      // 2. Terminal punctuation
-      else if (/[.!?。！？।؟]$/u.test(prev.word)) {
-        flush();
-      }
-      // 3. Shot boundary cut check: cut falls between previous word and current word
-      else if (cuts.some((c) => prev.endSeconds <= c && c <= w.startSeconds)) {
-        flush();
-      }
-      // 4. Word count check
-      else if (chunk.length >= maxWords) {
-        flush();
-      }
-      // 5. Total character length check
-      else {
-        const currentChars = chunk.reduce((sum, item) => sum + item.word.length, 0) + chunk.length - 1;
-        if (currentChars + w.word.length + 1 > maxCharsGroup) {
-          flush();
-        } else {
-          // 6. Reading speed check
-          const chunkDuration = Math.max(0.3, w.endSeconds - chunk[0].startSeconds);
-          const charsPerSec = (currentChars + w.word.length) / chunkDuration;
-          if (charsPerSec > maxCharsPerSecond * 1.8) {
-            flush();
-          }
-        }
       }
     }
-
     chunk.push(w);
   }
-
   flush();
   return groups;
 }
 
+export interface CaptionTimingOptions {
+  /** Frame rate of the output (default 30): a caption appears at most one frame before its first word. */
+  fps?: number;
+  /** Each caption stays at least this long when the following gap allows (GroupingSchema default 700 ms). */
+  minDurationSec?: number;
+  /** Shot changes / cuts (timeline seconds): a caption is never extended past one, and never appears before one. */
+  cutsSec?: number[];
+  /** The video's end: nothing is shown after it. */
+  videoEndSec?: number;
+}
+
 /**
- * Rebalances a list of words for 2-line rendering into a bottom-heavy pyramid.
- * Avoids single-word top lines and ensures the second line has equal or more weight.
+ * On-screen times of each caption group:
+ * - start: one frame before the first word at most (never earlier than the previous caption's last word, a cut
+ *   before the word, or 0);
+ * - end: the last word's end, extended to minDurationSec into the following gap, but never into the next caption,
+ *   past a cut / shot change, or past the video end. A gap of up to 2 frames to the next caption is closed (no
+ *   one-frame flicker) unless a cut lies in it.
  */
-export function balanceLinesBottomHeavy(words: string[]): { line1: string[]; line2: string[] } {
-  if (words.length <= 2) {
-    return { line1: words, line2: [] };
-  }
-  if (words.length === 3) {
-    // 1 word top, 2 words bottom is acceptable pyramid
-    return { line1: [words[0]], line2: [words[1], words[2]] };
-  }
-  // For 4+ words, divide roughly in half, biased toward more words on line 2
-  const mid = Math.floor(words.length / 2);
-  let line1 = words.slice(0, mid);
-  let line2 = words.slice(mid);
+export function timeCaptionGroups<T extends CaptionTimedWord>(groups: T[][], opts: CaptionTimingOptions = {}): Array<{ startSec: number; endSec: number }> {
+  const frame = 1 / (opts.fps && opts.fps > 0 ? opts.fps : 30);
+  const minDur = opts.minDurationSec ?? 0.7;
+  const cuts = [...(opts.cutsSec ?? [])].sort((a, b) => a - b);
+  const videoEnd = opts.videoEndSec ?? Infinity;
+  const eps = 1e-6;
+  const firstStart = (g: T[]) => g[0].startSeconds;
+  const lastEnd = (g: T[]) => Math.max(...g.map((w) => w.endSeconds));
 
-  // If line 1 has fewer chars than line 2, pyramid is already bottom-heavy
-  const len1 = line1.join(" ").length;
-  const len2 = line2.join(" ").length;
-  if (len1 > len2 && line1.length > 2) {
-    // Shift a word from line 1 to line 2 to keep bottom-heavy
-    line2 = [line1[line1.length - 1], ...line2];
-    line1 = line1.slice(0, line1.length - 1);
-  }
+  const starts = groups.map((g, i) => {
+    const word = firstStart(g);
+    let s = word - frame;
+    if (i > 0) s = Math.max(s, Math.min(word, lastEnd(groups[i - 1])));
+    // A cut just before the first word: start on the cut, not in the last frame of the previous shot.
+    for (const c of cuts) if (c > s + eps && c <= word + eps) s = c;
+    return Math.max(0, Math.min(s, word));
+  });
 
-  return { line1, line2 };
+  return groups.map((g, i) => {
+    const start = starts[i];
+    const speechEnd = Math.min(lastEnd(g), videoEnd);
+    let limit = Math.min(videoEnd, i + 1 < groups.length ? starts[i + 1] : Infinity);
+    const cutAfter = cuts.find((c) => c > speechEnd + eps);
+    if (cutAfter !== undefined) limit = Math.min(limit, cutAfter);
+    let end = Math.max(speechEnd, Math.min(start + minDur, limit));
+    const next = i + 1 < groups.length ? starts[i + 1] : undefined;
+    if (next !== undefined && next > end && next - end <= 2 * frame + eps && !cuts.some((c) => c >= end - eps && c < next - eps) && next <= videoEnd) {
+      end = next;
+    }
+    return { startSec: start, endSec: Math.max(end, start) };
+  });
+}
+
+/**
+ * Splits a group's words into two lines, bottom-heavy (the top line is not longer than the bottom one) and never
+ * leaving a one-word top line when there are 3+ words. A group that fits on one line (maxCharsPerLine) stays on one.
+ * Lengths are script-aware (graphemes; no spaces counted in CJK / Thai).
+ */
+export function balanceLinesBottomHeavy(words: string[], opts: { maxCharsPerLine?: number } = {}): { line1: string[]; line2: string[] } {
+  const total = captionCharCount(words);
+  const maxLine = opts.maxCharsPerLine ?? (GROUPING_DEFAULTS_BY_SCRIPT[scriptOf(words.join(""))] ?? GROUPING_DEFAULTS_BY_SCRIPT.fallback).maxCharsPerLine;
+  if (words.length <= 2 || (opts.maxCharsPerLine !== undefined && total <= maxLine)) return { line1: words, line2: [] };
+  const split = (k: number) => ({ k, l1: captionCharCount(words.slice(0, k)), l2: captionCharCount(words.slice(k)) });
+  const options = Array.from({ length: words.length - 2 }, (_, i) => split(i + 2)); // top line of 2+ words
+  const good = options.filter((o) => o.l1 <= o.l2 && o.l2 <= maxLine).sort((a, b) => a.l2 - a.l1 - (b.l2 - b.l1));
+  // Every split is top-heavy (or too long): one line reads better than a one-word top line, when it fits.
+  if (!good.length && total <= maxLine) return { line1: words, line2: [] };
+  const fallback = [...options].sort((a, b) => Math.max(a.l1, a.l2) - Math.max(b.l1, b.l2))[0] ?? split(1);
+  const k = (good[0] ?? fallback).k;
+  return { line1: words.slice(0, k), line2: words.slice(k) };
 }
 
 const SCRIPTS: Array<[number, number, string, string[]]> = [
