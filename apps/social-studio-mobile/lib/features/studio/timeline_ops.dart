@@ -5,7 +5,9 @@ import 'package:uuid/uuid.dart';
 import '../../core/native_engine/edit_ir.dart';
 import '../../core/native_engine/media_engine_exception.dart';
 import '../../core/network/audio_transcription_service.dart';
+import 'caption_template_apply.dart';
 import 'caption_tools.dart';
+import 'safe_zone_guide.dart';
 
 /// Manual editing operations on a `mobile-editir/1` timeline.
 ///
@@ -3615,6 +3617,45 @@ class TimelineOps {
     ],
     style: c.style,
   );
+
+  // ── Caption templates (captions v2, Phase 7; logic in caption_template_apply.dart) ─────────────────────────
+
+  /// Gives the speech captions in [captionIds] (all when null) the look of caption template [templateId]
+  /// (CaptionCatalog): its v1 fields and its `styleV2` spec, with [overrides]. Text, words and timing stay.
+  static MobileEditIr applyCaptionTemplate(
+    MobileEditIr ir,
+    String templateId, {
+    Set<String>? captionIds,
+    CaptionOverrides overrides = const CaptionOverrides(),
+    SafeZonePlatform? safeZone,
+    String? languageCode,
+  }) => CaptionTemplateApply.applyTemplate(
+    ir,
+    templateId,
+    captionIds: captionIds,
+    overrides: overrides,
+    safeZone: safeZone,
+    languageCode: languageCode,
+  );
+
+  /// The user's light changes (only the template's editable fields) on the captions in [captionIds].
+  static MobileEditIr customizeCaptions(
+    MobileEditIr ir,
+    CaptionOverrides changes, {
+    Set<String>? captionIds,
+    SafeZonePlatform? safeZone,
+    String? languageCode,
+  }) => CaptionTemplateApply.customize(
+    ir,
+    changes,
+    captionIds: captionIds,
+    safeZone: safeZone,
+    languageCode: languageCode,
+  );
+
+  /// Drops the user's changes: the captions in [captionIds] look exactly like their template again.
+  static MobileEditIr resetCaptionsToTemplate(MobileEditIr ir, {Set<String>? captionIds}) =>
+      CaptionTemplateApply.reset(ir, captionIds: captionIds);
 }
 
 /// Timeline tracks, top to bottom.

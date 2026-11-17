@@ -10,6 +10,32 @@ enum SafeZonePlatform {
   const SafeZonePlatform(this.label);
   final String label;
 
+  /// The profile name used in caption styles (`styleV2.layout.safeZone`, caption-style-v2.ts SAFE_ZONE_PROFILES).
+  static SafeZonePlatform fromName(Object? name) => switch (name) {
+    'tiktok' => SafeZonePlatform.tiktok,
+    'reels' => SafeZonePlatform.reels,
+    'shorts' => SafeZonePlatform.shorts,
+    _ => SafeZonePlatform.none,
+  };
+
+  /// The safe rectangle as fractions of the frame (left, top, right, bottom), from the 1080×1920 margins.
+  Rect get safeFraction {
+    final m = SafeZoneOverlayGuide.margins[this]!;
+    return Rect.fromLTRB(m.left / 1080, m.top / 1920, 1 - m.right / 1080, 1 - m.bottom / 1920);
+  }
+
+  /// Where a caption block of [blockW] × [blockH] (frame fractions) centred on ([x], [y]) must go to stay inside
+  /// the safe rectangle: the same rule as `anchorInSafeZone` in caption-style-v2.ts (a block wider / taller than
+  /// the safe area is centred in it).
+  Offset clampCentre(double x, double y, {double blockW = 0, double blockH = 0}) {
+    final r = safeFraction;
+    double clamp(double v, double lo, double hi) => lo > hi ? (lo + hi) / 2 : v.clamp(lo, hi);
+    return Offset(
+      clamp(x, r.left + blockW / 2, r.right - blockW / 2),
+      clamp(y, r.top + blockH / 2, r.bottom - blockH / 2),
+    );
+  }
+
   SafeZonePlatform next() => switch (this) {
     SafeZonePlatform.none => SafeZonePlatform.tiktok,
     SafeZonePlatform.tiktok => SafeZonePlatform.reels,
@@ -23,7 +49,7 @@ enum SafeZonePlatform {
 /// Guidelines match exact contract numbers on a 1080×1920 frame:
 /// - TikTok: top 220, bottom 480, left 60, right 140
 /// - Instagram Reels: top 270, bottom 670, left 65, right 120
-/// - YouTube Shorts: top 200, bottom 460, left 60, right 140
+/// - YouTube Shorts: top 240, bottom 600, left 60, right 140
 ///
 /// Wrapped in [IgnorePointer] so all user touch, tap and drag interactions pass through.
 class SafeZoneOverlayGuide extends StatelessWidget {
