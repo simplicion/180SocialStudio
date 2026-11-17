@@ -1,3 +1,4 @@
+import 'caption_v2.dart';
 import 'media_engine_exception.dart';
 import 'overlay_layer.dart';
 
@@ -22,7 +23,12 @@ class MobileEditIr {
     this.watermark,
     this.effects = const [],
     this.itemMeta = const {},
+    this.faceBoxes = const [],
   });
+
+  /// Optional face track on the OUTPUT timeline (`faceBoxes`, captions v2): box centre and size as canvas fractions.
+  /// v2 captions with `layout.faceAvoid` move off these boxes (both renderers). Omitted from JSON when empty.
+  final List<FaceSample> faceBoxes;
 
   static const schemaVersion = 'mobile-editir/1';
 
@@ -73,6 +79,7 @@ class MobileEditIr {
         watermark: w,
         effects: effects,
         itemMeta: itemMeta,
+        faceBoxes: faceBoxes,
       );
 
   /// Copy with some parts replaced; every other field (including ones added later) is kept.
@@ -89,6 +96,7 @@ class MobileEditIr {
     bool clearWatermark = false,
     List<EditIrEffect>? effects,
     Map<String, EditIrItemMeta>? itemMeta,
+    List<FaceSample>? faceBoxes,
   }) =>
       MobileEditIr(
         projectId: projectId,
@@ -103,6 +111,7 @@ class MobileEditIr {
         watermark: clearWatermark ? null : (watermark ?? this.watermark),
         effects: effects ?? this.effects,
         itemMeta: itemMeta ?? this.itemMeta,
+        faceBoxes: faceBoxes ?? this.faceBoxes,
       );
 
   factory MobileEditIr.fromMap(Map<String, dynamic> map) => MobileEditIr.fromJson(map);
@@ -124,6 +133,7 @@ class MobileEditIr {
       audio: json['audio'] == null ? EditIrAudio() : EditIrAudio.fromJson(_obj(json, 'audio')),
       watermark: json['watermark'] == null ? null : EditIrWatermark.fromJson(_obj(json, 'watermark')),
       effects: _list(json, 'effects', EditIrEffect.fromJson),
+      faceBoxes: _list(json, 'faceBoxes', FaceSample.fromMap),
       itemMeta: {
         for (final e in ((json['itemMeta'] as Map?) ?? const {}).entries)
           if (e.value is Map) '${e.key}': EditIrItemMeta.fromJson((e.value as Map).cast<String, dynamic>()),
@@ -158,6 +168,7 @@ class MobileEditIr {
         'audio': audio.toJson(),
         if (watermark != null) 'watermark': watermark!.toJson(),
         if (effects.isNotEmpty) 'effects': effects.map((e) => e.toJson()).toList(),
+        if (faceBoxes.isNotEmpty) 'faceBoxes': faceBoxes.map((f) => f.toJson()).toList(),
         if (_liveItemMeta.isNotEmpty) 'itemMeta': {for (final e in _liveItemMeta.entries) e.key: e.value.toJson()},
       };
 
@@ -689,7 +700,29 @@ class EditIrCaption {
     required this.text,
     this.words = const [],
     this.style = const {},
+    this.language,
   });
+
+  /// BCP-47 language of the text (`language` on the caption, else on its style): locale-aware case and paragraph
+  /// direction in both renderers. Null = unknown.
+  final String? language;
+
+  /// The language that applies: the caption's own, else its style's.
+  String? get effectiveLanguage => language ?? style['language'] as String? ?? style['caseLocale'] as String?;
+
+  /// The Caption Style Spec v2 of this caption (`style.styleV2`), or null for a v1 caption (drawn as before v2).
+  /// The editor's flat `textCase` / `motionIntensity` keys win over the spec (same as MobileEditIr.kt).
+  CaptionSpecV2? get styleV2 {
+    final raw = style['styleV2'];
+    if (raw is! Map) return null;
+    final m = raw.cast<String, dynamic>();
+    final tc = style['textCase'], mi = style['motionIntensity'];
+    return CaptionSpecV2.parse({
+      ...m,
+      if (tc is String) 'typography': {...((m['typography'] as Map?) ?? const {}).cast<String, dynamic>(), 'case': tc},
+      if (mi is num) 'motion': {...((m['motion'] as Map?) ?? const {}).cast<String, dynamic>(), 'intensity': mi},
+    });
+  }
 
   final String id;
   final String kind;
@@ -784,21 +817,9 @@ class EditIrCaption {
   /// Typed line breaks become [lineBreak] entries.
   List<EditIrWord> get displayWords {
     String norm(String s) => s.trim().split(RegExp(r'\s+')).where((w) => w.isNotEmpty).join(' ');
-    List<String> tokens(String t) {
-      final out = <String>[];
-      final lines = t.replaceAll('\r\n', '\n').split('\n');
-      for (var i = 0; i < lines.length; i++) {
-        if (i > 0) out.add(lineBreak);
-        out.addAll(lines[i].split(RegExp(r'\s+')).where((w) => w.isNotEmpty));
-      }
-      while (out.isNotEmpty && out.first == lineBreak) {
-        out.removeAt(0);
-      }
-      while (out.isNotEmpty && out.last == lineBreak) {
-        out.removeLast();
-      }
-      return out;
-    }
+    // The shared tokeniser (CaptionText.tokens in Kotlin): spaces, ICU words for Thai/Lao/Khmer/Burmese, the
+    // kanji/kana rule for CJK, so preview and export time the same words.
+    List<String> tokens(String t) => CaptionTextEngine.tokens(t);
 
     List<EditIrWord> still(String t) => [for (final p in tokens(t)) EditIrWord(text: p, startMs: startMs, endMs: endMs)];
 
@@ -848,6 +869,7 @@ class EditIrCaption {
         text: j['text'] as String? ?? '',
         words: _list(j, 'words', EditIrWord.fromJson),
         style: normaliseCaptionStyle((j['style'] as Map?)?.cast<String, dynamic>() ?? {}),
+        language: j['language'] as String?,
       );
 
   Map<String, dynamic> toJson() => {
@@ -858,6 +880,7 @@ class EditIrCaption {
         'text': text,
         'words': words.map((w) => w.toJson()).toList(),
         'style': style,
+        'language': ?language,
       };
 }
 
