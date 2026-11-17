@@ -175,6 +175,8 @@ data class IrCaptionStyle(
     val springStiffness: Double = 300.0,
     val springDamping: Double = 18.0,
     val motionIntensity: Double = 1.0,
+    /** Editor case key (`textCase`: none | upper | title); wins over `uppercase` when set to upper / title. */
+    val textCase: String = "none",
 )
 
 data class IrCaption(
@@ -185,6 +187,10 @@ data class IrCaption(
     val text: String,
     val words: List<IrWord>,
     val style: IrCaptionStyle,
+    /** Caption Style Spec v2 (`style.styleV2`); null = the v1 path, drawn exactly as before v2. */
+    val v2: CaptionSpecV2? = null,
+    /** BCP-47 language of the text (`language` on the caption or its style): locale-aware case, paragraph direction. */
+    val language: String? = null,
 )
 
 data class IrZoom(
@@ -270,6 +276,11 @@ data class MobileEditIr(
     val audio: IrAudio,
     val watermark: IrWatermark? = null,
     val effects: List<IrEffect> = emptyList(),
+    /**
+     * Optional face track on the OUTPUT timeline (`faceBoxes`, added with captions v2): box centre and size as canvas
+     * fractions. v2 captions with `layout.faceAvoid` move off these boxes. Absent = no face avoidance.
+     */
+    val faceBoxes: List<IrFaceBox> = emptyList(),
     /** What [parse] repaired instead of failing the export (reported with the render's warnings). */
     val parseWarnings: List<String> = emptyList(),
 ) {
@@ -427,6 +438,8 @@ data class MobileEditIr(
                 val layObj = v2?.optJSONObject("layout") ?: s.optJSONObject("layout")
 
                 IrCaption(
+                    v2 = try { CaptionSpecV2.parse(v2?.let { withFlatOverrides(jsonToMap(it), s) }) } catch (_: Exception) { null },
+                    language = j.optNullableString("language") ?: s.optNullableString("language") ?: s.optNullableString("caseLocale"),
                     id = j.req("id"),
                     kind = kind,
                     startMs = j.getLong("startMs"),
@@ -461,6 +474,7 @@ data class MobileEditIr(
                             )
                         },
                         uppercase = s.optBoolean("uppercase", false),
+                        textCase = s.optNullableString("textCase")?.takeIf { it in setOf("none", "upper", "title") } ?: "none",
                         positionX = layObj?.optDouble("x", s.optDouble("positionX", 0.5)) ?: s.optDouble("positionX", 0.5),
                         positionY = layObj?.optDouble("y", s.optDouble("positionY", 0.72)) ?: s.optDouble("positionY", 0.72),
                         maxWidthFraction = layObj?.optDouble("maxWidthFraction", s.optDouble("maxWidthFraction", 0.86)) ?: s.optDouble("maxWidthFraction", 0.86),
@@ -585,6 +599,11 @@ data class MobileEditIr(
                 zooms = zooms,
                 audio = audio,
                 effects = effects,
+                faceBoxes = (o.optJSONArray("faceBoxes") ?: JSONArray()).objects().take(2000).mapNotNull { f ->
+                    val x = f.optDouble("x"); val y = f.optDouble("y"); val w = f.optDouble("w"); val h = f.optDouble("h")
+                    if (listOf(x, y, w, h).any { it.isNaN() }) null
+                    else IrFaceBox(f.optLong("tMs", 0L), x.coerceIn(0.0, 1.0), y.coerceIn(0.0, 1.0), w.coerceIn(0.0, 1.0), h.coerceIn(0.0, 1.0))
+                },
                 watermark = o.optNullableObject("watermark")?.let {
                     IrWatermark(
                         imageUrl = it.optNullableString("imageUrl") ?: "",
@@ -634,6 +653,36 @@ data class MobileEditIr(
             val type = optNullableString("type") ?: return null
             val ms = optLong(msKey, 0L)
             return if (type in allowed && ms > 0) IrTextMotionSpec(type, ms) else null
+        }
+
+        /**
+         * The editor's flat keys win over the template's spec: `textCase` -> typography.case, `motionIntensity` ->
+         * motion.intensity (the light edits a user may make; the template's look stays).
+         */
+        private fun withFlatOverrides(spec: Map<String, Any?>, style: JSONObject): Map<String, Any?> {
+            val out = spec.toMutableMap()
+            style.optNullableString("textCase")?.let { c ->
+                @Suppress("UNCHECKED_CAST")
+                out["typography"] = ((out["typography"] as? Map<String, Any?>) ?: emptyMap()) + ("case" to c)
+            }
+            style.optNullableDouble("motionIntensity")?.let { k ->
+                @Suppress("UNCHECKED_CAST")
+                out["motion"] = ((out["motion"] as? Map<String, Any?>) ?: emptyMap()) + ("intensity" to k)
+            }
+            return out
+        }
+
+        /** JSON to plain maps / lists (for the pure v2 spec parser). */
+        fun jsonToMap(o: JSONObject): Map<String, Any?> {
+            fun conv(v: Any?): Any? = when (v) {
+                is JSONObject -> jsonToMap(v)
+                is JSONArray -> (0 until v.length()).map { conv(v.opt(it)) }
+                JSONObject.NULL -> null
+                else -> v
+            }
+            val out = LinkedHashMap<String, Any?>()
+            for (k in o.keys()) out[k] = conv(o.opt(k))
+            return out
         }
 
         private fun JSONArray.objects(): List<JSONObject> = (0 until length()).map { getJSONObject(it) }

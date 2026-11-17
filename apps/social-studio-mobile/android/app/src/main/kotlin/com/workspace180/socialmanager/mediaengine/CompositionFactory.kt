@@ -449,7 +449,10 @@ class CompositionFactory internal constructor(
         if (fx.any { it.type == "vignette" }) compositionFx.add(OverlayEffect(listOf(VignetteOverlay(fx))))
         val imageLayers = ir.overlays.filter { it.isLayer && it.isImage }
         if (imageLayers.isNotEmpty()) compositionFx.add(OverlayEffect(listOf(ImageLayersOverlay(imageLayers, media.overlayPaths))))
-        if (ir.captions.isNotEmpty()) compositionFx.add(OverlayEffect(listOf(CaptionOverlay(ir.captions, ::typefaceFor, ir.canvas.width))))
+        if (ir.captions.isNotEmpty()) {
+            checkCaptionGlyphs()
+            compositionFx.add(OverlayEffect(listOf(CaptionOverlay(ir.captions, ::typefaceFor, ir.canvas.width, ir.faceBoxes))))
+        }
         watermarkOverlay()?.let { compositionFx.add(OverlayEffect(listOf(it))) }
         // Export resolution: the finished frame (captions, logo and all) is scaled last, so the layout never changes.
         if (outputSize != cw to ch) {
@@ -894,6 +897,37 @@ class CompositionFactory internal constructor(
     }
 
     private val typefaceCache = HashMap<String, Typeface>()
+
+    /** Glyph coverage of the file that draws [family] at [weight] (a supplied file, else bundled Inter), or null. */
+    private fun coverageFor(family: String, weight: Int): FontCoverage? {
+        val path = media.fontPaths["$family:$weight"] ?: media.fontPaths[family]
+        if (path != null && File(path).isFile) return FontCoverage.of(path)
+        val bundled = BUNDLED_INTER_WEIGHTS.minBy { abs(it - weight) * 2 - (if (it > weight) 1 else 0) }
+        return synchronized(bundledCoverage) {
+            bundledCoverage.getOrPut(bundled) {
+                try { context.assets.open("fonts/Inter-$bundled.ttf").use { FontCoverage.parse(it.readBytes()) } } catch (_: Exception) { null }
+            }
+        }
+    }
+    private val bundledCoverage = HashMap<Int, FontCoverage?>()
+
+    /**
+     * Export never draws tofu: every caption character must be in the font that draws it or in an installed system
+     * font (Android's fallback chain). Otherwise the export fails with CAPTION_GLYPHS_MISSING naming the script and
+     * the characters. Characters drawn by a system font instead of the template's own are reported as a warning
+     * (the preview then may not match the export exactly).
+     */
+    private fun checkCaptionGlyphs() {
+        val probe = android.graphics.Paint()
+        val r = CaptionGlyphCheck.check(ir.captions, ::coverageFor) { probe.hasGlyph(it) }
+        if (r.missing.isNotEmpty()) {
+            if (mode == CompositionMode.EXPORT) throw EditIrException("CAPTION_GLYPHS_MISSING", CaptionGlyphCheck.message(r.missing))
+            synchronized(warnings) { warnings.add(CaptionGlyphCheck.message(r.missing)) }
+        }
+        r.systemFallback.groupBy { it.script to it.family }.keys.forEach { (script, family) ->
+            synchronized(warnings) { warnings.add("$script caption text is not covered by '$family'; drawn with an installed system font") }
+        }
+    }
 
     private fun typefaceFor(family: String, weight: Int): Typeface = typefaceCache.getOrPut("$family:$weight") {
         val path = media.fontPaths["$family:$weight"] ?: media.fontPaths[family]

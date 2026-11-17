@@ -291,17 +291,7 @@ internal fun isNoSpaceScript(text: String): Boolean {
  * End offsets (exclusive, UTF-16) of each grapheme cluster in [text], so a reveal never cuts an Indic conjunct, an
  * Arabic joined letter, a combining mark or an emoji in half.
  */
-internal fun graphemeEnds(text: String): IntArray {
-    val it = java.text.BreakIterator.getCharacterInstance()
-    it.setText(text)
-    val ends = ArrayList<Int>()
-    var end = it.next()
-    while (end != java.text.BreakIterator.DONE) {
-        ends.add(end)
-        end = it.next()
-    }
-    return ends.toIntArray()
-}
+internal fun graphemeEnds(text: String): IntArray = CaptionIcu.api.graphemeEnds(text)
 
 /** True when the text contains strong right-to-left characters (Arabic, Urdu, Persian, Sindhi, Hebrew). */
 internal fun hasRtl(text: String): Boolean {
@@ -385,34 +375,9 @@ internal fun fontForText(text: String, defaultFamily: String): String {
  */
 internal fun displayWords(cap: IrCaption): List<IrWord> {
     fun norm(s: String) = s.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }.joinToString(" ")
-    fun tokens(text: String): List<String> {
-        val out = mutableListOf<String>()
-        text.replace("\r\n", "\n").split('\n').forEachIndexed { i, line ->
-            if (i > 0) out.add(LINE_BREAK)
-            val trimmed = line.trim()
-            if (isNoSpaceScript(trimmed) && !trimmed.contains(" ")) {
-                try {
-                    val bi = android.icu.text.BreakIterator.getWordInstance()
-                    bi.setText(trimmed)
-                    var start = bi.first()
-                    var end = bi.next()
-                    while (end != android.icu.text.BreakIterator.DONE) {
-                        val word = trimmed.substring(start, end).trim()
-                        if (word.isNotEmpty()) out.add(word)
-                        start = end
-                        end = bi.next()
-                    }
-                } catch (_: Throwable) {
-                    out.addAll(line.split(Regex("\\s+")).filter { it.isNotEmpty() })
-                }
-            } else {
-                out.addAll(line.split(Regex("\\s+")).filter { it.isNotEmpty() })
-            }
-        }
-        while (out.firstOrNull() == LINE_BREAK) out.removeAt(0)
-        while (out.lastOrNull() == LINE_BREAK) out.removeAt(out.size - 1)
-        return out
-    }
+    // One tokeniser for both renderers (CaptionText.tokens, mirrored by EditIrCaption.tokens in edit_ir.dart):
+    // spaces, then ICU word breaks for Thai/Lao/Khmer/Burmese and the kanji/kana rule for CJK.
+    fun tokens(text: String): List<String> = CaptionText.tokens(text)
     fun static(text: String) = tokens(text).map { IrWord(it, cap.startMs, cap.endMs, false, null, 1.0) }
 
     val spoken = cap.words.filter { it.text.isNotBlank() }
@@ -452,7 +417,14 @@ class CaptionOverlay(
     private val captions: List<IrCaption>,
     private val typefaceFor: (family: String, weight: Int) -> Typeface,
     private val canvasWidth: Int,
+    /** Optional face track (IR `faceBoxes`) for v2 face avoidance. */
+    faces: List<IrFaceBox> = emptyList(),
 ) : CanvasOverlay(/* useInputFrameSize= */ true) {
+
+    init { AndroidCaptionIcu.install() }
+
+    /** Captions with a v2 spec (`style.styleV2`) are drawn by the v2 engine; the rest keep the v1 path below. */
+    val v2 = CaptionV2Renderer(typefaceFor, canvasWidth, faces)
 
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -514,14 +486,8 @@ class CaptionOverlay(
             }
             if (out.isNotEmpty()) return out
         } catch (_: Throwable) {}
-        var rest = text
-        while (rest.isNotEmpty()) {
-            var n = fill.breakText(rest, true, maxWidth, null).coerceAtLeast(1)
-            if (n < rest.length && Character.isHighSurrogate(rest[n - 1])) n = if (n > 1) n - 1 else minOf(2, rest.length)
-            out.add(rest.substring(0, n))
-            rest = rest.substring(n)
-        }
-        return out
+        // Never cut inside a grapheme cluster (an Indic conjunct, a joined Arabic letter, an emoji sequence).
+        return CaptionText.splitToWidth(text, maxWidth.toDouble()) { fill.measureText(it).toDouble() }
     }
 
     override fun onDraw(canvas: Canvas, presentationTimeUs: Long) {
@@ -532,7 +498,14 @@ class CaptionOverlay(
         }
     }
 
+    /** Draws the captions at [presentationTimeUs] on [canvas] (the export calls this through onDraw; tests call it directly). */
+    fun drawAt(canvas: Canvas, presentationTimeUs: Long) = onDraw(canvas, presentationTimeUs)
+
     private fun drawCaption(canvas: Canvas, cap: IrCaption, t: Double) {
+        cap.v2?.let { spec ->
+            v2.draw(canvas, cap, spec, wordsCache.getOrPut(cap.id) { displayWords(cap) }, t)
+            return
+        }
         val st = cap.style
         val w = canvas.width.toFloat()
         val h = canvas.height.toFloat()
@@ -572,8 +545,11 @@ class CaptionOverlay(
                         continue
                     }
                     val pop = if (st.animation == "word_pop" || st.activeWordMotion == "scale-spring") (wd.scale.coerceAtLeast(1.0).toFloat() * 1.15f) else 1f
-                    val formatted = if (st.uppercase && isCasedScript(wd.text)) {
-                        if (cap.text.any { it.code in 0x0130..0x0131 }) wd.text.uppercase(java.util.Locale("tr"))
+                    // Locale-aware when the caption's language is known (Turkish / Azeri i); otherwise as before.
+                    val caseMode = if (st.textCase != "none") st.textCase else if (st.uppercase) "upper" else "none"
+                    val formatted = if (caseMode != "none" && isCasedScript(wd.text)) {
+                        if (cap.language != null || caseMode == "title") CaptionScripts.applyCase(wd.text, caseMode, cap.language)
+                        else if (cap.text.any { it.code in 0x0130..0x0131 }) wd.text.uppercase(java.util.Locale("tr"))
                         else wd.text.uppercase()
                     } else wd.text
                     for (piece in splitToWidth(formatted, maxWidth / pop)) {
@@ -738,22 +714,9 @@ class CaptionOverlay(
             if (isNoSpaceScript(a.text) && isNoSpaceScript(b.text)) 0f else space
 
         layout.lines.forEachIndexed { li, line ->
+            // Unicode bidi (android.icu.text.Bidi) on the line as drawn; tokens placed in visual order.
             val visualTokens = if (line.any { hasRtl(it.text) }) {
-                val lineText = line.joinToString(" ") { it.text }
-                if (java.text.Bidi.requiresBidi(lineText.toCharArray(), 0, lineText.length)) {
-                    val bidi = java.text.Bidi(lineText, java.text.Bidi.DIRECTION_DEFAULT_RIGHT_TO_LEFT)
-                    val levels = ByteArray(line.size)
-                    var offset = 0
-                    for (idx in line.indices) {
-                        levels[idx] = bidi.getLevelAt(offset.coerceAtMost(lineText.length - 1)).toByte()
-                        offset += line[idx].text.length + 1
-                    }
-                    val copy = line.toTypedArray()
-                    java.text.Bidi.reorderVisually(levels, 0, copy, 0, copy.size)
-                    copy.toList()
-                } else {
-                    line
-                }
+                CaptionText.visualOrder(line.map { it.text }, CaptionScripts.isRtlParagraph(cap.text, cap.language)).map { line[it] }
             } else {
                 line
             }
