@@ -243,7 +243,7 @@ void main() {
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
     expect(find.byType(CaptionPresetCard), findsWidgets);
-    final hormozi = find.bySemanticsLabel(RegExp('^Caption style Punchy Bounce'));
+    final hormozi = find.bySemanticsLabel(RegExp('^Caption style Spotlight Word'));
     // The preset row is the horizontal list (the sheet also lists caption lines for keyword highlights).
     final presetRow = find.byWidgetPredicate((w) => w is ListView && w.scrollDirection == Axis.horizontal);
     await tester.dragUntilVisible(hormozi, presetRow, const Offset(-120, 0));
@@ -252,7 +252,7 @@ void main() {
     await tester.tap(find.text('Apply to all captions'));
     await tester.pumpAndSettle();
     expect(c.ir!.captions.map((x) => (x.style['preset'], x.style['fontFamily'], x.style['highlightColor'])).toSet(),
-        {('HORMOZI_BOUNCE', 'Anton', '#22C55E')});
+        {('SPOTLIGHT_WORD', 'Montserrat', '#FACC15')});
   });
 
   testWidgets('Library: search sound effects and add one at the playhead with its credit', (tester) async {

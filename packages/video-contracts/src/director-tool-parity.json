@@ -59,7 +59,7 @@
     "setVoiceCleanup": "cleanVoice",
     "speedRamp": "speedRamp",
     "split": "splitClip",
-    "styleCaptions": "styleCaption",
+    "styleCaptions": "applyCaptionTemplate",
     "toggleWordHighlight": "emphasizeWord",
     "trim": "trimClip",
     "updateCaptionPosition": "updateTextStyle",

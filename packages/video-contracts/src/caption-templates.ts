@@ -254,7 +254,7 @@ export const CAPTION_TEMPLATES: readonly CaptionTemplate[] = [
     mood: "bold",
     energy: 4,
     languages: [...LATIN_LANGS, "hi"],
-    legacyIds: ["HORMOZI_BOUNCE"],
+    legacyIds: ["HORMOZI_BOUNCE", "ONE_WORD_PUNCH"],
     aliases: ["hormozi", "alex hormozi", "hormozi style", "hormozi viral", "punchy bounce", "punchy", "bounce", "viral bounce", "spotlight", "spotlight word"],
     v2: {
       typography: { fonts: { latin: "Montserrat", ...INDIC_FONTS }, weight: 900, sizePx: 64, sizeRangePx: range(64), case: "upper", lineHeight: 1.08 },
@@ -417,7 +417,7 @@ export const CAPTION_TEMPLATES: readonly CaptionTemplate[] = [
     mood: "luxury",
     energy: 2,
     languages: [...LATIN_LANGS],
-    legacyIds: ["IMAN_GADZHI_LUXE"],
+    legacyIds: ["IMAN_GADZHI_LUXE", "GOLDEN_LUXURY"],
     aliases: ["iman gadzhi", "gadzhi", "luxe", "luxury", "luxe minimal", "gold luxe", "quiet luxury", "luxe reveal"],
     v2: {
       typography: { fonts: { latin: "Playfair Display", devanagari: "Mukta" }, weight: 400, sizePx: 50, sizeRangePx: range(50), letterSpacingEm: 0.02, case: "none" },
