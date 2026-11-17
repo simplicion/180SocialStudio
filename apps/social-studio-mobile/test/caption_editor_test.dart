@@ -12,6 +12,7 @@ import 'package:social_studio_mobile/core/storage/key_value_store.dart';
 import 'package:social_studio_mobile/core/storage/token_store.dart';
 import 'package:social_studio_mobile/features/director/ai_director_service.dart';
 import 'package:social_studio_mobile/features/studio/caption_catalog.dart';
+import 'package:social_studio_mobile/features/studio/caption_v2_painter.dart';
 import 'package:social_studio_mobile/features/studio/caption_customize_sheet.dart';
 import 'package:social_studio_mobile/features/studio/caption_template_apply.dart';
 import 'package:social_studio_mobile/features/studio/caption_templates_panel.dart';
@@ -299,10 +300,15 @@ void main() {
       final first = CaptionCatalog.templates.first;
       expect(find.byKey(ValueKey('caption-template-${first.id}')), findsOneWidget);
       // The card draws the caption that is on screen at the loop time, from the user's own captions.
+      // v2 templates draw through the export-parity painter (no Text widget); v1 ones through Text.
+      Finder drawn(String word) => find.byWidgetPredicate((w) =>
+          (w is CustomPaint && w.painter is CaptionV2Painter && (w.painter as CaptionV2Painter).caption.text.contains(word)) ||
+          (w is RichText && w.text.toPlainText().contains(word)));
       await tester.pump(const Duration(milliseconds: 200));
-      expect(find.textContaining('hello', findRichText: true), findsWidgets);
+      expect(drawn('hello'), findsWidgets);
+      expect(drawn('big'), findsNothing, reason: 'only the caption on screen at the loop time is drawn');
       await tester.pump(const Duration(milliseconds: 1000));
-      expect(find.textContaining('big', findRichText: true), findsWidgets);
+      expect(drawn('big'), findsWidgets);
       await tester.tap(find.byKey(ValueKey('caption-template-${first.id}')));
       await tester.pump();
       expect(c.ir!.captions.map((x) => x.style['captionTemplate']).toSet(), {first.id});
