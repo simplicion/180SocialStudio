@@ -3,15 +3,15 @@ import type { StylePlaybook } from "./types";
 export const FAST_HYPE: StylePlaybook = {
   id: "fast_hype",
   version: "1.0.0",
-  label: "fast and punchy (MrBeast / Hormozi)",
+  label: "fast and punchy",
   matches: /\b(punch(y|ier)|hype|fast|energetic|high[- ]energy|viral|mr\.? ?beast|hormozi|tiktok|snappy|aggressive|exciting)\b/i,
   targets: {
     maxStaticSec: 3,
     cutsPerMin: [8, 30],
     zoomsPerMin: [2, 6],
     zoomScale: [1.15, 1.45],
-    captionTemplate: "HORMOZI_BOUNCE",
-    captionTemplatesOk: ["HORMOZI_BOUNCE", "MRBEAST_HYPE", "RAJ_SHAMANI_BOLD", "VARUN_MAYYA_BOX", "MUMBAI_BUBBLE"],
+    captionTemplate: "SPOTLIGHT_WORD",
+    captionTemplatesOk: ["SPOTLIGHT_WORD", "IMPACT_BOLD", "PODCAST_DUO", "WORD_BOX_SLIDE", "BOLD_DESI"],
     brollPerMin: [2, 8],
     brollMaxShare: 0.4,
     musicDb: [-24, -16],
@@ -29,7 +29,7 @@ export const FAST_HYPE: StylePlaybook = {
   examples: [
     {
       input: "40 s talking head, 9:16, 'make it punchy'",
-      ops: "removeSilences(0.35) + cleanFillers; autoCaptions(template HORMOZI_BOUNCE, highlight #FFE600, uppercase); addText hook title 0-2 s; addZoom ×3 on the punchlines (1.3x, 1.25x, 1.2x on the CTA); insertBroll ×2 on concrete nouns ('empty shop window', 'laptop sales dashboard'); addBackgroundMusic('upbeat hip hop', ducked, -20 dB); autoSoundDesign (whooshes on B-roll, pops on titles).",
+      ops: "removeSilences(0.35) + cleanFillers; autoCaptions(template SPOTLIGHT_WORD, highlight #FFE600, uppercase); addText hook title 0-2 s; addZoom ×3 on the punchlines (1.3x, 1.25x, 1.2x on the CTA); insertBroll ×2 on concrete nouns ('empty shop window', 'laptop sales dashboard'); addBackgroundMusic('upbeat hip hop', ducked, -20 dB); autoSoundDesign (whooshes on B-roll, pops on titles).",
     },
   ],
 };
@@ -37,15 +37,15 @@ export const FAST_HYPE: StylePlaybook = {
 export const CALM_EDUCATIONAL: StylePlaybook = {
   id: "calm_educational",
   version: "1.0.0",
-  label: "calm and clear (Ali Abdaal / Vox explainer)",
+  label: "calm and clear (explainer)",
   matches: /\b(calm|clean|educational|explain\w*|tutorial|how[- ]to|lesson|ali abdaal|vox|minimal|subtle|professional|relaxed|chill)\b/i,
   targets: {
     maxStaticSec: 7,
     cutsPerMin: [2, 10],
     zoomsPerMin: [0.5, 2.5],
     zoomScale: [1.08, 1.25],
-    captionTemplate: "ALI_ABDAAL_CLEAN",
-    captionTemplatesOk: ["ALI_ABDAAL_CLEAN", "VOX_EXPLAINER", "DAN_KOE_MINIMAL", "KARAOKE_FROSTED"],
+    captionTemplate: "GLASS_PILL",
+    captionTemplatesOk: ["GLASS_PILL", "KEYWORD_POP", "MINIMAL_CLEAN", "KARAOKE_SWEEP"],
     brollPerMin: [1, 4],
     brollMaxShare: 0.3,
     musicDb: [-28, -20],
@@ -62,7 +62,7 @@ export const CALM_EDUCATIONAL: StylePlaybook = {
   examples: [
     {
       input: "50 s 16:9 screen tutorial, 'clean this tutorial up and add captions'",
-      ops: "removeSilences(0.6); cut the repeated explanation of step two (story pass); autoCaptions(template ALI_ABDAAL_CLEAN, position low, 3 words); addText 'Step 1/2/3' at each step for 2 s; addZoom ×2 (1.2x) onto the button being clicked; addBackgroundMusic('soft lo-fi', ducked, -24 dB).",
+      ops: "removeSilences(0.6); cut the repeated explanation of step two (story pass); autoCaptions(template GLASS_PILL, position low, 3 words); addText 'Step 1/2/3' at each step for 2 s; addZoom ×2 (1.2x) onto the button being clicked; addBackgroundMusic('soft lo-fi', ducked, -24 dB).",
     },
   ],
 };
@@ -77,8 +77,8 @@ export const CINEMATIC_VLOG: StylePlaybook = {
     cutsPerMin: [6, 24],
     zoomsPerMin: [0, 1.5],
     zoomScale: [1.05, 1.2],
-    captionTemplate: "CINEMATIC_SUBTITLE",
-    captionTemplatesOk: ["CINEMATIC_SUBTITLE", "IMAN_GADZHI_LUXE", "DAN_KOE_MINIMAL", "ALI_ABDAAL_CLEAN"],
+    captionTemplate: "CINEMA_SUBTITLE",
+    captionTemplatesOk: ["CINEMA_SUBTITLE", "LUXE_REVEAL", "MINIMAL_CLEAN", "GLASS_PILL"],
     brollPerMin: [0, 3],
     brollMaxShare: 0.25,
     musicDb: [-20, -12],
@@ -95,7 +95,7 @@ export const CINEMATIC_VLOG: StylePlaybook = {
   examples: [
     {
       input: "40 s travel vlog, many handheld shots, little speech, 'make it a punchy travel vlog with music'",
-      ops: "removeSilences(0.8) only where nothing visual happens; addBackgroundMusic('upbeat travel acoustic', ducked, -16 dB); cuts on the beat; autoCaptions(template CINEMATIC_SUBTITLE) on the voice lines; applyFilter warm film grade; addTransition crossfades between locations; autoSoundDesign (whooshes on scene changes).",
+      ops: "removeSilences(0.8) only where nothing visual happens; addBackgroundMusic('upbeat travel acoustic', ducked, -16 dB); cuts on the beat; autoCaptions(template CINEMA_SUBTITLE) on the voice lines; applyFilter warm film grade; addTransition crossfades between locations; autoSoundDesign (whooshes on scene changes).",
     },
   ],
 };
@@ -110,8 +110,8 @@ export const PODCAST_CLIP: StylePlaybook = {
     cutsPerMin: [3, 14],
     zoomsPerMin: [1, 4],
     zoomScale: [1.1, 1.3],
-    captionTemplate: "KARAOKE_FROSTED",
-    captionTemplatesOk: ["KARAOKE_FROSTED", "HORMOZI_BOUNCE", "RAJ_SHAMANI_BOLD", "ALI_ABDAAL_CLEAN"],
+    captionTemplate: "KARAOKE_SWEEP",
+    captionTemplatesOk: ["KARAOKE_SWEEP", "SPOTLIGHT_WORD", "PODCAST_DUO", "GLASS_PILL"],
     brollPerMin: [0, 2],
     brollMaxShare: 0.15,
     musicDb: [-30, -22],
@@ -128,7 +128,7 @@ export const PODCAST_CLIP: StylePlaybook = {
   examples: [
     {
       input: "60 s two-speaker 16:9 interview, 'vertical clip for shorts with captions'",
-      ops: "reframeSubject(9:16, mode track); removeSilences(0.5) on the question/answer gaps; autoCaptions(template KARAOKE_FROSTED); addZoom ×2 (1.2x) on the guest's punchlines; addText hook title from the guest's first line, 0-2 s.",
+      ops: "reframeSubject(9:16, mode track); removeSilences(0.5) on the question/answer gaps; autoCaptions(template KARAOKE_SWEEP); addZoom ×2 (1.2x) on the guest's punchlines; addText hook title from the guest's first line, 0-2 s.",
     },
   ],
 };
