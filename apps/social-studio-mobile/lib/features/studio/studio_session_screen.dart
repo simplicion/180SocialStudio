@@ -2130,7 +2130,7 @@ class _DraggableCaptionState extends State<_DraggableCaption> {
 
   Widget _buildV2(BuildContext context) {
     final spec = widget.caption.styleV2!;
-    final faces = widget.controller.ir?.faceBoxes ?? const <FaceSample>[];
+    final faces = widget.controller.previewFaceBoxes;
     final key = '${widget.canvasWidth}:${identityHashCode(faces)}';
     if (_v2Renderers.length > 8) _v2Renderers.clear();
     final renderer = _v2Renderers.putIfAbsent(

@@ -21,6 +21,7 @@ import 'clip_analysis.dart';
 import 'sticker_maker.dart';
 import 'studio_drafts_service.dart';
 import 'timeline_merge.dart';
+import 'face_track.dart';
 import 'timeline_ops.dart';
 
 enum TranscriptState { idle, running, ready, failed }
@@ -329,6 +330,29 @@ class StudioController extends ChangeNotifier {
 
   /// On-device beat times of the source audio (source ms).
   List<int>? beatsMs;
+
+  /// Detected faces per asset: the primary source and every analysed clip.
+  Map<String, List<FaceSample>> get _facesByAsset => {
+        if (faces != null) 'primary': faces!,
+        for (final e in clipAnalyses.entries)
+          if (e.value.faces != null) e.key: e.value.faces!,
+      };
+
+  MobileEditIr? _faceBoxesFor;
+  List<FaceSample> _faceBoxes = const [];
+
+  /// The faces on the current timeline (output time, canvas fractions) for caption face avoidance in the preview;
+  /// the same mapping the export gets. Recomputed only when the timeline changes.
+  List<FaceSample> get previewFaceBoxes {
+    final current = ir;
+    if (current == null) return const [];
+    if (current.faceBoxes.isNotEmpty) return current.faceBoxes;
+    if (!identical(current, _faceBoxesFor)) {
+      _faceBoxesFor = current;
+      _faceBoxes = FaceTrack.toTimeline(current, _facesByAsset);
+    }
+    return _faceBoxes;
+  }
 
   /// Where fill crops centre: the dominant detected face, else the frame centre.
   ({double x, double y})? get faceFocus =>
@@ -2004,6 +2028,11 @@ class StudioController extends ChangeNotifier {
     final usedUrls =
         <String>[]; // resolved remote media in this export, for the credits
     var working = ir;
+    // Face positions on the output timeline, so v2 captions move off the speaker's face in the export too.
+    if (working.faceBoxes.isEmpty) {
+      final boxes = FaceTrack.toTimeline(working, _facesByAsset);
+      if (boxes.isNotEmpty) working = working.copyWith(faceBoxes: boxes);
+    }
     await materializeEmojiStickers(ir);
     for (final o in ir.overlays) {
       final kind = o.source['kind'];
