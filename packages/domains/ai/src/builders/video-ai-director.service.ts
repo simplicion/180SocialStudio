@@ -40,6 +40,7 @@ import {
   STILL_SOURCE_MS,
   graphFromMobileMedia,
   graphFromMobileMediaList,
+  shotsFromCuts,
   toMobileEditIR,
   resolveMusicFromCatalog,
   DirectorContext,
@@ -205,6 +206,11 @@ export class VideoAIDirectorService implements IUniversalBuilder<EditIR> {
           technicalMetadata,
           transcript: telemetryTranscript,
           silences: telemetrySilences,
+          // Scene cuts the desktop app detected: captions are grouped and timed so they never straddle one.
+          shots: shotsFromCuts(
+            (params.meta?.telemetry?.sceneCuts || []).map((c: any) => RationalTimeMath.toSeconds(c.timestamp)).filter((t: number) => Number.isFinite(t)),
+            technicalMetadata.durationSeconds
+          ),
         });
 
     // 3. Formulate Creative Edit Plan (LLM tool-calling first, labelled deterministic fallback)

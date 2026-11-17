@@ -1,12 +1,12 @@
 import { CreativeEditPlan, CreativeOperation } from "./creative-plan.schema";
-import { MediaIntelligenceGraph, TranscriptWordIntelligence, ClassifiedSilence, FaceTrack, MusicBeatTrack } from "./media-intelligence.schema";
+import { MediaIntelligenceGraph, TranscriptWordIntelligence, ClassifiedSilence, FaceTrack, MusicBeatTrack, ShotSegment } from "./media-intelligence.schema";
 import { EditIR } from "./edit-ir.schema";
 import { RationalTimeMath } from "./time";
 import { resolveCaptionTemplate } from "./caption-templates";
-import { captionKeywordIndex, detectCaptionEmphasis, smoothWordTimestamps, groupWordsForCaptions } from "./caption-enhance";
-import { applyCaptionCase, joinWordsForScript } from "./caption-style-v2";
+import { captionKeywordIndex, detectCaptionEmphasis, smoothWordTimestamps, groupWordsForCaptions, timeCaptionGroups } from "./caption-enhance";
+import { applyCaptionCase, joinWordsForScript, GroupingSchema, type CaptionGrouping } from "./caption-style-v2";
 import { MediaGraphBuilder } from "./media-graph";
-import { MobileMediaDescriptor, MobileFaceSample, mapSourceToTimeline, dominantFaceCenter, cropFor } from "./mobile-edit-ir";
+import { MobileMediaDescriptor, MobileFaceSample, mapSourceToTimeline, mainClipsSorted, dominantFaceCenter, cropFor } from "./mobile-edit-ir";
 
 /**
  * PlanExpander turns high-level, transcript-driven operations (removeSilences, cleanFillers,
@@ -115,7 +115,10 @@ export class PlanExpander {
             break;
           }
           const shotBoundaries = (graph.shots ?? []).map((s) => s.startSeconds).filter((s) => s > 0);
-          out.push({ type: "clearCaptions" }, ...this.captionOps(graph.transcript, op, shotBoundaries));
+          out.push({ type: "clearCaptions" }, ...this.captionOps(graph.transcript, op, shotBoundaries, {
+            fps: graph.technicalMetadata?.fps,
+            videoEndSec: graph.technicalMetadata?.durationSeconds,
+          }));
           break;
         }
         case "addZoom": {
@@ -251,7 +254,15 @@ export class PlanExpander {
   static captionOps(
     words: TranscriptWordIntelligence[],
     op: Extract<CreativeOperation, { type: "autoCaptions" }>,
-    shotBoundariesSec: number[] = []
+    shotBoundariesSec: number[] = [],
+    timing: {
+      /** Output frame rate (default 30): a caption appears at most one frame before its first word. */
+      fps?: number;
+      /** The timeline's end: no caption runs past it. */
+      videoEndSec?: number;
+      /** The caption style's grouping settings (captions v2 GroupingSchema); its defaults otherwise. */
+      grouping?: Partial<CaptionGrouping>;
+    } = {}
   ): CreativeOperation[] {
     const ops: CreativeOperation[] = [];
     if (words.length === 0) return ops;
@@ -263,19 +274,35 @@ export class PlanExpander {
     const uppercase = op.uppercase ?? tpl?.style.uppercase ?? false;
     const animation = op.animation ?? tpl?.style.animation ?? "word_pop";
 
+    const grouping = GroupingSchema.parse(timing.grouping ?? {});
+
     // 1. Smooth timestamps: enforce min duration (80ms) and eliminate negative/overlapping ranges
     const smoothed = smoothWordTimestamps(words);
 
-    // 2. Intelligent grouping by pauses, sentence terminals, shot cuts, line length and reading speed
+    // 2. Grouping by pauses, sentence terminals, shot changes, line length, duration and reading speed
     const groups = groupWordsForCaptions(smoothed, {
-      wordsPerCaption: op.wordsPerCaption,
+      wordsPerCaption: op.wordsPerCaption ?? grouping.maxWords,
       shotBoundariesSec,
+      breakOnShotChange: grouping.breakOnShotChange,
+      breakOnPunctuation: grouping.breakOnPunctuation,
+      maxPauseSec: grouping.pauseBreakMs / 1000,
+      maxDurationSec: grouping.maxDurationMs / 1000,
+      ...(grouping.maxCharsPerLine != null ? { maxCharsPerLine: grouping.maxCharsPerLine } : {}),
+      ...(grouping.maxCharsPerSecond != null ? { maxCharsPerSecond: grouping.maxCharsPerSecond } : {}),
+    }).filter((g) => g.length > 0);
+
+    // 3. On-screen times: <= 1 frame before the first word, >= minDurationMs where the gap allows, never into the next
+    //    caption, past a shot change or past the end.
+    const times = timeCaptionGroups(groups, {
+      fps: timing.fps,
+      minDurationSec: grouping.minDurationMs / 1000,
+      cutsSec: shotBoundariesSec,
+      videoEndSec: timing.videoEndSec,
     });
 
-    for (const chunk of groups) {
-      if (chunk.length === 0) continue;
-      const start = chunk[0].startSeconds;
-      const end = Math.max(chunk[chunk.length - 1].endSeconds, start + 0.3);
+    for (const [gi, chunk] of groups.entries()) {
+      const start = times[gi].startSec;
+      const end = Math.max(times[gi].endSec, start + 0.001);
 
       // Auto emphasis: one key word per caption, unless the transcript already marks one.
       const key = op.autoEmphasis !== false && !chunk.some((w) => w.isEmphasis) ? captionKeywordIndex(chunk.map((w) => w.word)) : null;
@@ -387,6 +414,11 @@ export function graphFromMobileMedia(media: MobileMediaDescriptor, editIR: EditI
 
   const faces = faceTrackFromMobile(media.faces, editIR, assetId);
   const beats = beatTrackFromMobile(media.beatsMs, editIR, assetId);
+  // The phone's on-device scene cuts (source ms) as timeline shots: captions do not straddle them.
+  const sceneCuts = (media.scenesMs ?? [])
+    .map((t) => mapSourceToTimeline(editIR, assetId, t / 1000))
+    .filter((t): t is number => t != null);
+  const shots = shotsFromCuts(sceneCuts, timelineDur);
 
   return MediaGraphBuilder.build({
     assetId,
@@ -404,7 +436,49 @@ export function graphFromMobileMedia(media: MobileMediaDescriptor, editIR: EditI
     silences,
     ...(faces ? { faces: [faces] } : {}),
     ...(beats ? { beats } : {}),
+    ...(shots.length ? { shots } : {}),
   });
+}
+
+/**
+ * Shots of the timeline (timeline seconds) between consecutive cuts. Cuts closer than 0.1 s are one cut; nothing is
+ * made when there is no cut (one shot carries no information).
+ */
+export function shotsFromCuts(cutsSec: number[], durationSec: number): ShotSegment[] {
+  const cuts: number[] = [];
+  for (const c of [...cutsSec].sort((a, b) => a - b)) {
+    if (c <= 0.05 || c >= durationSec - 0.05) continue;
+    if (cuts.length && c - cuts[cuts.length - 1] < 0.1) continue;
+    cuts.push(round3(c));
+  }
+  if (!cuts.length) return [];
+  const edges = [0, ...cuts, round3(durationSec)];
+  return edges.slice(0, -1).map((start, i) => ({
+    id: `shot_${i}`,
+    startSeconds: start,
+    endSeconds: edges[i + 1],
+    shotType: "UNKNOWN" as const,
+    visualActivity: 0.5,
+    cameraMovement: "STATIC" as const,
+    dominantSubjects: [],
+    brightness: 0.5,
+    motionScore: 0.5,
+    transitionScore: 1,
+  }));
+}
+
+/**
+ * Timeline times where the main track switches to another source file (a different camera / take): a shot change
+ * even when no scene detector ran. Jump cuts inside one source (a removed filler) are not counted: the same shot
+ * continues, and splitting captions at every removed "um" would break up sentences.
+ */
+export function sourceSwitchCutsSec(editIR: EditIR): number[] {
+  const clips = mainClipsSorted(editIR);
+  const out: number[] = [];
+  for (let i = 1; i < clips.length; i++) {
+    if (clips[i].assetId !== clips[i - 1].assetId) out.push(RationalTimeMath.toSeconds(clips[i].timelineRange.start));
+  }
+  return out;
 }
 
 /**
@@ -431,6 +505,11 @@ export function graphFromMobileMediaList(list: MobileMediaDescriptor[], editIR: 
   const beats = beatParts.length
     ? { ...beatParts[0], beatTimestamps: beatParts.flatMap((b) => b.beatTimestamps).sort((a, b) => a - b) }
     : null;
+  // Shot changes: each source's own scene cuts plus every switch from one source to another.
+  const shots = shotsFromCuts(
+    [...parts.flatMap((g) => (g.shots ?? []).map((s) => s.startSeconds)), ...sourceSwitchCutsSec(editIR)],
+    primary.technicalMetadata.durationSeconds
+  );
   return MediaGraphBuilder.build({
     assetId: list[0].assetId || "primary",
     technicalMetadata: primary.technicalMetadata,
@@ -438,6 +517,7 @@ export function graphFromMobileMediaList(list: MobileMediaDescriptor[], editIR: 
     silences,
     ...(faces.length ? { faces } : {}),
     ...(beats ? { beats } : {}),
+    ...(shots.length ? { shots } : {}),
   });
 }
 
