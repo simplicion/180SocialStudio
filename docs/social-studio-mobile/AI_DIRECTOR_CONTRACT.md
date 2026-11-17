@@ -1128,3 +1128,20 @@ pause-cut length), craft rules and a worked example.
 - **Scope**: a whole-edit phrase that also names features to ADD ("clean this tutorial up and add captions", "make it a
   punchy travel vlog with music", "turn this into a vertical clip for shorts with captions") is now `full_edit` with
   those features as explicit asks; a request that changes an existing item stays scoped.
+
+## Addendum 2026-11-18: forced alignment of word times (captions v2, Phase 5)
+
+`POST /transcribe` may refine the provider's word times against the audio, when the server runs the align worker
+(`services/align-worker`: wav2vec2 CTC forced alignment, Apache-2.0 models only, see its `LICENSES.md`).
+
+- The response adds `alignment`: `aligned` | `off` (not configured) | `unsupported` (no model for the language) |
+  `unavailable` (worker down / model loading) | `failed`. Word text never changes; only `startMs` / `endMs`. Any
+  problem keeps the provider's times; the transcript never fails because of alignment. Speakers are assigned after
+  alignment, on the refined times.
+- Only the audio /transcribe already received is sent to the worker (127.0.0.1); the video never leaves the phone.
+- Server: `ALIGN_WORKER_URL=http://127.0.0.1:4030`, secret `ALIGN_WORKER_SECRET` or, by default, `TREND_WORKER_SECRET`.
+  Optional: `ALIGN_TIMEOUT_MS` (backend, default 60000), worker `ALIGN_PRELOAD` (default `en`), `ALIGN_THREADS`,
+  `ALIGN_MAX_MODELS` (default 2), `ALIGN_MODEL_<LANG>`. Setup: `services/align-worker/setup.sh`, then
+  `pm2 start ecosystem.config.cjs --only 180socialstudio-align-worker`.
+- Languages with a model: en, de, es, fr, it, pt, ru. Measured accuracy: `scripts/caption-timing-eval/RESULTS.md`.
+- Tests: `services/align-worker/tests`, `word-alignment.test.ts` (backend, stubbed worker).
