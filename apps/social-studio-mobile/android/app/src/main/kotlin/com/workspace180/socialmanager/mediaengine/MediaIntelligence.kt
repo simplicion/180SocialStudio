@@ -306,6 +306,62 @@ object MediaIntelligence {
     }
 
     /**
+     * Loudness of [path] as it is, and after [PeakLimiter] at each of [gainsDb] (the export's limiter, ceiling
+     * [ceilingDb]), in one decode: `{integratedLufs, limited: {gainDb: integratedLufs?}}`.
+     */
+    fun measureLoudnessThroughLimiter(
+        path: String,
+        gainsDb: List<Double>,
+        ceilingDb: Double,
+        control: AnalysisControl,
+        /** Source ranges (µs, end exclusive) to measure: what the timeline actually plays. Null = the whole file. */
+        rangesUs: List<LongRange>? = null,
+    ): Map<String, Any?> {
+        MediaTools.requireFile(path)
+        val (ex, codec, format) = MediaTools.openAudioDecoder(path) ?: return mapOf("integratedLufs" to null, "limited" to emptyMap<Double, Double?>())
+        var rate = format.getInteger(MediaFormat.KEY_SAMPLE_RATE)
+        var channels = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
+        var plain = LoudnessMeter(rate, channels)
+        var limiters = gainsDb.map { PeakLimiter(it, ceilingDb, rate) }
+        var meters = gainsDb.map { LoudnessMeter(rate, channels) }
+        var fed = false
+        var scratch = DoubleArray(channels)
+        try {
+            MediaTools.decodePcm(ex, codec, format, onFormat = { r, c ->
+                if (!fed) {
+                    rate = r; channels = c
+                    plain = LoudnessMeter(r, c)
+                    limiters = gainsDb.map { PeakLimiter(it, ceilingDb, r) }
+                    meters = gainsDb.map { LoudnessMeter(r, c) }
+                    scratch = DoubleArray(c)
+                }
+            }, isCancelled = control.isCancelled) { tUs, frame, _ ->
+                if (rangesUs != null && rangesUs.none { tUs in it }) return@decodePcm
+                fed = true
+                plain.feed(frame)
+                if (scratch.size != frame.size) scratch = DoubleArray(frame.size)
+                for (i in limiters.indices) {
+                    System.arraycopy(frame, 0, scratch, 0, frame.size)
+                    limiters[i].process(scratch)
+                    meters[i].feed(scratch)
+                }
+            }
+        } catch (e: MediaEngineError) {
+            throw e
+        } catch (e: Exception) {
+            throw MediaEngineError("DECODE_FAILED", "Audio decode failed: ${e.message}")
+        } finally {
+            try { codec.stop() } catch (_: Exception) {}
+            codec.release()
+            ex.release()
+        }
+        return mapOf(
+            "integratedLufs" to plain.result()["integratedLufs"],
+            "limited" to gainsDb.indices.associate { gainsDb[it] to meters[it].result()["integratedLufs"] },
+        )
+    }
+
+    /**
      * Post-export QA of a rendered file: container facts, black and frozen frame ranges (every frame
      * decoded) and loudness. `frameScanned` is false when the device could not expose frames; the
      * black/frozen lists are then empty because they were not measured, not because they are clean.

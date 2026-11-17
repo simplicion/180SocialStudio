@@ -157,6 +157,27 @@ void main() {
     expect(after.truePeakDb!, lessThan(-1.0));
   });
 
+  testWidgets('the Studio export says how loud it really is: the predicted loudness matches the file', (tester) async {
+    final info = await MediaEngineService.getVideoInfo(speech);
+    final out = '${evidence.path}/loudness_reported.mp4';
+    RenderResult? r;
+    await for (final p in MediaEngineService.renderEditIr(
+        editIr: MobileEditIr.fromJson(singleClipIr('loud2', 10000, w: info.displayWidth, h: info.displayHeight)),
+        outputPath: out, assetPaths: {'primary': speech}, settings: ExportSettings.studioDefault)) {
+      if (p.result != null) r = p.result;
+    }
+    final source = await MediaEngineService.measureLoudness(sourcePath: speech);
+    final after = await MediaEngineService.measureLoudness(sourcePath: out);
+    final line = r!.warnings.firstWhere((w) => w.contains('LUFS'), orElse: () => '');
+    final m = RegExp(r'about (-?[0-9.]+) LUFS').firstMatch(line);
+    report['loudnessReported'] = {'warning': line, 'sourceLufs': source.integratedLufs, 'exportLufs': after.integratedLufs, 'truePeakDb': after.truePeakDb};
+    expect(m, isNotNull, reason: 'the export states the loudness it reaches: "$line"');
+    expect(after.integratedLufs!, closeTo(double.parse(m!.group(1)!), 1.5), reason: 'the stated loudness is what the file measures');
+    expect(after.integratedLufs!, greaterThan(source.integratedLufs! + 3), reason: 'the quiet voice is brought up');
+    expect(after.truePeakDb!, lessThan(-1.0));
+    expect(line, isNot(contains('to -14 LUFS')), reason: 'no claim of reaching the target that is not met');
+  });
+
   testWidgets('HDR10 (PQ) source is tone-mapped to SDR and reports it', (tester) async {
     final info = await MediaEngineService.getVideoInfo(hdr);
     final out = '${evidence.path}/hdr_export.mp4';

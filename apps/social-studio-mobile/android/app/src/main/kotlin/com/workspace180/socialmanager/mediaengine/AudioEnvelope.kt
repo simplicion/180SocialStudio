@@ -282,18 +282,14 @@ class VoiceCleanupProcessor : BaseAudioProcessor() {
  * Export loudness: a fixed make-up [gainDb] followed by a linked-channel peak limiter (instant attack, ~120 ms
  * release, ceiling [ceilingDb] dBFS, -2 so the AAC-encoded true peak stays under -1 dBTP), so normalising a quiet voice up to platform loudness never clips.
  */
-class LoudnessLimiterProcessor(gainDb: Double, ceilingDb: Double = -2.0) : BaseAudioProcessor() {
-    private val gain = Math.pow(10.0, gainDb / 20.0).toFloat()
-    private val ceiling = Math.pow(10.0, ceilingDb / 20.0).toFloat()
-    private var env = 1f
-    private var release = 0f
+class LoudnessLimiterProcessor(private val gainDb: Double, private val ceilingDb: Double = -2.0) : BaseAudioProcessor() {
+    private var limiter = PeakLimiter(gainDb, ceilingDb, 48000)
 
     override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
         if (inputAudioFormat.encoding != C.ENCODING_PCM_16BIT && inputAudioFormat.encoding != C.ENCODING_PCM_FLOAT) {
             throw AudioProcessor.UnhandledAudioFormatException(inputAudioFormat)
         }
-        // Gain recovers by this factor per sample: back to unity ~120 ms after a peak.
-        release = Math.pow(10.0, 1.0 / (0.12 * inputAudioFormat.sampleRate) * Math.log10(1.0 / 0.25)).toFloat()
+        limiter = PeakLimiter(gainDb, ceilingDb, inputAudioFormat.sampleRate)
         return inputAudioFormat
     }
 
@@ -306,25 +302,72 @@ class LoudnessLimiterProcessor(gainDb: Double, ceilingDb: Double = -2.0) : BaseA
         val pcm16 = fmt.encoding == C.ENCODING_PCM_16BIT
         val input = inputBuffer.order(ByteOrder.nativeOrder())
         val out = replaceOutputBuffer(remaining)
-        val frame = FloatArray(channels)
+        val frame = DoubleArray(channels)
         for (f in 0 until frames) {
-            var peak = 0f
+            for (ch in 0 until channels) frame[ch] = if (pcm16) input.short / 32768.0 else input.float.toDouble()
+            limiter.process(frame)
             for (ch in 0 until channels) {
-                val v = (if (pcm16) input.short / 32768f else input.float) * gain
-                frame[ch] = v
-                peak = maxOf(peak, kotlin.math.abs(v))
-            }
-            env = minOf(1f, env * release)
-            if (peak * env > ceiling) env = ceiling / peak
-            for (ch in 0 until channels) {
-                val v = frame[ch] * env
-                if (pcm16) out.putShort((v * 32767f).toInt().coerceIn(-32768, 32767).toShort()) else out.putFloat(v)
+                val v = frame[ch]
+                if (pcm16) out.putShort((v * 32767.0).toInt().coerceIn(-32768, 32767).toShort()) else out.putFloat(v.toFloat())
             }
         }
         out.flip()
     }
 
     override fun onFlush(streamMetadata: AudioProcessor.StreamMetadata) {
-        env = 1f
+        limiter.reset()
+    }
+}
+
+/**
+ * The export limiter's maths, per frame: make-up [gainDb], then a linked-channel peak limiter (instant attack, gain
+ * back to unity ~120 ms after a peak, sample-peak ceiling [ceilingDb]). Used by [LoudnessLimiterProcessor] and by the
+ * loudness pass, which runs the voice through it to predict the exported loudness.
+ */
+class PeakLimiter(gainDb: Double, ceilingDb: Double, sampleRate: Int) {
+    private val gain = Math.pow(10.0, gainDb / 20.0)
+    private val ceiling = Math.pow(10.0, ceilingDb / 20.0)
+    private val release = Math.pow(10.0, 1.0 / (0.12 * sampleRate.coerceAtLeast(1)) * Math.log10(1.0 / 0.25))
+    private var env = 1.0
+
+    fun reset() {
+        env = 1.0
+    }
+
+    /** Applies the gain and the limiter to [frame] (one sample per channel) in place. */
+    fun process(frame: DoubleArray) {
+        var peak = 0.0
+        for (ch in frame.indices) {
+            frame[ch] *= gain
+            peak = maxOf(peak, kotlin.math.abs(frame[ch]))
+        }
+        env = minOf(1.0, env * release)
+        if (peak * env > ceiling) env = ceiling / peak
+        for (ch in frame.indices) frame[ch] *= env
+    }
+}
+
+/**
+ * Picks the make-up gain whose LIMITED loudness reaches [target]: [limitedLufs] maps candidate gains (dB) to the
+ * integrated loudness of the voice after [PeakLimiter] at that gain. Returns the smallest candidate within 0.5 LU of
+ * the target (interpolating between the two candidates around it), or the loudest one when none gets there.
+ */
+object LoudnessPlan {
+    data class Choice(val gainDb: Double, val predictedLufs: Double)
+
+    fun choose(target: Double, limitedLufs: Map<Double, Double?>): Choice? {
+        val pts = limitedLufs.entries.mapNotNull { (g, l) -> l?.let { g to it } }.sortedBy { it.first }
+        if (pts.isEmpty()) return null
+        pts.firstOrNull { kotlin.math.abs(it.second - target) <= 0.5 }?.let { return Choice(it.first, it.second) }
+        for (i in 1 until pts.size) {
+            val (g0, l0) = pts[i - 1]
+            val (g1, l1) = pts[i]
+            if (l0 < target && l1 >= target && l1 > l0) {
+                val g = g0 + (g1 - g0) * (target - l0) / (l1 - l0)
+                return Choice(g, target)
+            }
+        }
+        // Below the target everywhere: the loudest; above it everywhere: the quietest.
+        return if (pts.last().second < target) Choice(pts.last().first, pts.last().second) else Choice(pts.first().first, pts.first().second)
     }
 }

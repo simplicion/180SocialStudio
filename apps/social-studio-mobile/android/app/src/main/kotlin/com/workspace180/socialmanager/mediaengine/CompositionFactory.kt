@@ -86,6 +86,8 @@ class CompositionFactory internal constructor(
     private val isCancelled: () -> Boolean = { false },
 ) {
     companion object {
+        /** Sample-peak ceiling of the export limiter (-2 keeps the AAC-encoded true peak under -1 dBTP). */
+        const val LIMITER_CEILING_DB = -2.0
         /** Layers on screen at the same moment (each is one compositor input). */
         const val MAX_LAYER_TRACKS = 4
         val IMAGE_EXTENSIONS = setOf("jpg", "jpeg", "png", "webp")
@@ -463,7 +465,7 @@ class CompositionFactory internal constructor(
         val layerTracks = layerTracks()
         val allSequences = if (layerTracks.isEmpty()) sequences else layerTrackSequences(layerTracks) + sequences + layerAudioSequences()
         return Composition.Builder(allSequences)
-            .setEffects(Effects(listOfNotNull(loudnessGainDb?.let { LoudnessLimiterProcessor(it) }), compositionFx))
+            .setEffects(Effects(listOfNotNull(loudnessGainDb?.let { LoudnessLimiterProcessor(it, LIMITER_CEILING_DB) }), compositionFx))
             .apply { if (layerTracks.isNotEmpty()) setVideoCompositorSettings(layerCompositor(layerTracks)) }
             // Output is 8-bit SDR H.264: tone-map only if an input is actually HDR.
             // On SDR sources, keeping HDR mode avoids unsupported OpenGL ES tone-mapping shader errors.
@@ -882,17 +884,42 @@ class CompositionFactory internal constructor(
         if (mode == CompositionMode.PREVIEW) return null
         val target = options.loudnessTargetLufs ?: return null
         if (ir.audio.originalVolumeDb < -20) return null
-        val voice = ir.clips.firstOrNull { it.volumeDb > -20 }?.let { assetPath(it.assetId) } ?: return null
+        val voiceClip = ir.clips.firstOrNull { it.volumeDb > -20 } ?: return null
+        val voice = assetPath(voiceClip.assetId)
         if (!probe(voice).hasAudio) return null
+        // Measure only what the timeline plays of that file: a cut or trimmed clip can be far quieter (or louder)
+        // than the whole recording (QA: the first 10 s of a 30 s file measured 6 dB under the whole file).
+        val ranges = ir.clips.filter { it.assetId == voiceClip.assetId && it.volumeDb > -20 }.map { it.sourceStartMs * 1000L until it.sourceEndMs * 1000L }
         val lufs = try {
-            (MediaIntelligence.measureLoudness(voice, AnalysisControl(isCancelled = isCancelled))["integratedLufs"] as Number?)?.toDouble()
+            (MediaIntelligence.measureLoudnessThroughLimiter(voice, emptyList(), LIMITER_CEILING_DB, AnalysisControl(isCancelled = isCancelled), ranges)["integratedLufs"] as Number?)?.toDouble()
         } catch (e: Exception) {
             synchronized(warnings) { warnings.add("loudness could not be measured (${e.message}); levels left as recorded") }
             null
         } ?: return null
-        val gain = (target - lufs).coerceIn(-6.0, 18.0)
-        if (kotlin.math.abs(gain) < 0.5) return null
-        synchronized(warnings) { warnings.add("voice measured at ${"%.1f".format(lufs)} LUFS; mix normalised by ${"%+.1f".format(gain)} dB to ${"%.0f".format(target)} LUFS (peaks limited to -2 dBFS)") }
+        val naive = (target - lufs).coerceIn(-6.0, 18.0)
+        if (kotlin.math.abs(naive) < 0.5) return null
+        if (naive <= 0) {
+            synchronized(warnings) { warnings.add("voice measured at ${"%.1f".format(lufs)} LUFS; mix lowered by ${"%.1f".format(-naive)} dB to ${"%.0f".format(target)} LUFS") }
+            return naive
+        }
+        // Boosting: the limiter holds the peaks down and costs loudness (a dynamic voice loses several dB), so run
+        // the voice through the export's own limiter at a few gains and take the one that lands on the target.
+        val candidates = (0..4).map { (naive + it * 2.0).coerceAtMost(18.0) }.distinct()
+        val plan = try {
+            val r = MediaIntelligence.measureLoudnessThroughLimiter(voice, candidates, LIMITER_CEILING_DB, AnalysisControl(isCancelled = isCancelled), ranges)
+            @Suppress("UNCHECKED_CAST")
+            LoudnessPlan.choose(target, r["limited"] as Map<Double, Double?>)
+        } catch (e: Exception) {
+            null
+        }
+        val gain = plan?.gainDb ?: naive
+        val predicted = plan?.predictedLufs
+        synchronized(warnings) {
+            warnings.add(
+                "voice measured at ${"%.1f".format(lufs)} LUFS; boosted by ${"%+.1f".format(gain)} dB with peaks limited to ${"%.0f".format(LIMITER_CEILING_DB)} dBFS" +
+                    (if (predicted == null) " (result not predicted)" else ", about ${"%.1f".format(predicted)} LUFS (target ${"%.0f".format(target)})"),
+            )
+        }
         return gain
     }
 
