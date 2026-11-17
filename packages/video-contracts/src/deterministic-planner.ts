@@ -8,7 +8,7 @@ import { MediaIntelligenceGraph } from "./media-intelligence.schema";
 import { MediaAssetDescriptor } from "./project.schema";
 import { DirectorStyleResolver } from "./director-style-resolver";
 import { DirectorIntentClassifier } from "./director-intent-classifier";
-import { findCaptionTemplateInText } from "./caption-templates";
+import { findCaptionTemplateInText, chooseCaptionTemplate } from "./caption-templates";
 
 export class DeterministicPlanner {
   /**
@@ -283,16 +283,20 @@ export class DeterministicPlanner {
       // Existing captions are the creator's: a full restyle only when they named a look ("hormozi style"); otherwise
       // only the fields asked for change ("make captions yellow" = the colour), and nothing at all when none were.
       const colour = classifiedScope.captionColorOverride;
-      if (namedTemplate || colour) {
+      if (namedTemplate) {
         operations.push({
-          type: "styleCaption",
-          ...(namedTemplate ? { preset: namedTemplate.id } : {}),
-          ...(colour ? { highlightColor: colour } : {}),
+          type: "applyCaptionTemplate",
+          templateId: namedTemplate.id as any,
+          ...(colour ? { overrides: { colors: { active: colour.slice(0, 7) } } } : {}),
         });
+      } else if (colour) {
+        operations.push({ type: "styleCaption", highlightColor: colour });
       }
     } else if (wantsCaptions && graph.transcript.length > 0) {
       const words = graph.transcript;
       const chunkSize = targetAspect === "9:16" ? 4 : 5;
+      // Captions v2 selection policy: a named look, else one for the language and content (else the classic look).
+      const chosenTemplate = chooseCaptionTemplate({ prompt, transcriptText: words.map((w) => w.word).join(" "), energy: isHighEnergy ? "high" : undefined });
 
       for (let i = 0; i < words.length; i += chunkSize) {
         const slice = words.slice(i, i + chunkSize);
@@ -316,6 +320,7 @@ export class DeterministicPlanner {
             color: (w.isEmphasis || wIdx === 0) ? activeCaptionHighlight : (resolvedStyle.captionColors.primary || "#FFFFFF"),
           })),
           stylePreset: resolvedStyle.captionPreset === "HORMOZI_BOUNCE" ? "HORMOZI_BOUNCE" : "ALI_ABDAAL_CLEAN",
+          ...(chosenTemplate ? { template: chosenTemplate.id } : {}),
         });
       }
     }
@@ -565,7 +570,7 @@ export class DeterministicPlanner {
 
           operations.push({
             type: "renderMotionGraphic",
-            templateId: "hormozi-counter",
+            templateId: "metric-counter",
             timelineStartSec: Math.round(w.startSeconds * 100) / 100,
             durationSec: 3.5,
             position: "lower_third",
@@ -581,7 +586,7 @@ export class DeterministicPlanner {
           const nextWords = graph.transcript.slice(i, Math.min(graph.transcript.length, i + 6)).map((ww) => ww.word).join(" ").trim();
           operations.push({
             type: "renderMotionGraphic",
-            templateId: "vox-explainer",
+            templateId: "explainer-card",
             timelineStartSec: Math.round(w.startSeconds * 100) / 100,
             durationSec: 3.8,
             position: "lower_third",

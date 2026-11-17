@@ -14,6 +14,8 @@ import {
 import { RationalTimeMath } from "./time";
 import { resolveCaptionTemplate } from "./caption-templates";
 import { captionFontFor } from "./caption-enhance";
+import { applyCaptionOverrides } from "./caption-style-v2";
+import { applyTemplateToCaptions, flatStyleFromSpec, ownedFieldsOfCaption, refreshCaptionProvenance } from "./caption-template-apply";
 import { MediaAssetDescriptor } from "./project.schema";
 import { applyUpdateOp } from "./update-ops";
 
@@ -109,6 +111,8 @@ export class EditIRCompiler {
     const moveOps: CreativeOperation[] = [];
     const insertOps: CreativeOperation[] = [];
     const baseDurationSec = RationalTimeMath.toSeconds(baseIR.meta.totalDuration);
+    // The caption fields the creator set by hand, as of the start of this turn (a template change keeps them).
+    const ownedCaptionFields = new Map(baseIR.tracks.captionTrack.map((c) => [c.id, ownedFieldsOfCaption(c)]));
 
     for (const op of plan.operations) {
       try {
@@ -239,8 +243,44 @@ export class EditIRCompiler {
               rejectedOperations.push("styleCaption: there are no captions to restyle (titles are changed separately)");
               break;
             }
+            const named = op.preset ? resolveCaptionTemplate(op.preset) : undefined;
+            if (named) {
+              // A named template: the same path as applyCaptionTemplate (the creator's hand-set fields are kept).
+              const r = applyTemplateToCaptions(updated, named, {
+                owned: ownedCaptionFields,
+                overrides: {
+                  ...(op.highlightColor || op.textColor ? { colors: { ...(op.textColor ? { text: op.textColor.slice(0, 7) } : {}), ...(op.highlightColor ? { active: op.highlightColor.slice(0, 7) } : {}) } } : {}),
+                  ...(op.fontSize ? { sizePx: op.fontSize } : {}),
+                  ...(op.uppercase !== undefined ? { case: op.uppercase ? ("upper" as const) : ("none" as const) } : {}),
+                  ...(op.position ? { position: { preset: "custom" as const, x: Math.min(1, Math.max(0, op.position.x)), y: Math.min(1, Math.max(0, op.position.y)) } } : {}),
+                },
+              });
+              for (const f of r.rejectedFields) rejectedOperations.push(`styleCaption: ${f} is fixed on the ${named.name} template, so it was kept`);
+              appliedOperations.push(`Styled captions with the ${named.name} template${r.keptUserFields ? ` (kept your own changes on ${r.keptUserFields} caption(s))` : ""}`);
+              break;
+            }
             this.applyStyleCaption(updated, op.preset, op.highlightColor, op.position, { textColor: op.textColor, fontSize: op.fontSize, uppercase: op.uppercase });
             appliedOperations.push(op.preset ? `Styled captions with preset ${op.preset}` : "Restyled the captions");
+            break;
+          }
+          case "applyCaptionTemplate": {
+            const tpl = resolveCaptionTemplate(op.templateId);
+            if (!tpl) {
+              rejectedOperations.push(`applyCaptionTemplate: unknown template ${op.templateId}`);
+              break;
+            }
+            if (!updated.tracks.captionTrack.some((c) => c.role !== "title" && (!op.captionIds || op.captionIds.includes(c.id)))) {
+              rejectedOperations.push("applyCaptionTemplate: there are no captions to style (add captions with autoCaptions first)");
+              break;
+            }
+            const r = applyTemplateToCaptions(updated, tpl, { overrides: op.overrides, emphasis: op.emphasis, captionIds: op.captionIds, owned: ownedCaptionFields });
+            for (const f of r.rejectedFields) rejectedOperations.push(`applyCaptionTemplate: ${f} is not editable on the ${tpl.name} template, so the template's own ${f} was kept`);
+            for (const e of r.emphasisRejected) rejectedOperations.push(`applyCaptionTemplate ${e}`);
+            appliedOperations.push(
+              `Applied the ${tpl.name} caption template to ${r.styled} caption(s)` +
+                (r.emphasised ? `, emphasised ${r.emphasised} word(s)` : "") +
+                (r.keptUserFields ? `; kept your own colour/size/position on ${r.keptUserFields}` : "")
+            );
             break;
           }
           case "translateCaptions": {
@@ -351,10 +391,10 @@ export class EditIRCompiler {
               break;
             }
             const dur = Math.min(op.durationSec, total - op.timelineStartSec);
-            const accent = op.accentColor ?? (op.templateId === "hormozi-counter" ? "#FFE600" : op.templateId === "saas-callout" ? "#3B82F6" : "#111111CC");
+            const accent = op.accentColor ?? (op.templateId === "metric-counter" ? "#FFE600" : op.templateId === "saas-callout" ? "#3B82F6" : "#111111CC");
             // Positions are -1..1 offsets from centre (addText).
             const at = { lower_third: { x: 0, y: 0.45 }, center: { x: 0, y: 0 }, top_right: { x: 0.45, y: -0.6 }, bottom_left: { x: -0.45, y: 0.55 } }[op.position];
-            const motion = op.templateId === "quote-reveal" ? { type: "typewriter" as const, durationMs: 700 } : op.templateId === "hormozi-counter" ? { type: "pop" as const, durationMs: 300 } : { type: "slide_up" as const, durationMs: 350 };
+            const motion = op.templateId === "quote-reveal" ? { type: "typewriter" as const, durationMs: 700 } : op.templateId === "metric-counter" ? { type: "pop" as const, durationMs: 300 } : { type: "slide_up" as const, durationMs: 350 };
             const big = op.metricValue ? `${op.metricValue}` : op.title;
             const detail = op.metricValue ? [op.metricLabel ?? op.title, op.subtitle].filter(Boolean).join(" · ") : op.subtitle;
             const tag = op.tag ? `${op.tag.toUpperCase()} · ` : "";
@@ -363,10 +403,10 @@ export class EditIRCompiler {
               timelineStartSec: op.timelineStartSec,
               durationSec: dur,
               position: at,
-              fontFamily: op.templateId === "hormozi-counter" ? "Anton" : op.templateId === "vox-explainer" ? "Montserrat" : "Poppins",
-              color: op.templateId === "hormozi-counter" ? "#111111" : "#FFFFFF",
+              fontFamily: op.templateId === "metric-counter" ? "Anton" : op.templateId === "explainer-card" ? "Montserrat" : "Poppins",
+              color: op.templateId === "metric-counter" ? "#111111" : "#FFFFFF",
               backgroundColor: accent,
-              uppercase: op.templateId === "hormozi-counter" || op.templateId === "vox-explainer",
+              uppercase: op.templateId === "metric-counter" || op.templateId === "explainer-card",
               style: { fontSize: op.metricValue ? 110 : 72 },
               enter: motion,
               exit: { type: "fade", durationMs: 250 },
@@ -617,6 +657,9 @@ export class EditIRCompiler {
     if (count("addBackgroundMusic") > 0) actionBadges.push("Background music");
     if (count("duckAudio") > 0) actionBadges.push("Speech-ducked music");
     if (count("applyFilter") > 0) actionBadges.push("Colour filter");
+
+    // Field-level provenance of caption looks: what the Director wrote this turn, and what the creator owns.
+    refreshCaptionProvenance(baseIR, updated);
 
     return { updatedEditIR: updated, appliedOperations, rejectedOperations, actionBadges };
   }
@@ -1350,6 +1393,32 @@ export class EditIRCompiler {
         ...(tpl ? { presetLabel: op.template } : {}),
       },
     };
+    const template = resolveCaptionTemplate(op.template);
+    if (template) {
+      // Captions v2: the template's full spec with the op's light changes, and the flat fields written from it.
+      const t = template.style;
+      const colors = {
+        ...(op.textColor && op.textColor.toUpperCase() !== t.textColor.toUpperCase() ? { text: String(op.textColor).slice(0, 7) } : {}),
+        ...(op.highlightColor && op.highlightColor.toUpperCase() !== t.highlightColor.toUpperCase() ? { active: String(op.highlightColor).slice(0, 7) } : {}),
+      };
+      const { spec } = applyCaptionOverrides(template.styleV2, {
+        ...(Object.keys(colors).length ? { colors } : {}),
+        ...(op.fontSize ? { sizePx: op.fontSize } : {}),
+        ...(op.position ? { position: { preset: "custom" as const, x: op.position.x, y: op.position.y } } : {}),
+      });
+      const flat = flatStyleFromSpec(spec, template.id, op.text);
+      caption.style = {
+        ...caption.style,
+        ...flat,
+        // The words were already cased and coloured by the expander; position stays where the op put it.
+        ...(op.position ? { position: op.position } : {}),
+        ...(op.background ? { pillBackground: op.background } : {}),
+        preset: caption.style.preset,
+      };
+      for (const k of Object.keys(caption.style) as Array<keyof CaptionSegment["style"]>) if (caption.style[k] === undefined) delete caption.style[k];
+      for (const w of caption.words) if (w.color && !w.highlight) delete w.color;
+      for (const w of caption.words) if (w.highlight && !op.words.find((x: any) => x.word === w.word && x.color)) w.color = caption.style.highlightColor;
+    }
     editIR.tracks.captionTrack.push(caption);
   }
 

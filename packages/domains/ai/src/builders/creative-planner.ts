@@ -116,7 +116,7 @@ const PROPOSAL_PHASES = new Set(["recommend", "gather", "confirm"]);
  * that cannot be done (captions without a transcript) are not required.
  */
 const COVERAGE_RULES: Array<{ label: string; ask: RegExp; ops: string[]; needsTranscript?: boolean; removal?: boolean }> = [
-  { label: "captions", ask: /\b(captions?|subtitles?)\b/, ops: ["autoCaptions", "styleCaption", "addCaption", "updateTextStyle", "editText"], needsTranscript: true },
+  { label: "captions", ask: /\b(captions?|subtitles?)\b/, ops: ["autoCaptions", "applyCaptionTemplate", "styleCaption", "addCaption", "updateTextStyle", "editText"], needsTranscript: true },
   { label: "caption translation", ask: /\b(translate (the |my )?(captions?|subtitles?)|(captions?|subtitles?) (in|into|to) (hinglish|roman|english|hindi|tamil|telugu|bengali|marathi|gujarati|urdu|punjabi|spanish|french)|hinglish (captions?|subtitles?))\b/, ops: ["translateCaptions"], needsTranscript: true },
   { label: "zoom / punch-in", ask: /\b(zooms?|punch[- ]?ins?)\b/, ops: ["addZoom", "reframeSubject", "updateZoom"] },
   { label: "B-roll", ask: /\b(b[- ]?roll|cutaways?|stock (clip|footage|video))\b/, ops: ["insertBroll", "updateOverlay"] },

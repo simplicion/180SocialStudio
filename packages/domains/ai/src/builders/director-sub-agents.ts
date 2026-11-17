@@ -89,7 +89,7 @@ export function motionGraphicAgent(args: {
         out.push(
           op({
             type: "renderMotionGraphic",
-            templateId: "hormozi-counter",
+            templateId: "metric-counter",
             timelineStartSec: round2(t),
             durationSec: 3.5,
             position: "lower_third",
@@ -117,7 +117,7 @@ export function motionGraphicAgent(args: {
         out.push(
           op({
             type: "renderMotionGraphic",
-            templateId: "vox-explainer",
+            templateId: "explainer-card",
             timelineStartSec: round2(t),
             durationSec: 3.8,
             position: "lower_third",

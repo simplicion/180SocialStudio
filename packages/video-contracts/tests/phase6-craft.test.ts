@@ -163,7 +163,7 @@ test("frame-accurate cuts (6.7): a cut at odd milliseconds lands on frame bounda
 
 test("renderMotionGraphic is drawn as an animated title card (it used to be rejected every time)", () => {
   const { out, r } = run(wide({ audio: { ...wide().audio, music: [] } }), [
-    { name: "renderMotionGraphic", args: { timelineStartSec: 2, durationSec: 3, templateId: "hormozi-counter", title: "Revenue", metricValue: "$100K+", metricLabel: "in 90 days", tag: "proven" } },
+    { name: "renderMotionGraphic", args: { timelineStartSec: 2, durationSec: 3, templateId: "metric-counter", title: "Revenue", metricValue: "$100K+", metricLabel: "in 90 days", tag: "proven" } },
   ]);
   assert.equal(r.rejectedOperations.length, 0, r.rejectedOperations.join("; "));
   const titles = out.captions.filter((c) => c.kind === "text");

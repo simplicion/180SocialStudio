@@ -18,7 +18,7 @@ const graph: any = {
   transcript: [w("w1", "Here", 0.5), w("w2", "is", 0.9), w("w3", "the", 1.3), w("w4", "secret", 1.7)],
   silences: [], faces: [], audioEvents: [], brollOpportunities: [], fillerWords: [], sceneChanges: [],
 };
-const captionOps = (prompt: string) => DeterministicPlanner.plan(prompt, context, graph).operations.filter((o) => o.type === "styleCaption" || o.type === "addCaption" || o.type === "autoCaptions");
+const captionOps = (prompt: string) => DeterministicPlanner.plan(prompt, context, graph).operations.filter((o) => o.type === "styleCaption" || o.type === "applyCaptionTemplate" || o.type === "addCaption" || o.type === "autoCaptions");
 
 test("'make the captions yellow' on existing captions patches only the colour (no preset restyle)", () => {
   const ops = captionOps("make the captions yellow");
@@ -31,6 +31,6 @@ test("'make the captions yellow' on existing captions patches only the colour (n
 
 test("naming a look restyles existing captions with that template", () => {
   const op = captionOps("give the captions the hormozi style")[0] as any;
-  assert.equal(op?.type, "styleCaption");
-  assert.equal(op.preset, "HORMOZI_BOUNCE");
+  assert.equal(op?.type, "applyCaptionTemplate");
+  assert.equal(op.templateId, "SPOTLIGHT_WORD");
 });

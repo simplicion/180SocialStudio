@@ -258,6 +258,8 @@ export const CaptionStyleV2Schema = z.object({
   grouping: GroupingSchema.default({}),
   emphasis: EmphasisSchema.default({}),
   editable: z.array(z.enum(EDITABLE_FIELDS)).default([...EDITABLE_FIELDS]),
+  /** Fill colour per diarized speaker (speaker 0, 1, ...); absent = every speaker uses the fill. */
+  speakerColors: z.array(ColorHexSchema).min(2).max(4).optional(),
 });
 export type CaptionStyleV2 = z.infer<typeof CaptionStyleV2Schema>;
 export type CaptionStyleV2Input = z.input<typeof CaptionStyleV2Schema>;
@@ -302,7 +304,12 @@ export function applyCaptionOverrides(spec: CaptionStyleV2, overrides: CaptionOv
       case "colors": {
         const c = o.colors!;
         if (c.text) out.paint.fill = out.paint.fill.type === "solid" ? { type: "solid", color: c.text } : { ...out.paint.fill, top: c.text };
-        if (c.active) out.words.active = { ...out.words.active, color: c.active };
+        // A box-highlight template's accent is the box behind the spoken word, not the word's own colour.
+        if (c.active) {
+          out.words.active = out.words.active.background && out.words.active.color === null
+            ? { ...out.words.active, background: { ...out.words.active.background, color: c.active } }
+            : { ...out.words.active, color: c.active };
+        }
         if (c.stroke && out.paint.strokes.length > 0) out.paint.strokes = out.paint.strokes.map((s, i) => (i === 0 ? { ...s, color: c.stroke! } : s));
         if (c.background) out.paint.background = { ...out.paint.background, color: c.background };
         if (c.emphasis) out.emphasis.colors = { ...out.emphasis.colors, emphasis: c.emphasis };

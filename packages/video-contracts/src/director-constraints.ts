@@ -191,7 +191,7 @@ export function extractConstraintsFromPrompt(prompt: string, durationMs: number)
 /** The operations each locked track forbids. */
 export const TRACK_OPS: Record<DirectorLockableTrack, readonly string[]> = {
   music: ["addBackgroundMusic", "duckAudio", "updateMusic", "changeMusicTrack"],
-  captions: ["autoCaptions", "addCaption", "styleCaption", "translateCaptions", "emphasizeWord", "clearCaptions"],
+  captions: ["autoCaptions", "addCaption", "styleCaption", "applyCaptionTemplate", "translateCaptions", "emphasizeWord", "clearCaptions"],
   broll: ["insertBroll", "addImage", "addSticker", "updateOverlay", "setKeyframe", "removeKeyframe"],
   sfx: ["addSoundEffect", "autoSoundDesign", "setSfxVolume"],
   effects: ["addEffect", "applyFilter", "addTransition", "updateEffect"],
@@ -470,6 +470,7 @@ export const SAFE_OPS = [
   "cleanFillers",
   "autoCaptions",
   "styleCaption",
+  "applyCaptionTemplate",
   "adjustVolume",
   "duckAudio",
   "reframeSubject",
@@ -485,7 +486,7 @@ export const isSafeOp = (type: string): type is SafeOp => (SAFE_OPS as readonly 
  * removals, replacing music, regenerating captions) is a proposal the creator applies.
  */
 export const ADDITIVE_OPS = [
-  "addCaption", "styleCaption", "emphasizeWord", "translateCaptions", "addText", "addZoom", "addEffect", "addSticker",
+  "addCaption", "styleCaption", "applyCaptionTemplate", "emphasizeWord", "translateCaptions", "addText", "addZoom", "addEffect", "addSticker",
   "insertBroll", "addSoundEffect", "autoSoundDesign", "addNarration", "adjustVolume", "duckAudio", "applyFilter",
   "fadeClipAudio", "cleanVoice", "addTransition", "autoCaptions", "addBackgroundMusic",
   // Phase 2 update tools: they change one named item the way the creator asked (look, level, timing, framing).
