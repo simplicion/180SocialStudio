@@ -1,5 +1,17 @@
 import { CAPTION_ANIMATIONS } from "./caption-templates";
-import { CaptionStyleV2Schema } from "./caption-style-v2";
+import { CaptionStyleV2Schema, CaptionOverridesSchema } from "./caption-style-v2";
+import { TemplateAppliedSchema, UserEditedSchema } from "./caption-provenance";
+import { mobileCaptionStyleFromV2 } from "./caption-templates";
+
+/** The v2-only fields of a phone caption style, derived from its spec (the flat v1 fields come from the caption). */
+const V2_EXTRA_KEYS = ["stroke2Color", "stroke2WidthPx", "gradient", "glowRadiusPx", "glowColor", "glowStrength", "safeZone", "faceAvoid", "maxLines", "backgroundMode", "backgroundOpacity", "styleV2"] as const;
+function v2Extras(style: { styleV2?: unknown; presetLabel?: string; preset?: string }): Record<string, unknown> {
+  if (!style.styleV2) return {};
+  const parsed = CaptionStyleV2Schema.safeParse(style.styleV2);
+  if (!parsed.success) return {};
+  const full = mobileCaptionStyleFromV2(parsed.data, style.presetLabel || style.preset || "CUSTOM");
+  return Object.fromEntries(V2_EXTRA_KEYS.filter((k) => full[k] !== undefined).map((k) => [k, full[k]]));
+}
 import { ShotLogSchema } from "./shot-log";
 import { z } from "zod";
 import {
@@ -215,6 +227,12 @@ export const MobileCaptionStyleSchema = z.object({
   maxLines: z.union([z.literal(1), z.literal(2)]).optional(),
   backgroundMode: z.enum(["none", "line", "word", "pill"]).optional(),
   backgroundOpacity: z.number().min(0).max(1).optional(),
+  /** Field-level provenance (caption-provenance.ts): what the Director last wrote, and fields the creator changed. */
+  templateApplied: TemplateAppliedSchema.optional(),
+  userEdited: UserEditedSchema.optional(),
+  /** The catalog template the caption is drawn with, and the light changes on top of it (written by the phone too). */
+  captionTemplate: z.string().max(64).optional(),
+  captionOverrides: CaptionOverridesSchema.partial().passthrough().optional(),
 });
 
 export const MobileCaptionSchema = z.object({
@@ -861,6 +879,11 @@ export function toMobileEditIR(input: MobileProjectionInput): { editIR: MobileEd
           ...(cap.style.rotationDeg ? { rotationDeg: cap.style.rotationDeg } : {}),
           ...(cap.style.scale !== undefined && cap.style.scale !== 1 ? { scale: cap.style.scale } : {}),
           ...(cap.style.transformKeyframes?.length ? { transformKeyframes: cap.style.transformKeyframes } : {}),
+          ...v2Extras(cap.style),
+          ...(cap.style.templateApplied ? { templateApplied: cap.style.templateApplied } : {}),
+          ...(cap.style.userEdited?.length ? { userEdited: cap.style.userEdited } : {}),
+          ...(cap.style.captionTemplate ? { captionTemplate: cap.style.captionTemplate } : {}),
+          ...(cap.style.captionOverrides ? { captionOverrides: cap.style.captionOverrides } : {}),
         },
       } as MobileEditIR["captions"][number] & { dropped?: boolean };
     })
@@ -1173,6 +1196,11 @@ export function editIRFromMobile(m: MobileEditIR, title = "Mobile project"): Edi
           ...(c.style.rotationDeg ? { rotationDeg: c.style.rotationDeg } : {}),
           ...(c.style.scale !== undefined && c.style.scale !== 1 ? { scale: c.style.scale } : {}),
           ...(c.style.transformKeyframes?.length ? { transformKeyframes: c.style.transformKeyframes } : {}),
+          ...(c.style.styleV2 ? { styleV2: c.style.styleV2 } : {}),
+          ...(c.style.templateApplied ? { templateApplied: c.style.templateApplied } : {}),
+          ...(c.style.userEdited?.length ? { userEdited: c.style.userEdited } : {}),
+          ...(c.style.captionTemplate ? { captionTemplate: c.style.captionTemplate } : {}),
+          ...(c.style.captionOverrides ? { captionOverrides: c.style.captionOverrides } : {}),
         },
       })),
       audioTracks: [

@@ -170,12 +170,14 @@ export async function ingestAutoClipHandler(req: Request, res: Response) {
       maxShorts = 3,
       targetShortDurationSec = 35,
       aspectRatio = "9:16",
-      subtitleStyle = "hormozi-yellow",
+      subtitleStyle: rawSubtitleStyle = "bold-yellow",
       backgroundMusic = "upbeat",
       includeMotionGraphics = true,
       language = "en",
       sync = false,
     } = req.body || {};
+    // The app sends neutral style names; the clipper runtime still uses its older keys.
+    const subtitleStyle = (({ "bold-yellow": "hormozi-yellow", "clean-modern": "vox-clean" } as Record<string, string>)[rawSubtitleStyle] ?? rawSubtitleStyle) as any;
 
     let targetSource = "";
     if (localPath && typeof localPath === "string" && fs.existsSync(localPath)) {

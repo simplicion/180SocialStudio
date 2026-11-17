@@ -303,6 +303,7 @@ const OP_LABELS: Record<string, (n: number) => string> = {
   autoCaptions: () => "added captions",
   addCaption: () => "added captions",
   styleCaption: () => "restyled the captions",
+  applyCaptionTemplate: () => "gave the captions a new template",
   emphasizeWord: () => "highlighted key words",
   addText: (n) => (n === 1 ? "added a title" : `added ${n} text callouts`),
   addZoom: (n) => (n === 1 ? "added a punch-in zoom" : `added ${n} punch-in zooms`),

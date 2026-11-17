@@ -56,7 +56,7 @@ export function brollResearchAgent(args: { words: Word[]; baseIR: EditIR; assetI
 /**
  * Motion Graphic Agent: Autonomous Kinetic Card Insertion
  * Analyzes spoken entities and metrics in the transcript and returns
- * high-production creator cards (Hormozi stat counters, Vox explainers, SaaS callouts).
+ * high-production creator cards (stat counters, explainer cards, SaaS callouts).
  */
 export function motionGraphicAgent(args: {
   words: Array<{ text: string; startMs: number; endMs: number; isEmphasis?: boolean }>;
@@ -76,7 +76,7 @@ export function motionGraphicAgent(args: {
     return !placedTimestamps.some((pt) => Math.abs(pt - t) < 6.0);
   };
 
-  // 1. Scan for High-Impact Metric Numbers ($10k, 50%, 10x, 3 million) -> Hormozi Counter
+  // 1. Scan for High-Impact Metric Numbers ($10k, 50%, 10x, 3 million) -> metric counter
   const metricRegex = /(\$?\d+([.,]\d+)?\s*(k|m|b|%|x|\+)?\b|million|billion|thousand)/i;
   for (let i = 0; i < args.words.length; i++) {
     const w = args.words[i];
@@ -89,7 +89,7 @@ export function motionGraphicAgent(args: {
         out.push(
           op({
             type: "renderMotionGraphic",
-            templateId: "hormozi-counter",
+            templateId: "metric-counter",
             timelineStartSec: round2(t),
             durationSec: 3.5,
             position: "lower_third",
@@ -97,7 +97,7 @@ export function motionGraphicAgent(args: {
             metricLabel: "Key Spoken Metric",
             title: contextPhrase || "Performance Highlight",
             tag: "METRIC REVEAL",
-            reason: `Autonomous Director: Spoken metric "${w.text}" punctuated with Hormozi kinetic counter`,
+            reason: `Autonomous Director: Spoken metric "${w.text}" punctuated with a kinetic metric counter`,
           })
         );
         placedTimestamps.push(t);
@@ -106,7 +106,7 @@ export function motionGraphicAgent(args: {
     }
   }
 
-  // 2. Scan for Explanatory / Thesis Cues ("secret", "step", "rule", "formula", "strategy", "reason", "takeaway") -> Vox Explainer
+  // 2. Scan for Explanatory / Thesis Cues ("secret", "step", "rule", "formula", "strategy", "reason", "takeaway") -> explainer card
   const explainerRegex = /\b(secret|step|rule|formula|strategy|reason|takeaway|proven|insight)\b/i;
   for (let i = 0; i < args.words.length; i++) {
     const w = args.words[i];
@@ -117,7 +117,7 @@ export function motionGraphicAgent(args: {
         out.push(
           op({
             type: "renderMotionGraphic",
-            templateId: "vox-explainer",
+            templateId: "explainer-card",
             timelineStartSec: round2(t),
             durationSec: 3.8,
             position: "lower_third",
@@ -125,7 +125,7 @@ export function motionGraphicAgent(args: {
             subtitle: "Breakdown & Strategic Execution",
             tag: "CORE PRINCIPLE",
             accentColor: "#3B82F6",
-            reason: `Autonomous Director: Explanatory concept "${w.text}" highlighted with Vox kinetic card`,
+            reason: `Autonomous Director: Explanatory concept "${w.text}" highlighted with a kinetic explainer card`,
           })
         );
         placedTimestamps.push(t);
@@ -434,6 +434,14 @@ export function applyBrandDefaults(ops: CreativeOperation[], prompt: string, sty
         if (extracted) o.highlightColor = extracted;
       }
       applied.push(`captions in the ${resolveCaptionTemplate(o.preset)!.name} template${o.highlightColor ? ` with ${o.highlightColor} highlight` : ""}`);
+    } else if (o.type === "applyCaptionTemplate") {
+      // A catalog template keeps its look; the brand's accent colour goes in as an editable-colour override, unless the
+      // creator named a look or a colour themselves.
+      const tpl = resolveCaptionTemplate(o.templateId);
+      if (tpl && !namedTemplate && !namedColour && !o.overrides?.colors && /^#[0-9A-Fa-f]{6}/.test(style.highlightColor || "") && tpl.editable.includes("colors")) {
+        o.overrides = { ...(o.overrides ?? {}), colors: { active: style.highlightColor.slice(0, 7) } };
+        applied.push(`captions in the ${tpl.name} template with the brand highlight (${style.highlightColor.slice(0, 7)})`);
+      }
     } else if (o.type === "autoCaptions") {
       if (!namedColour) {
         o.textColor = style.textColor;

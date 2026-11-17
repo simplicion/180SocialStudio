@@ -58,6 +58,7 @@ import {
   ReplaceClipOpSchema,
   AddCaptionOpSchema,
   EmphasizeWordOpSchema,
+  ApplyCaptionTemplateOpSchema,
 } from "./creative-plan.schema";
 
 /**
@@ -144,13 +145,14 @@ export const DIRECTOR_TOOL_SPECS: DirectorToolSpec[] = [
   { name: "cleanFillers", schema: CleanFillersOpSchema, description: "Cut filler words found in the transcript: um/uh/er/ah/hmm plus the phrase fillers \"you know\" and \"I mean\" are always included; pass other verbal tics you see used as filler (e.g. \"kind of\", \"like\") in fillerTypes. Every occurrence of each phrase is cut." },
   {
     name: "autoCaptions",
-    schema: AutoCaptionsOpSchema,
-    description: "Generate word-synced kinetic captions from the transcript. Only when there are NO captions yet: to change the look of existing captions use styleCaption (their hand-fixed text is kept). replaceExisting true only when the creator explicitly asks to redo the captions from scratch. Colors are #RRGGBB. For a named look or style set template: HORMOZI_BOUNCE (Punchy Bounce: bold sans, yellow/green punch), MRBEAST_HYPE (High Energy: heavy impact, red keyword), ALI_ABDAAL_CLEAN (Clean Frosted: frosted pill, teal karaoke), DAN_KOE_MINIMAL (Minimal Clean: restrained geometric), CYBER_NEON (Cyber Neon: glowing outline), KARAOKE_FROSTED (Frosted Karaoke: dark slate pill, amber sweep), VOX_EXPLAINER (Highlighter Tag: yellow marker tag), CINEMATIC_SUBTITLE (Cinema Classic: bottom-heavy film subtitle), RAJ_SHAMANI_BOLD (Podcast Punch: bold talk, gold highlight), VARUN_MAYYA_BOX (Electric Box: sliding purple pill behind spoken word), IMAN_GADZHI_LUXE (Luxe Minimal: gold word reveal), MUMBAI_BUBBLE (Vibrant Bubble: rounded desi pill), EDITORIAL_SERIF (Editorial Serif: elegant serif, gold), DOCUMENTARY_LOWER (Documentary Lower: translucent lower-third, sky blue), NEON_PULSE (Neon Pulse: cyberpunk violet/cyan), STREET_IMPACT (Street Impact: gritty urban all-caps), PASTEL_CREATOR (Soft Pastel: cream/lilac vlog pill), MONOCHROME_BOLD (Monochrome Bold: stark Swiss B&W), NIGHT_RETRO (Night Retro: arcade amber glow), DYNAMIC_DUO (Dual Gradient: rose-coral gradient). One key word per caption is highlighted automatically (autoEmphasis false turns it off). Captions never carry emoji.",
+    // stylePreset is an internal v1 key (its values are old creator-named ids): not shown to the model, the schema default applies.
+    schema: AutoCaptionsOpSchema.omit({ stylePreset: true }),
+    description: "Generate word-synced kinetic captions from the transcript. Only when there are NO captions yet: to change the look of existing captions use applyCaptionTemplate (a catalog template) or styleCaption (single fields); their hand-fixed text is kept. replaceExisting true only when the creator explicitly asks to redo the captions from scratch. Colors are #RRGGBB. template = a catalog template id (see the caption template list in the instructions). One key word per caption is highlighted automatically (autoEmphasis false turns it off). Captions never carry emoji.",
   },
   {
     name: "styleCaption",
     schema: StyleCaptionOpSchema,
-    description: "Restyle EXISTING captions: change only the fields given (textColor, highlightColor, fontSize, uppercase, position, or a preset). Text and timing never change, titles are not affected. Use for 'make the captions yellow / bigger / higher'. preset may be any template id or alias (HORMOZI_BOUNCE, MRBEAST_HYPE, ALI_ABDAAL_CLEAN, EDITORIAL_SERIF, DOCUMENTARY_LOWER, NEON_PULSE, etc.), which changes font, outline, colours and motion; highlightColor overrides the template's highlight.",
+    description: "Restyle EXISTING captions: change only the fields given (textColor, highlightColor, fontSize, uppercase, position). Text and timing never change, titles are not affected. Use for 'make the captions yellow / bigger / higher'. For a whole new look use applyCaptionTemplate instead of preset.",
   },
   { name: "translateCaptions", schema: TranslateCaptionsOpSchema, description: "Convert the captions to another language (targetLanguage, ISO-639-1) or to Roman letters (script 'roman', e.g. Hindi speech shown as Hinglish: targetLanguage 'hi', script 'roman'). Works on captions that exist or that autoCaptions adds in this same turn. Use for 'translate the captions to English', 'captions in Hinglish', 'subtitles in Tamil'." },
   { name: "addText", schema: AddTextOpSchema, description: "Add a title / lower-third / callout text. position is an offset from centre in -1..1 (y=-0.6 is near the top). fontFamily, color/strokeColor/backgroundColor (#RRGGBB), uppercase, glow; motion: enter (fade, slide_up/down/left/right, pop, typewriter), exit, loop (pulse, wiggle, bounce, float). style.fontSize sets the size. Energetic edits: pop or slide_up in, bold font (Anton/Bebas Neue), uppercase." },
@@ -203,9 +205,14 @@ export const DIRECTOR_TOOL_SPECS: DirectorToolSpec[] = [
   { name: "duplicateClip", schema: DuplicateClipOpSchema, description: "Insert a copy of a main clip (by id): right after it, or at the clip boundary nearest targetTimelineStartSec. Later footage moves back." },
   { name: "freezeFrame", schema: FreezeFrameOpSchema, description: "Hold the frame at timestampSec (timeline seconds) for durationSec (0.3-10). Later footage moves back. The phone captures the exact frame. Great for a dramatic pause or a 'wait for it' moment." },
   { name: "replaceClip", schema: ReplaceClipOpSchema, description: "Swap the footage of a main clip (by id) for another source on this project (replacementAssetId from the sources list); same timing." },
-  { name: "addCaption", schema: AddCaptionOpSchema, description: "Add ONE caption line with your own text and timing (e.g. a line the transcript missed). For captions of the whole video use autoCaptions." },
+  { name: "addCaption", schema: AddCaptionOpSchema.omit({ stylePreset: true }), description: "Add ONE caption line with your own text and timing (e.g. a line the transcript missed). For captions of the whole video use autoCaptions." },
   { name: "emphasizeWord", schema: EmphasizeWordOpSchema, description: "Highlight one word of an existing caption (captionId + wordIndex from 0) with a colour and scale." },
-  { name: "renderMotionGraphic", schema: RenderMotionGraphicOpSchema, description: "An animated info card drawn as styled titles: the big line (metricValue, or title; tag as a badge) on an accent box, and a detail line (metricLabel / subtitle) under it. Templates: hormozi-counter (huge yellow metric, pops in), vox-explainer (lower third, slides up), saas-callout (blue), quote-reveal (types on, in quotes), split-comparison. Use for spoken metrics ($, %, x), quotes and key takeaways; at most one every ~8s." },
+  {
+    name: "applyCaptionTemplate",
+    schema: ApplyCaptionTemplateOpSchema,
+    description: "Put a caption template from the catalog on the existing speech captions (text and timing stay). overrides may change only the fields the template lists as editable (others are refused and reported): brand colours go in overrides.colors. emphasis = AI-chosen key words, at most one per caption, meaningful words only (not stop words), each with a role: emphasis, positive (money, wins) or negative (warnings, mistakes). Colours, sizes and positions the creator set by hand are kept. Use when the creator names a caption look or asks for better / different captions.",
+  },
+  { name: "renderMotionGraphic", schema: RenderMotionGraphicOpSchema, description: "An animated info card drawn as styled titles: the big line (metricValue, or title; tag as a badge) on an accent box, and a detail line (metricLabel / subtitle) under it. Templates: metric-counter (huge yellow metric, pops in), explainer-card (lower third, slides up), saas-callout (blue), quote-reveal (types on, in quotes), split-comparison. Use for spoken metrics ($, %, x), quotes and key takeaways; at most one every ~8s." },
 ];
 
 export const FINISH_TOOL_NAME = "finish_edit";

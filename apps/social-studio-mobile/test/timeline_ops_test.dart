@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:social_studio_mobile/core/native_engine/edit_ir.dart';
 import 'package:social_studio_mobile/core/native_engine/media_engine_exception.dart';
 import 'package:social_studio_mobile/core/network/audio_transcription_service.dart';
+import 'package:social_studio_mobile/features/studio/caption_catalog.dart';
 import 'package:social_studio_mobile/features/studio/caption_tools.dart';
 import 'package:social_studio_mobile/features/studio/text_templates.dart';
 import 'package:social_studio_mobile/features/studio/timeline_ops.dart';
@@ -285,7 +286,7 @@ void main() {
     });
 
     test('a correction with the same word count keeps every word timing; Hindi text gets a Devanagari font', () {
-      final ir = TimelineOps.autoCaptions(base(), words, preset: 'HORMOZI_BOUNCE', wordsPerCaption: 3);
+      final ir = TimelineOps.autoCaptions(base(), words, preset: 'IMPACT_BOLD', wordsPerCaption: 3);
       final first = ir.captions.first;
       final fixed = TimelineOps.retextCaptions(ir, {first.id: 'one two three'}).captions.first;
       expect(fixed.words.map((w) => (w.startMs, w.endMs)).toList(), first.words.map((w) => (w.startMs, w.endMs)).toList());
@@ -294,12 +295,12 @@ void main() {
       expect(hindi.style['fontFamily'], 'Noto Sans Devanagari');
     });
 
-    test('new creator templates: box and reveal motions survive style normalisation with a full style', () {
+    test('catalog templates: box and reveal motions survive style normalisation with a full style', () {
       const expected = {
-        'RAJ_SHAMANI_BOLD': 'word_pop',
-        'VARUN_MAYYA_BOX': 'word_box',
-        'IMAN_GADZHI_LUXE': 'word_reveal',
-        'MUMBAI_BUBBLE': 'word_box',
+        'PODCAST_DUO': 'word_pop',
+        'WORD_BOX_SLIDE': 'word_box',
+        'LUXE_REVEAL': 'word_reveal',
+        'BOLD_DESI': 'word_box',
       };
       for (final e in expected.entries) {
         expect(TimelineOps.captionPresets.containsKey(e.key), isTrue, reason: e.key);
@@ -310,7 +311,7 @@ void main() {
         expect(normaliseCaptionStyle(style)['animation'], e.value);
         expect(ir.captions.first.words.first.scale, e.value == 'word_pop' ? 1.15 : 1.0);
       }
-      expect(TimelineOps.captionStyle('MUMBAI_BUBBLE')['background'], isNotNull);
+      expect(TimelineOps.captionStyle('BOLD_DESI')['background'], isNotNull);
     });
 
     test('auto captions break on the Hindi danda and other non-Latin sentence ends', () {
@@ -327,7 +328,7 @@ void main() {
     });
 
     test('retextCaptions swaps the words, keeps range and style, and times words inside the caption', () {
-      final ir = TimelineOps.autoCaptions(base(), words, preset: 'MRBEAST_HYPE', wordsPerCaption: 3);
+      final ir = TimelineOps.autoCaptions(base(), words, preset: 'IMPACT_BOLD', wordsPerCaption: 3);
       final first = ir.captions.first;
       final out = TimelineOps.retextCaptions(ir, {first.id: 'aaj hum baat karenge doston'});
       final c = out.captions.firstWhere((x) => x.id == first.id);
@@ -517,11 +518,12 @@ void main() {
   });
 
   group('caption presets (desktop Caption Studio parity)', () {
-    test('all 8 viral presets + the 4 classic ones produce complete styles; classic ids unchanged', () {
+    test('every catalog template + the 4 classic ones produce complete styles; classic ids unchanged', () {
       const required = ['preset', 'animation', 'fontFamily', 'fontWeight', 'fontSizePx', 'textColor', 'highlightColor',
           'strokeColor', 'strokeWidthPx', 'shadow', 'background', 'uppercase', 'positionX', 'positionY', 'maxWidthFraction'];
-      expect(TimelineOps.captionPresets.keys, containsAll(['CLEAN', 'BOLD_POP', 'KARAOKE', 'BOXED', 'HORMOZI_BOUNCE',
-          'MRBEAST_HYPE', 'ALI_ABDAAL_CLEAN', 'DAN_KOE_MINIMAL', 'CYBER_NEON', 'KARAOKE_FROSTED', 'VOX_EXPLAINER', 'CINEMATIC_SUBTITLE']));
+      expect(TimelineOps.captionPresets.keys, containsAll(['CLEAN', 'BOLD_POP', 'KARAOKE', 'BOXED',
+          for (final t in CaptionCatalog.templates) t.id]));
+      expect(TimelineOps.captionPresets.length, 4 + CaptionCatalog.templates.length);
       for (final id in TimelineOps.captionPresets.keys) {
         final st = TimelineOps.captionStyle(id);
         expect(st.keys, containsAll(required), reason: id);
@@ -532,24 +534,26 @@ void main() {
       expect(TimelineOps.captionStyle('BOLD_POP')['highlightColor'], '#FFE600');
     });
 
-    test('viral presets carry the desktop values; highlight override and glow are optional', () {
-      final h = TimelineOps.captionStyle('HORMOZI_BOUNCE');
-      expect((h['fontFamily'], h['fontSizePx'], h['textColor'], h['highlightColor'], h['strokeWidthPx']),
-          ('Anton', 52, '#FACC15', '#22C55E', 3));
-      expect((TimelineOps.captionStyle('VOX_EXPLAINER')['background'] as Map)['color'], '#FACC15');
-      expect(TimelineOps.captionStyle('CINEMATIC_SUBTITLE')['fontFamily'], 'Bebas Neue');
-      expect(TimelineOps.captionStyle('CYBER_NEON')['glow'], isTrue);
+    test('catalog templates carry the generated values; old ids open as their new template; overrides apply', () {
+      final h = TimelineOps.captionStyle('IMPACT_BOLD');
+      expect((h['fontFamily'], h['fontSizePx'], h['textColor'], h['highlightColor'], h['strokeWidthPx'], h['stroke2WidthPx']),
+          ('Anton', 72, '#FFE600', '#FFFFFF', 6, 14));
+      expect((TimelineOps.captionStyle('BREAKING_NEWS')['background'] as Map)['color'], '#DC2626FF');
+      expect(TimelineOps.captionStyle('CINEMA_SUBTITLE')['fontFamily'], 'Inter');
+      expect(TimelineOps.captionStyle('NEON_NIGHT')['glow'], isTrue);
       expect(TimelineOps.captionStyle('CLEAN').containsKey('glow'), isFalse);
-      expect(TimelineOps.captionStyle('MRBEAST_HYPE', highlightColor: '#22D3EE')['highlightColor'], '#22D3EE');
+      expect(TimelineOps.captionStyle('IMPACT_BOLD', highlightColor: '#22D3EE')['highlightColor'], '#22D3EE');
+      // The template's position does not override where captionStyle places the caption.
+      expect(TimelineOps.captionStyle('FILM_LOWER_THIRD', positionY: 0.6)['positionY'], 0.6);
 
-      // Test newly added ONE_WORD_PUNCH and GOLDEN_LUXURY
-      final punch = TimelineOps.captionStyle('ONE_WORD_PUNCH');
-      expect((punch['fontFamily'], punch['fontSizePx'], punch['uppercase']), ('Montserrat', 60, true));
-      final luxe = TimelineOps.captionStyle('GOLDEN_LUXURY');
-      expect((luxe['fontFamily'], luxe['fontSizePx']), ('Playfair Display', 46));
+      // Ids saved before captions v2 (including the phone-only ones) open as their new template.
+      for (final (old, now) in [('HORMOZI_BOUNCE', 'SPOTLIGHT_WORD'), ('ONE_WORD_PUNCH', 'SPOTLIGHT_WORD'), ('GOLDEN_LUXURY', 'LUXE_REVEAL'), ('MUMBAI_BUBBLE', 'BOLD_DESI')]) {
+        expect(CaptionCatalog.canonicalId(old), now);
+        expect(TimelineOps.captionStyle(old)['preset'], now);
+      }
 
       // Test fontSizePx override
-      final customSize = TimelineOps.captionStyle('HORMOZI_BOUNCE', fontSizePx: 84);
+      final customSize = TimelineOps.captionStyle('SPOTLIGHT_WORD', fontSizePx: 84);
       expect(customSize['fontSizePx'], 84);
     });
 
@@ -557,7 +561,7 @@ void main() {
       var ir = TimelineOps.autoCaptions(base(), words, fontSizePx: 70);
       expect(ir.captions.first.style['fontSizePx'], 70);
       ir = TimelineOps.addText(ir, 'Title', startMs: 0, durationMs: 1000);
-      ir = TimelineOps.styleCaptions(ir, 'ALI_ABDAAL_CLEAN', fontSizePx: 56);
+      ir = TimelineOps.styleCaptions(ir, 'GLASS_PILL', fontSizePx: 56);
       final back = MobileEditIr.fromJson(ir.toJson());
       expect(back.captions.where((c) => c.kind == 'caption').every((c) => c.style['fontFamily'] == 'Poppins' && c.style['fontSizePx'] == 56), isTrue);
       expect(back.captions.firstWhere((c) => c.kind == 'text').style['fontFamily'], isNot('Poppins'));

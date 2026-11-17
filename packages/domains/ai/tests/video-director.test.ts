@@ -172,7 +172,9 @@ test("tool JSON schemas are derived from the Zod creative-plan schema (portable 
   const tools = buildDirectorToolDefinitions();
   const auto = tools.find((t) => t.function.name === "autoCaptions")!.function.parameters;
   assert.equal(auto.type, "object");
-  assert.deepEqual(auto.properties.stylePreset.enum, ["HORMOZI_BOUNCE", "ALI_ABDAAL_CLEAN", "MINIMAL_SUBTITLE", "BOLD_CENTER"]);
+  // stylePreset is an internal v1 key (old creator-named values): not shown to the model.
+  assert.equal(auto.properties.stylePreset, undefined);
+  assert.ok(auto.properties.template.enum.includes("IMPACT_BOLD"));
   assert.equal(auto.properties.wordsPerCaption.type, "integer");
   assert.equal(auto.properties.wordsPerCaption.maximum, 8);
   assert.ok(!("type" in auto.properties), "discriminator is the tool name, not a parameter");
@@ -464,7 +466,7 @@ test("captions: translateCaptions converts the final captions through the transl
     assert.equal(c.text, `yeh line ${i} hai`);
     assert.deepEqual(c.words.map((w) => w.text), ["yeh", "line", String(i), "hai"]);
     assert.equal(c.style.animation, "word_box");
-    assert.equal(c.style.preset, "VARUN_MAYYA_BOX");
+    assert.equal(c.style.preset, "WORD_BOX_SLIDE");
   });
   assert.ok(res.appliedOperations.some((a) => /Converted \d+ caption\(s\) to Hindi in Roman letters/.test(a)));
 });
@@ -495,10 +497,11 @@ test("captions: a named creator template with a named colour reaches the phone a
   const caps = res.editIR.captions.filter((c) => c.kind === "caption");
   assert.ok(caps.length > 0);
   for (const c of caps) {
-    assert.equal(c.style.preset, "MRBEAST_HYPE");
-    assert.equal(c.style.fontFamily, "Montserrat");
+    assert.equal(c.style.preset, "IMPACT_BOLD");
+    assert.equal(c.style.fontFamily, "Anton");
     assert.equal(c.style.highlightColor, "#FF0000");
-    assert.equal(c.style.textColor, "#FFFFFF");
+    assert.equal(c.style.textColor, "#FFE600");
+    assert.equal((c.style as any).styleV2.words.active.color, "#FF0000");
     assert.equal(c.style.uppercase, true);
   }
 });
@@ -512,7 +515,7 @@ test("captions v2: neutral presets and aliases resolve via AI Director tool call
   const caps1 = r1.editIR.captions.filter((c) => c.kind === "caption");
   assert.ok(caps1.length > 0);
   for (const c of caps1) {
-    assert.equal(c.style.preset, "EDITORIAL_SERIF");
+    assert.equal(c.style.preset, "DOCUMENTARY");
     assert.equal(c.style.fontFamily, "Playfair Display");
     assert.equal(c.style.highlightColor, "#38BDF8");
   }
@@ -527,7 +530,7 @@ test("captions v2: neutral presets and aliases resolve via AI Director tool call
   const caps2 = r2.editIR.captions.filter((c) => c.kind === "caption");
   assert.ok(caps2.length > 0);
   for (const c of caps2) {
-    assert.equal(c.style.preset, "HORMOZI_BOUNCE");
+    assert.equal(c.style.preset, "SPOTLIGHT_WORD");
   }
   // User-facing summary must not expose creator names
   assert.ok(r2.summary.toLowerCase().includes("captions"));
@@ -544,7 +547,7 @@ test("captions v2: neutral presets and aliases resolve via AI Director tool call
   const caps3 = r3.editIR.captions.filter((c) => c.kind === "caption");
   assert.ok(caps3.length > 0);
   for (const c of caps3) {
-    assert.equal(c.style.preset, "ALI_ABDAAL_CLEAN");
+    assert.equal(c.style.preset, "GLASS_PILL");
     assert.equal(c.style.fontFamily, "Poppins");
   }
   assert.ok(!r3.summary.toLowerCase().includes("abdaal"));

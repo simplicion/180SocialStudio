@@ -44,3 +44,6 @@ export * from "./caption-style-v2";
 export * from "./caption-translation";
 export * from "./caption-languages";
 export * from "./caption-enhance";
+export * from "./caption-emphasis";
+export * from "./caption-provenance";
+export * from "./caption-template-apply";

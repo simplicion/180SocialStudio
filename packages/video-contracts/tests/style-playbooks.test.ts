@@ -49,12 +49,12 @@ test("the prompt carries only the chosen playbook, with numbers and an example",
   assert.match(text, /fast and punchy/);
   assert.match(text, /every 3 s/);
   assert.match(text, /zooms 2-6\/min at 1\.15-1\.45x/);
-  assert.match(text, /template HORMOZI_BOUNCE/);
+  assert.match(text, /template SPOTLIGHT_WORD/);
   assert.match(text, /Example of a great edit/);
   for (const other of STYLE_PLAYBOOKS.filter((p) => p.id !== "fast_hype")) assert.ok(!text.includes(other.label), `no ${other.id}`);
   const briefs = playbookStageBriefs(CALM_EDUCATIONAL);
   assert.match(briefs.cleanup, /0\.6 s/);
-  assert.match(briefs.captions, /ALI_ABDAAL_CLEAN/);
+  assert.match(briefs.captions, /GLASS_PILL/);
 });
 
 test("longest static stretch: cuts, zoom edges, overlays and titles all count as change", () => {

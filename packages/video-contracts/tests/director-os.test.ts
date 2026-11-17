@@ -115,7 +115,7 @@ test("locked ranges survive a cut elsewhere, are mapped through it, and a cut in
 });
 
 test("autonomy (F-09): additive ops apply under ASSISTED, structural ones are proposals; AUTO adds SAFE_OPS; MANUAL always proposes", () => {
-  assert.deepEqual([...SAFE_OPS].sort(), ["adjustVolume", "autoCaptions", "changeAspectRatio", "cleanFillers", "duckAudio", "reframeSubject", "removeSilences", "styleCaption"]);
+  assert.deepEqual([...SAFE_OPS].sort(), ["adjustVolume", "applyCaptionTemplate", "autoCaptions", "changeAspectRatio", "cleanFillers", "duckAudio", "reframeSubject", "removeSilences", "styleCaption"]);
   assert.deepEqual(normalizeAutonomy(undefined), { editing: "ASSISTED", publishing: "MANUAL" });
   assert.deepEqual(normalizeAutonomy({ editing: "AUTO", publishing: "AUTO" as any }), { editing: "AUTO", publishing: "MANUAL" });
   const auto = (types: string[], violations = 0) => decideAutoApply({ editing: "AUTO", operationTypes: types, plannerRequiresConfirmation: false, violations });

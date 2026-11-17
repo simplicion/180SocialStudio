@@ -26,6 +26,8 @@ import {
   INTENT_TOOL_NAME,
   buildIntentPrompt,
   zodToPortableJsonSchema,
+  captionCatalogForPrompt,
+  CAPTION_SELECTION_POLICY,
 } from "@workspace/video-contracts";
 import { AIProviderService, AIClient, AISettings, ReasoningEffort } from "../kernel/ai-provider.service";
 import { resolveModel, VaultModels } from "../kernel/model-config";
@@ -116,7 +118,7 @@ const PROPOSAL_PHASES = new Set(["recommend", "gather", "confirm"]);
  * that cannot be done (captions without a transcript) are not required.
  */
 const COVERAGE_RULES: Array<{ label: string; ask: RegExp; ops: string[]; needsTranscript?: boolean; removal?: boolean }> = [
-  { label: "captions", ask: /\b(captions?|subtitles?)\b/, ops: ["autoCaptions", "styleCaption", "addCaption", "updateTextStyle", "editText"], needsTranscript: true },
+  { label: "captions", ask: /\b(captions?|subtitles?)\b/, ops: ["autoCaptions", "applyCaptionTemplate", "styleCaption", "addCaption", "updateTextStyle", "editText"], needsTranscript: true },
   { label: "caption translation", ask: /\b(translate (the |my )?(captions?|subtitles?)|(captions?|subtitles?) (in|into|to) (hinglish|roman|english|hindi|tamil|telugu|bengali|marathi|gujarati|urdu|punjabi|spanish|french)|hinglish (captions?|subtitles?))\b/, ops: ["translateCaptions"], needsTranscript: true },
   { label: "zoom / punch-in", ask: /\b(zooms?|punch[- ]?ins?)\b/, ops: ["addZoom", "reframeSubject", "updateZoom"] },
   { label: "B-roll", ask: /\b(b[- ]?roll|cutaways?|stock (clip|footage|video))\b/, ops: ["insertBroll", "updateOverlay"] },
@@ -525,7 +527,7 @@ export class CreativePlanner {
       `## Editing craft for a whole-video edit (how you edit; never recite this to the creator)`,
       `- Hook: start tight on the first spoken word; a pattern interrupt in the first 1.5s (punch-in zoom, bold title or cutaway) works well.`,
       `- Pacing: on energetic edits avoid a static frame for more than ~4s; alternate the main shot, punch-in zooms on key phrases, B-roll that shows what is being said, highlighted captions.`,
-      `- High-energy styles (Punchy Bounce / MrBeast / Hormozi): cut pauses over 0.4s, zooms on punchlines, kinetic captions, sound design. Calm / educational styles (Documentary Lower / Vox / Clean Frosted / Ali Abdaal / Minimal Clean): cleaner cuts, clean captions, atmospheric B-roll, subtle music.`,
+      `- High-energy styles (e.g. IMPACT_BOLD, SPOTLIGHT_WORD captions): cut pauses over 0.4s, zooms on punchlines, kinetic captions, sound design. Calm / educational / cinematic styles (e.g. CINEMA_SUBTITLE, DOCUMENTARY, GLASS_PILL, MINIMAL_CLEAN captions): cleaner cuts, clean captions, atmospheric B-roll, subtle music.`,
       `- Audio: voice first; background music via addBackgroundMusic with duckUnderSpeech=true (about -18 to -22 dB under speech); whooshes and pops sparingly.`,
       `- B-roll: insertBroll with a vivid, specific stockQuery that matches what is being said ('laptop keyboard typing code', 'drone skyline sunset').`,
       `- 9:16: keep faces and captions in the middle safe zone, away from the platform UI at the top and bottom.`,
@@ -541,7 +543,10 @@ export class CreativePlanner {
       `- Use the transcript to find moments ("the punchline", "when I talk about the gym"). A zoom on a moment should start just before the key words.`,
       `- Prefer removeSilences over many removeRange calls for pauses, and autoCaptions for captions.`,
       `- Colours are #RRGGBB (yellow = #FFE600, cyan = #00E5FF, white = #FFFFFF).`,
-      `- A named caption look or style (Punchy Bounce / Hormozi, High Energy / MrBeast, Clean Frosted / Ali Abdaal, Minimal Clean / Dan Koe, Editorial Serif, Documentary Lower, Neon Pulse, Cinema Classic, etc.) is a template: set autoCaptions.template, or styleCaption.preset when captions already exist. Add highlightColor only when a specific colour is named ("MrBeast captions with red highlights" -> template MRBEAST_HYPE, highlightColor #EF4444; "editorial captions with sky blue highlights" -> template EDITORIAL_SERIF, highlightColor #38BDF8).`,
+      `- Caption looks are catalog templates: set autoCaptions.template for new captions, or call applyCaptionTemplate when captions already exist. A look the creator names (by template name or a well-known style nickname) resolves to a template id automatically; pass the creator's words as templateId. Add a colour only when one is named ("captions with red highlights" -> highlightColor #EF4444, or applyCaptionTemplate overrides.colors.active #EF4444).`,
+      `- Caption templates (id | name | mood | energy | best for | languages | editable fields):`,
+      ...captionCatalogForPrompt().map((l) => `  ${l}`),
+      ...CAPTION_SELECTION_POLICY.split("\n").map((l) => `  ${l}`),
       `- If something is impossible (e.g. captions without a transcript), do NOT fake it: skip that tool and say so briefly in your reply.`,
       `- When you edit: call the edit tools, then ${CHAT_TOOL_NAME} (phase "done": 1-2 casual sentences on what you actually did, quickReplies for likely tweaks), then exactly one finish_edit with the same short summary.`,
       `- When you only talk (recommend / gather / confirm / chat): call ONLY ${CHAT_TOOL_NAME}. No edit tools, no finish_edit.`,

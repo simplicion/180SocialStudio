@@ -49,8 +49,8 @@ test("v1 word animations become word states + active-word motion", () => {
 });
 
 test("a pill colour with alpha splits into colour + opacity", () => {
-  const frosted = migrateV1TemplateStyle(CAPTION_TEMPLATES.find((t) => t.id === "KARAOKE_FROSTED")!.style);
-  assert.deepEqual([frosted.paint.background.color, frosted.paint.background.opacity, frosted.paint.background.paddingPx, frosted.paint.background.radiusPx], ["#0F172A", 0.851, 10, 20]);
+  const frosted = migrateV1TemplateStyle(CAPTION_TEMPLATES.find((t) => t.id === "GLASS_PILL")!.style);
+  assert.deepEqual([frosted.paint.background.color, frosted.paint.background.opacity, frosted.paint.background.paddingPx, frosted.paint.background.radiusPx], ["#0F172A", 0.549, 14, 22]);
 });
 
 test("a caption's stored v1 style map migrates and keeps its hand-placed position exactly", () => {
@@ -71,12 +71,12 @@ test("a caption's stored v1 style map migrates and keeps its hand-placed positio
 });
 
 test("user overrides: editable fields apply, locked fields are refused, size is clamped to the template range", () => {
-  const spec = migrateV1TemplateStyle(CAPTION_TEMPLATES[0].style); // Anton 52, range 31..83
+  const spec = migrateV1TemplateStyle(CAPTION_TEMPLATES[0].style); // Anton 72, range 43..115
   const { spec: s, rejected } = applyCaptionOverrides(spec, { colors: { text: "#FFFFFF", active: "#00FF88" }, sizePx: 200, position: { preset: "upper-third" }, case: "none", motionIntensity: 0.4 });
   assert.deepEqual(rejected, []);
   assert.equal(fillColor(s), "#FFFFFF");
   assert.equal(s.words.active.color, "#00FF88");
-  assert.equal(s.typography.sizePx, 83, "clamped to the template's range");
+  assert.equal(s.typography.sizePx, 115, "clamped to the template's range");
   assert.deepEqual([s.layout.position, s.typography.case, s.motion.intensity], ["upper-third", "none", 0.4]);
   // The signature stays: font, strokes, motion type.
   assert.deepEqual([s.typography.fonts, s.paint.strokes, s.motion.activeWord.type], [spec.typography.fonts, spec.paint.strokes, spec.motion.activeWord.type]);

@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 import '../../core/native_engine/edit_ir.dart';
 import '../../core/native_engine/media_engine_exception.dart';
 import '../../core/network/audio_transcription_service.dart';
+import 'caption_catalog.dart';
 import 'caption_template_apply.dart';
 import 'caption_tools.dart';
 import 'safe_zone_guide.dart';
@@ -1430,10 +1431,11 @@ class TimelineOps {
         'positionY': positionY,
         'positionX': positionX,
       },
-      _ when viralCaptionPresets.containsKey(preset) => {
+      // A catalog template, by its id or an older id (projects saved before captions v2).
+      _ when viralCaptionPresets.containsKey(CaptionCatalog.canonicalId(preset)) => {
         ...base,
-        ...viralCaptionPresets[preset]!.style,
-        'preset': preset,
+        ...viralCaptionPresets[CaptionCatalog.canonicalId(preset)]!.style,
+        'preset': CaptionCatalog.canonicalId(preset),
       },
       _ => {...base, 'preset': 'CLEAN', 'fontWeight': 600, 'strokeWidthPx': 4},
     };
@@ -1444,380 +1446,21 @@ class TimelineOps {
     };
   }
 
-  /// Creator templates: same ids and values as `CAPTION_TEMPLATES` in
-  /// packages/video-contracts/src/caption-templates.ts (what the AI Director applies by name). The first
-  /// eight also match `CAPTION_STYLE_PRESETS` in the desktop CaptionStudioModal.tsx. Font sizes and stroke
-  /// widths are canvas pixels. `glow` is an optional style key: renderers that do not know it ignore it.
-  static const viralCaptionPresets =
-      <String, ({String name, String subtitle, Map<String, dynamic> style})>{
-        'HORMOZI_BOUNCE': (
-          name: 'Punchy Bounce',
-          subtitle: 'Yellow / green spring',
-          style: {
-            'animation': 'word_pop',
-            'fontFamily': 'Anton',
-            'fontWeight': 400,
-            'fontSizePx': 52,
-            'textColor': '#FACC15',
-            'highlightColor': '#22C55E',
-            'strokeWidthPx': 3,
-            'strokeColor': '#000000',
-            'shadow': true,
-            'uppercase': true,
-          },
-        ),
-        'MRBEAST_HYPE': (
-          name: 'High Energy',
-          subtitle: 'Red / white impact',
-          style: {
-            'animation': 'word_pop',
-            'fontFamily': 'Montserrat',
-            'fontWeight': 900,
-            'fontSizePx': 54,
-            'textColor': '#FFFFFF',
-            'highlightColor': '#EF4444',
-            'strokeWidthPx': 4,
-            'strokeColor': '#000000',
-            'shadow': true,
-            'uppercase': true,
-          },
-        ),
-        'ALI_ABDAAL_CLEAN': (
-          name: 'Clean Frosted',
-          subtitle: 'Clean teal frosted pill',
-          style: {
-            'animation': 'karaoke',
-            'fontFamily': 'Poppins',
-            'fontWeight': 600,
-            'fontSizePx': 44,
-            'textColor': '#FFFFFF',
-            'highlightColor': '#14B8A6',
-            'strokeWidthPx': 0,
-            'shadow': true,
-            'background': {
-              'color': '#00000073',
-              'paddingPx': 6,
-              'radiusPx': 14,
-            },
-          },
-        ),
-        'DAN_KOE_MINIMAL': (
-          name: 'Minimal Clean',
-          subtitle: 'Minimalist geometric',
-          style: {
-            'animation': 'none',
-            'fontFamily': 'Syne',
-            'fontWeight': 700,
-            'fontSizePx': 40,
-            'textColor': '#FFFFFF',
-            'highlightColor': '#94A3B8',
-            'strokeWidthPx': 0,
-            'shadow': false,
-          },
-        ),
-        'CYBER_NEON': (
-          name: 'Cyber Neon',
-          subtitle: 'Cyan & magenta glow',
-          style: {
-            'animation': 'word_pop',
-            'fontFamily': 'Outfit',
-            'fontWeight': 800,
-            'fontSizePx': 48,
-            'textColor': '#38BDF8',
-            'highlightColor': '#EC4899',
-            'strokeWidthPx': 1,
-            'strokeColor': '#0284C7',
-            'shadow': false,
-            'glow': true,
-          },
-        ),
-        'KARAOKE_FROSTED': (
-          name: 'Frosted Karaoke',
-          subtitle: 'Dark rounded pill',
-          style: {
-            'animation': 'karaoke',
-            'fontFamily': 'Inter',
-            'fontWeight': 800,
-            'fontSizePx': 46,
-            'textColor': '#FFFFFF',
-            'highlightColor': '#FBBF24',
-            'strokeWidthPx': 0,
-            'shadow': true,
-            'background': {
-              'color': '#0F172AD9',
-              'paddingPx': 10,
-              'radiusPx': 20,
-            },
-          },
-        ),
-        'VOX_EXPLAINER': (
-          name: 'Highlighter Tag',
-          subtitle: 'Yellow marker tag',
-          style: {
-            'animation': 'none',
-            'fontFamily': 'Roboto',
-            'fontWeight': 700,
-            'fontSizePx': 42,
-            'textColor': '#0F172A',
-            'highlightColor': '#000000',
-            'strokeWidthPx': 0,
-            'shadow': false,
-            'background': {'color': '#FACC15', 'paddingPx': 6, 'radiusPx': 6},
-          },
-        ),
-        'CINEMATIC_SUBTITLE': (
-          name: 'Cinema Classic',
-          subtitle: 'Condensed film subtitle',
-          style: {
-            'animation': 'none',
-            'fontFamily': 'Bebas Neue',
-            'fontWeight': 400,
-            'fontSizePx': 48,
-            'textColor': '#F8FAFC',
-            'highlightColor': '#F59E0B',
-            'strokeWidthPx': 1,
-            'strokeColor': '#0F172A',
-            'shadow': true,
-            'uppercase': true,
-          },
-        ),
-        'RAJ_SHAMANI_BOLD': (
-          name: 'Podcast Punch',
-          subtitle: 'Bold podcast punch',
-          style: {
-            'animation': 'word_pop',
-            'fontFamily': 'Montserrat',
-            'fontWeight': 800,
-            'fontSizePx': 50,
-            'textColor': '#FFFFFF',
-            'highlightColor': '#FFD60A',
-            'strokeWidthPx': 3,
-            'strokeColor': '#000000',
-            'shadow': true,
-          },
-        ),
-        'VARUN_MAYYA_BOX': (
-          name: 'Electric Box',
-          subtitle: 'Sliding purple word box',
-          style: {
-            'animation': 'word_box',
-            'fontFamily': 'Inter',
-            'fontWeight': 700,
-            'fontSizePx': 46,
-            'textColor': '#FFFFFF',
-            'highlightColor': '#7C3AED',
-            'strokeWidthPx': 0,
-            'shadow': true,
-          },
-        ),
-        'IMAN_GADZHI_LUXE': (
-          name: 'Luxe Minimal',
-          subtitle: 'Word reveal in gold',
-          style: {
-            'animation': 'word_reveal',
-            'fontFamily': 'Inter',
-            'fontWeight': 500,
-            'fontSizePx': 38,
-            'textColor': '#FFFFFF',
-            'highlightColor': '#D4AF37',
-            'strokeWidthPx': 0,
-            'shadow': true,
-          },
-        ),
-        'MUMBAI_BUBBLE': (
-          name: 'Vibrant Bubble',
-          subtitle: 'Rounded pill, orange box',
-          style: {
-            'animation': 'word_box',
-            'fontFamily': 'Baloo 2',
-            'fontWeight': 800,
-            'fontSizePx': 48,
-            'textColor': '#FFFFFF',
-            'highlightColor': '#FF5A1F',
-            'strokeWidthPx': 0,
-            'shadow': false,
-            'background': {
-              'color': '#111827E6',
-              'paddingPx': 10,
-              'radiusPx': 22,
-            },
-          },
-        ),
-        'EDITORIAL_SERIF': (
-          name: 'Editorial Serif',
-          subtitle: 'Playfair Display gold serif',
-          style: {
-            'animation': 'none',
-            'fontFamily': 'Playfair Display',
-            'fontWeight': 700,
-            'fontSizePx': 44,
-            'textColor': '#FFFFFF',
-            'highlightColor': '#E2BA65',
-            'strokeWidthPx': 1,
-            'strokeColor': '#1E293B',
-            'shadow': true,
-          },
-        ),
-        'DOCUMENTARY_LOWER': (
-          name: 'Documentary Lower',
-          subtitle: 'Translucent pill, sky blue',
-          style: {
-            'animation': 'karaoke',
-            'fontFamily': 'Roboto',
-            'fontWeight': 500,
-            'fontSizePx': 40,
-            'textColor': '#F1F5F9',
-            'highlightColor': '#38BDF8',
-            'strokeWidthPx': 0,
-            'shadow': false,
-            'background': {
-              'color': '#020617CC',
-              'paddingPx': 8,
-              'radiusPx': 10,
-            },
-          },
-        ),
-        'NEON_PULSE': (
-          name: 'Neon Pulse',
-          subtitle: 'Violet cyan glow pulse',
-          style: {
-            'animation': 'word_pop',
-            'fontFamily': 'Outfit',
-            'fontWeight': 900,
-            'fontSizePx': 50,
-            'textColor': '#F0ABFC',
-            'highlightColor': '#22D3EE',
-            'strokeWidthPx': 2,
-            'strokeColor': '#701A75',
-            'shadow': false,
-            'uppercase': true,
-            'glow': true,
-          },
-        ),
-        'STREET_IMPACT': (
-          name: 'Street Impact',
-          subtitle: 'Urban heavy double stroke',
-          style: {
-            'animation': 'word_pop',
-            'fontFamily': 'Bebas Neue',
-            'fontWeight': 400,
-            'fontSizePx': 58,
-            'textColor': '#F97316',
-            'highlightColor': '#FEF08A',
-            'strokeWidthPx': 4,
-            'strokeColor': '#000000',
-            'shadow': true,
-            'uppercase': true,
-          },
-        ),
-        'PASTEL_CREATOR': (
-          name: 'Soft Pastel',
-          subtitle: 'Cream & lilac pastel pill',
-          style: {
-            'animation': 'karaoke',
-            'fontFamily': 'Poppins',
-            'fontWeight': 600,
-            'fontSizePx': 42,
-            'textColor': '#FEF3C7',
-            'highlightColor': '#C084FC',
-            'strokeWidthPx': 0,
-            'shadow': false,
-            'background': {
-              'color': '#1E1B4BD9',
-              'paddingPx': 8,
-              'radiusPx': 16,
-            },
-          },
-        ),
-        'MONOCHROME_BOLD': (
-          name: 'Monochrome Bold',
-          subtitle: 'Swiss black & white',
-          style: {
-            'animation': 'none',
-            'fontFamily': 'Inter',
-            'fontWeight': 900,
-            'fontSizePx': 48,
-            'textColor': '#FFFFFF',
-            'highlightColor': '#000000',
-            'strokeWidthPx': 0,
-            'shadow': false,
-            'uppercase': true,
-            'background': {
-              'color': '#000000EE',
-              'paddingPx': 10,
-              'radiusPx': 8,
-            },
-          },
-        ),
-        'NIGHT_RETRO': (
-          name: 'Night Retro',
-          subtitle: 'Warm amber arcade glow',
-          style: {
-            'animation': 'word_reveal',
-            'fontFamily': 'Space Grotesk',
-            'fontWeight': 700,
-            'fontSizePx': 44,
-            'textColor': '#FDE047',
-            'highlightColor': '#FB923C',
-            'strokeWidthPx': 1,
-            'strokeColor': '#78350F',
-            'shadow': true,
-            'uppercase': true,
-          },
-        ),
-        'DYNAMIC_DUO': (
-          name: 'Dual Gradient',
-          subtitle: 'Rose-coral pop over white',
-          style: {
-            'animation': 'word_pop',
-            'fontFamily': 'Montserrat',
-            'fontWeight': 800,
-            'fontSizePx': 52,
-            'textColor': '#F8FAFC',
-            'highlightColor': '#F43F5E',
-            'strokeWidthPx': 3,
-            'strokeColor': '#0F172A',
-            'shadow': true,
-            'uppercase': true,
-          },
-        ),
-        'ONE_WORD_PUNCH': (
-          name: '1-Word Punch',
-          subtitle: 'Big viral punch word',
-          style: {
-            'animation': 'word_pop',
-            'fontFamily': 'Montserrat',
-            'fontWeight': 900,
-            'fontSizePx': 60,
-            'textColor': '#FFFFFF',
-            'highlightColor': '#F59E0B',
-            'strokeWidthPx': 5,
-            'strokeColor': '#000000',
-            'shadow': true,
-            'uppercase': true,
-          },
-        ),
-        'GOLDEN_LUXURY': (
-          name: 'Golden Luxury',
-          subtitle: 'Champagne gold high-end',
-          style: {
-            'animation': 'karaoke',
-            'fontFamily': 'Playfair Display',
-            'fontWeight': 700,
-            'fontSizePx': 46,
-            'textColor': '#FFFBEB',
-            'highlightColor': '#F59E0B',
-            'strokeWidthPx': 2,
-            'strokeColor': '#78350F',
-            'shadow': true,
-            'background': {
-              'color': '#1C1917E6',
-              'paddingPx': 8,
-              'radiusPx': 12,
-            },
-          },
-        ),
-      };
+  /// Caption templates by id, from the generated catalog (caption_catalog.g.dart, the same data as
+  /// `CAPTION_TEMPLATES` in packages/video-contracts/src/caption-templates.ts). `style` is the template's flat
+  /// style without its position (captionStyle places captions itself). Old ids resolve through
+  /// [CaptionCatalog.canonicalId].
+  static final viralCaptionPresets = <String, ({String name, String subtitle, Map<String, dynamic> style})>{
+    for (final t in CaptionCatalog.templates)
+      t.id: (
+        name: t.name,
+        subtitle: t.description,
+        style: {
+          for (final e in t.legacyStyle.entries)
+            if (e.key != 'positionX' && e.key != 'positionY' && e.key != 'preset') e.key: e.value,
+        },
+      ),
+  };
 
   /// Every caption preset offered in the Captions sheet: the 4 classic ones, then the viral ones.
   static final captionPresets = <String, String>{

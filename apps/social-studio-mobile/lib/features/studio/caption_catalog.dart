@@ -7,9 +7,9 @@
 //   CaptionTemplate fields below; `styleV2` is a CaptionStyleV2 JSON map (caption-style-v2.ts) and `legacyStyle` the
 //   flat v1 caption style map older renderers read.
 //
-// STUB: until the catalog generator replaces this file's data, the templates are built from
-// TimelineOps.viralCaptionPresets with an empty styleV2.
-import 'timeline_ops.dart';
+// DATA: caption_catalog.g.dart, generated from the TS catalog by scripts/gen-caption-catalog.ts (a TS test fails when
+// it is stale). `thumbnail` previews are not generated yet (they need the real renderer).
+part 'caption_catalog.g.dart';
 
 /// Fields a user may change on a template (caption-style-v2.ts EDITABLE_FIELDS).
 const captionEditableFields = ['colors', 'sizePx', 'position', 'case', 'maxWords', 'motionIntensity'];
@@ -49,23 +49,7 @@ class CaptionTemplate {
 class CaptionCatalog {
   CaptionCatalog._();
 
-  static final List<CaptionTemplate> templates = [
-    for (final e in TimelineOps.viralCaptionPresets.entries)
-      CaptionTemplate(
-        id: e.key,
-        name: e.value.name,
-        description: e.value.subtitle,
-        bestFor: const [],
-        energy: 3,
-        editable: captionEditableFields,
-        sizeRangePx: (
-          min: ((e.value.style['fontSizePx'] as num?)?.toDouble() ?? 64) * 0.6,
-          max: ((e.value.style['fontSizePx'] as num?)?.toDouble() ?? 64) * 1.6,
-        ),
-        styleV2: const {},
-        legacyStyle: e.value.style,
-      ),
-  ];
+  static final List<CaptionTemplate> templates = generatedCaptionTemplates;
 
   static CaptionTemplate? byId(String id) {
     final c = canonicalId(id);
@@ -76,6 +60,8 @@ class CaptionCatalog {
   }
 
   static String canonicalId(String id) {
+    final legacy = generatedLegacyCaptionIds[id];
+    if (legacy != null) return legacy;
     for (final t in templates) {
       if (t.id == id || t.legacyIds.contains(id)) return t.id;
     }

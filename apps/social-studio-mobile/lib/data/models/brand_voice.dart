@@ -178,11 +178,13 @@ class BrandVoice {
     'Educational',
   ];
 
+  /// Caption template ids a brand can default to (caption_catalog.dart). Older brand profiles may still hold an
+  /// older id; CaptionCatalog.canonicalId maps it to its current template.
   static const captionStylePresets = [
-    'HORMOZI_BOUNCE',
-    'ALI_ABDAAL_CLEAN',
-    'MINIMAL_SUBTITLE',
-    'BOLD_CENTER',
+    'SPOTLIGHT_WORD',
+    'GLASS_PILL',
+    'CINEMA_SUBTITLE',
+    'IMPACT_BOLD',
   ];
 
   static const fontPresets = [

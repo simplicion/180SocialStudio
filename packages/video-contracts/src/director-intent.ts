@@ -52,7 +52,7 @@ export type OfflineIntent = DirectorIntent & { unknown?: boolean };
 
 /** Tools that act on each kind of target. A scoped turn only offers these (plus reply / finish). */
 export const TOOLS_BY_TARGET: Record<IntentTargetKind, readonly string[]> = {
-  caption: ["autoCaptions", "styleCaption", "addCaption", "editText", "updateTextStyle", "emphasizeWord", "translateCaptions", "retimeItem", "removeItem"],
+  caption: ["autoCaptions", "applyCaptionTemplate", "styleCaption", "addCaption", "editText", "updateTextStyle", "emphasizeWord", "translateCaptions", "retimeItem", "removeItem"],
   title: ["addText", "renderMotionGraphic", "editText", "updateTextStyle", "retimeItem", "removeItem"],
   music: ["addBackgroundMusic", "updateMusic", "changeMusicTrack", "adjustVolume", "duckAudio", "muteTrack", "removeItem"],
   zoom: ["addZoom", "updateZoom", "retimeItem", "removeItem"],

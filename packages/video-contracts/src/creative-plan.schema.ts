@@ -2,6 +2,7 @@ import { VIDEO_EFFECT_TYPES, TRANSITION_TYPES } from "./edit-ir.schema";
 import { z } from "zod";
 import { RationalTimeSchema, TimeRangeSchema } from "./time";
 import { CAPTION_TEMPLATE_IDS, CAPTION_ANIMATIONS, resolveCaptionTemplate } from "./caption-templates";
+import { CaptionOverridesSchema, EMPHASIS_ROLES } from "./caption-style-v2";
 import { SpringConfigSchema, TextEnterSchema, TextExitSchema, TextLoopSchema } from "./edit-ir.schema";
 
 /** Fonts the phone renders and exports (mirrors CaptionFonts.exportFamilies in the Flutter app). */
@@ -203,13 +204,42 @@ export const StyleCaptionOpSchema = z.object({
       z.string()
     )
     .optional()
-    .describe(`Caption template id (${CAPTION_TEMPLATE_IDS.join(", ")}) or alias for a full restyle, or a basic preset name. Leave out to change only the fields given.`),
+    .describe(`Caption template id (${CAPTION_TEMPLATE_IDS.join(", ")}) for a full restyle (prefer applyCaptionTemplate). Leave out to change only the fields given.`),
   highlightColor: z.string().regex(/^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$/).optional(),
   /** Partial patch (added 2026-11): only the fields given change; text, timing and positions stay. */
   textColor: z.string().regex(/^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$/).optional(),
   fontSize: z.number().min(16).max(200).optional(),
   uppercase: z.boolean().optional(),
   position: z.object({ x: z.number(), y: z.number() }).optional(),
+});
+
+/**
+ * Captions v2 (Phase 6): put a catalog template on the speech captions, with light changes limited to the template's
+ * editable fields and AI-chosen emphasis words. Fields the creator changed by hand (colour, size, position) are kept.
+ */
+export const ApplyCaptionTemplateOpSchema = z.object({
+  type: z.literal("applyCaptionTemplate"),
+  templateId: z
+    .preprocess((val) => (typeof val === "string" ? resolveCaptionTemplate(val)?.id ?? val : val), z.enum(CAPTION_TEMPLATE_IDS))
+    .describe("Caption template id from the catalog."),
+  overrides: CaptionOverridesSchema.optional().describe(
+    "Light changes, only fields the template lists as editable: colors {text, active, stroke, background, emphasis} (#RRGGBB), sizePx (canvas px, clamped to the template range), position {preset lower-third|center|upper-third|custom, x, y}, case none|upper|title, maxWords, motionIntensity 0..1."
+  ),
+  emphasis: z
+    .array(
+      z.object({
+        captionId: z.string().optional().describe("Caption id from the timeline summary (with wordIndex inside that caption)."),
+        wordIndex: z.number().int().nonnegative().optional().describe("Word index from 0: inside captionId, or across all captions when captionId is left out."),
+        word: z.string().max(60).optional().describe("The word's text (use with atSec when it appears more than once)."),
+        atSec: z.number().nonnegative().optional().describe("Timeline second near which the word is spoken."),
+        role: z.enum(EMPHASIS_ROLES).default("emphasis").describe("emphasis (key point), positive (money, wins, growth) or negative (warnings, mistakes, losses)."),
+      })
+    )
+    .max(80)
+    .optional()
+    .describe("AI-chosen key words: at most one per caption, meaningful words only (no stop words)."),
+  captionIds: z.array(z.string()).max(400).optional().describe("Only these captions (default: every speech caption)."),
+  reason: z.string().optional(),
 });
 
 export const EmphasizeWordOpSchema = z.object({
@@ -549,7 +579,7 @@ export const AutoCaptionsOpSchema = z.object({
       z.enum(CAPTION_TEMPLATE_IDS)
     )
     .optional()
-    .describe("Creator caption template or neutral preset. Accepts template IDs (e.g. HORMOZI_BOUNCE, MRBEAST_HYPE, EDITORIAL_SERIF, DOCUMENTARY_LOWER, NEON_PULSE) or aliases/names (Punchy Bounce, High Energy, Clean Frosted, etc.)."),
+    .describe("Caption template id from the catalog (see the caption template list); a template name or nickname also resolves."),
   textColor: z.string().regex(/^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$/).optional(),
   highlightColor: z.string().regex(/^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$/).optional(),
   wordsPerCaption: z.number().int().min(1).max(8).default(3),
@@ -576,7 +606,7 @@ export const AutoCaptionsOpSchema = z.object({
  */
 export const TranslateCaptionsOpSchema = z.object({
   type: z.literal("translateCaptions"),
-  targetLanguage: z.string().regex(/^[a-z]{2}$/).describe("ISO-639-1 code of the caption language wanted, e.g. en, hi, ta, es."),
+  targetLanguage: z.string().regex(/^[a-z]{2,3}(-[A-Za-z]{4})?(-[A-Z]{2})?$/).describe("BCP-47 code of the caption language wanted, e.g. en, hi, ta, es, fil, zh-Hans, zh-Hant, hi-Latn."),
   script: z.enum(["native", "roman"]).default("native").describe("roman = Latin letters (Hinglish and similar); native = the language's own script."),
   reason: z.string().optional(),
 });
@@ -761,13 +791,14 @@ export const RenderMotionGraphicOpSchema = z.object({
   type: z.literal("renderMotionGraphic"),
   timelineStartSec: z.number().nonnegative().describe("Timeline timestamp in seconds where the kinetic motion graphic enters."),
   durationSec: z.number().positive().max(30).default(3.5).describe("Duration in seconds that the motion graphic card stays active."),
-  templateId: z.enum([
-    "vox-explainer",
-    "hormozi-counter",
-    "saas-callout",
-    "quote-reveal",
-    "split-comparison",
-  ]).default("vox-explainer").describe("Creator-grade motion graphic template ID."),
+  templateId: z
+    .preprocess(
+      // Older plans used creator-named ids; they map to the neutral ones.
+      (v) => (v === "vox-explainer" ? "explainer-card" : v === "hormozi-counter" ? "metric-counter" : v),
+      z.enum(["explainer-card", "metric-counter", "saas-callout", "quote-reveal", "split-comparison"])
+    )
+    .default("explainer-card")
+    .describe("Motion graphic template ID."),
   title: z.string().describe("Main heading or bold statement."),
   subtitle: z.string().optional().describe("Secondary detail or explanatory text."),
   metricValue: z.string().optional().describe("E.g. '$100K+', '3.5x', '94%' for metric counter cards."),
@@ -793,6 +824,7 @@ export const CreativeOperationSchema = z.discriminatedUnion("type", [
   StyleCaptionOpSchema,
   TranslateCaptionsOpSchema,
   EmphasizeWordOpSchema,
+  ApplyCaptionTemplateOpSchema,
   AddZoomOpSchema,
   AddEffectOpSchema,
   ReframeSubjectOpSchema,
