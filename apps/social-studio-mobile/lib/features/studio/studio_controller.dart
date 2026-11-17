@@ -697,7 +697,7 @@ class StudioController extends ChangeNotifier {
           'This video is too long to transcribe (audio over 25 MB). Trim it first.',
         );
       }
-      final t = await transcriber.transcribe(audio.path, language: spokenLanguage);
+      final t = await transcriber.transcribe(audio.path, language: CaptionLanguages.transcriptionCodeOf(spokenLanguage));
       if (!kIsWeb) {
         unawaited(File(audio.path).delete().catchError((_) => File(audio.path)));
       }
@@ -1097,7 +1097,7 @@ class StudioController extends ChangeNotifier {
       if (audio.fileSizeBytes > AudioTranscriptionService.maxBytes) {
         throw MediaEngineException('AUDIO_TOO_LARGE', 'This clip is too long to transcribe (audio over 25 MB).');
       }
-      a.transcript = await transcriber.transcribe(audio.path, language: spokenLanguage);
+      a.transcript = await transcriber.transcribe(audio.path, language: CaptionLanguages.transcriptionCodeOf(spokenLanguage));
       unawaited(File(audio.path).delete().catchError((_) => File(audio.path)));
       a.transcriptState = TranscriptState.ready;
       _refreshSpeechRanges();

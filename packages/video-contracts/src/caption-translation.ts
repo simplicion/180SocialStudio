@@ -1,6 +1,7 @@
 import { CaptionSegment } from "./edit-ir.schema";
 import { RationalTimeMath } from "./time";
 import { captionFontFor } from "./caption-enhance";
+import { CAPTION_LANGUAGES, findCaptionLanguage } from "./caption-languages";
 
 /**
  * Caption translation: caption lines in, the same number of lines out in another language (or the same
@@ -15,21 +16,24 @@ const BATCH_SIZE = 60;
 export const CAPTION_SCRIPTS = ["native", "roman"] as const;
 export type CaptionScript = (typeof CAPTION_SCRIPTS)[number];
 
-/** Languages captions can be converted to. */
-export const CAPTION_TARGET_LANGUAGES: Record<string, string> = {
-  en: "English", hi: "Hindi", ur: "Urdu", bn: "Bengali", ta: "Tamil", te: "Telugu", mr: "Marathi", gu: "Gujarati",
-  kn: "Kannada", ml: "Malayalam", pa: "Punjabi", or: "Odia", as: "Assamese", ne: "Nepali", sd: "Sindhi",
-  es: "Spanish", fr: "French", de: "German", pt: "Portuguese", it: "Italian", ar: "Arabic", fa: "Persian",
-  id: "Indonesian", ms: "Malay", tr: "Turkish", ru: "Russian", ja: "Japanese", ko: "Korean", zh: "Chinese",
-  vi: "Vietnamese", th: "Thai",
-};
+/**
+ * Languages captions can be converted to: code (BCP-47, plus legacy aliases such as "zh") → English name.
+ * Derived from CAPTION_LANGUAGES (caption-languages.ts), the one list the phone's caption_languages_data.dart is
+ * generated from.
+ */
+export const CAPTION_TARGET_LANGUAGES: Record<string, string> = Object.fromEntries(
+  CAPTION_LANGUAGES.flatMap((l) => [[l.code, l.name] as const, ...l.aliases.map((a) => [a, l.name] as const)])
+);
 
 export class CaptionTranslationFailedError extends Error {}
 
 export function buildCaptionTranslationPrompt(lines: string[], targetLanguage: string, script: CaptionScript): string {
-  const name = CAPTION_TARGET_LANGUAGES[targetLanguage];
+  const lang = findCaptionLanguage(targetLanguage);
+  const name = lang?.name ?? CAPTION_TARGET_LANGUAGES[targetLanguage];
+  // A language that is itself a romanisation (hi-Latn, Hinglish) is always written in Roman letters.
+  const roman = script === "roman" || lang?.translateAs.script === "roman";
   const scriptRule =
-    script === "roman"
+    roman
       ? `Write ${name} in Latin (Roman) letters, the way people type it in chat (Hindi example: "aaj hum baat karenge"). Keep English words in English.`
       : `Write ${name} in its own native script.`;
   return [

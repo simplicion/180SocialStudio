@@ -21,6 +21,7 @@ import '../director/ai_director_service.dart';
 import '../projects/project_provider.dart';
 import 'caption_fonts.dart';
 import 'caption_languages.dart';
+import 'caption_templates_panel.dart';
 import 'caption_tools.dart';
 import 'studio_controller.dart';
 import 'sticker_maker.dart';
@@ -3054,6 +3055,46 @@ class _CaptionsSheetState extends State<_CaptionsSheet> {
   /// Auto key-word emphasis applied when captions are added or regenerated.
   bool _keywords = true;
 
+  /// Captions picked in the list below: templates and Customize then change only these (empty = all captions).
+  final Set<String> _selected = {};
+
+  /// Brand kit colours of the project (offered first in Customize), when a brand kit is loaded.
+  List<String> _brandColors() {
+    final pid = widget.c.projectId;
+    if (pid == null) return const [];
+    try {
+      final v = ProviderScope.containerOf(context, listen: false).read(brandVoiceProvider(pid)).valueOrNull;
+      return [
+        for (final h in [v?.primaryColor, v?.accentColor])
+          if (BrandLook.hex6(h) != null) BrandLook.hex6(h)!,
+      ];
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<void> _openTemplates() async {
+    final ids = _speech.map((x) => x.id).toSet();
+    final scope = _selected.intersection(ids);
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppTheme.surface,
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.all(16),
+        child: SafeArea(
+          child: CaptionTemplatesPanel(
+            controller: widget.c,
+            onEdit: widget.onEdit,
+            captionIds: scope.isEmpty ? null : scope,
+            brandColors: _brandColors(),
+          ),
+        ),
+      ),
+    );
+    if (mounted) setState(() {});
+  }
+
   /// Fix caption text: one field per speech caption while editing (caption id → controller).
   Map<String, TextEditingController>? _fixing;
   Object? _exportError;
@@ -3452,6 +3493,17 @@ class _CaptionsSheetState extends State<_CaptionsSheet> {
           ),
         ),
         SizedBox(height: 8),
+        OutlinedButton.icon(
+          key: const ValueKey('open-caption-templates'),
+          onPressed: _openTemplates,
+          icon: Icon(Icons.style_rounded),
+          label: Text(
+            _selected.isEmpty
+                ? 'Templates & Customize (all captions)'
+                : 'Templates & Customize (${_selected.length} selected)',
+          ),
+        ),
+        SizedBox(height: 8),
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: Row(
@@ -3647,7 +3699,7 @@ class _CaptionsSheetState extends State<_CaptionsSheet> {
             children: [
               Expanded(
                 child: Text(
-                  'Tap words to toggle keyword highlight',
+                  'Tick lines to style only those; tap words to highlight',
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 12,
@@ -3688,6 +3740,18 @@ class _CaptionsSheetState extends State<_CaptionsSheet> {
                     children: [
                       Row(
                         children: [
+                          SizedBox(
+                            width: 28,
+                            height: 24,
+                            child: Checkbox(
+                              key: ValueKey('select-caption-${cap.id}'),
+                              value: _selected.contains(cap.id),
+                              visualDensity: VisualDensity.compact,
+                              onChanged: (v) => setState(
+                                () => v == true ? _selected.add(cap.id) : _selected.remove(cap.id),
+                              ),
+                            ),
+                          ),
                           Icon(
                             Icons.access_time_rounded,
                             size: 11,

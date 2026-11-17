@@ -64,6 +64,11 @@ test("long caption lists are sent in batches and joined in order", async () => {
 test("request validation: language, script, ids, sizes", () => {
   const ok = parseTranslateCaptionsBody({ captions: [{ id: "c1", text: "  hello   there " }], targetLanguage: "HI", script: "roman" });
   assert.deepEqual(ok, { captions: [{ id: "c1", text: "hello there" }], targetLanguage: "hi", script: "roman" });
+  // Shared list (caption-languages.ts): aliases and BCP-47 tags resolve to the canonical code.
+  const zh = parseTranslateCaptionsBody({ captions: [{ id: "c1", text: "x" }], targetLanguage: "zh" });
+  assert.ok(!("error" in zh) && zh.targetLanguage === "zh-Hans");
+  const hinglish = parseTranslateCaptionsBody({ captions: [{ id: "c1", text: "x" }], targetLanguage: "HI-LATN" });
+  assert.ok(!("error" in hinglish) && hinglish.targetLanguage === "hi-Latn");
   assert.ok("error" in parseTranslateCaptionsBody({ captions: [{ id: "c1", text: "x" }], targetLanguage: "klingon" }));
   assert.ok("error" in parseTranslateCaptionsBody({ captions: [], targetLanguage: "hi" }));
   assert.ok("error" in parseTranslateCaptionsBody({ captions: [{ id: "", text: "x" }], targetLanguage: "hi" }));
