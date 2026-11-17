@@ -326,6 +326,25 @@ class CaptionTemplateApply {
   }) {
     final t = CaptionCatalog.byId(templateId);
     if (t == null) return ir;
+    return applyTemplateObject(
+      ir,
+      t,
+      captionIds: captionIds,
+      overrides: overrides,
+      safeZone: safeZone,
+      languageCode: languageCode,
+    );
+  }
+
+  /// [applyTemplate] with the template itself (one that may not be in the catalog, e.g. in tests).
+  static MobileEditIr applyTemplateObject(
+    MobileEditIr ir,
+    CaptionTemplate t, {
+    Set<String>? captionIds,
+    CaptionOverrides overrides = const CaptionOverrides(),
+    SafeZonePlatform? safeZone,
+    String? languageCode,
+  }) {
     return ir.copyWith(
       captions: [
         for (final c in ir.captions)
