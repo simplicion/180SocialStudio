@@ -88,8 +88,11 @@ jobs:
               bash services/diarize-worker/setup.sh || true
             fi
 
-            # Forced-alignment worker for caption timing (needs ffmpeg; public Apache-2.0 models, no token).
-            if [ -d "services/align-worker" ] && [ ! -f "services/align-worker/.venv/bin/uvicorn" ] && command -v ffmpeg >/dev/null; then
+            # Forced-alignment worker for caption timing (needs ffmpeg; public Apache-2.0 models, no token). Installed only
+            # once it is switched on (ALIGN_WORKER_URL in the backend .env): it preloads a ~1 GB model, and pm2 starts it
+            # as soon as its venv exists.
+            if [ -d "services/align-worker" ] && [ ! -f "services/align-worker/.venv/bin/uvicorn" ] && command -v ffmpeg >/dev/null \
+               && grep -q '^ALIGN_WORKER_URL=' apps/180-social-studio-backend/.env 2>/dev/null; then
               echo "Setting up align-worker Python environment..."
               bash services/align-worker/setup.sh || true
             fi
