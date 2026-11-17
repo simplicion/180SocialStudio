@@ -606,7 +606,7 @@ export const AutoCaptionsOpSchema = z.object({
  */
 export const TranslateCaptionsOpSchema = z.object({
   type: z.literal("translateCaptions"),
-  targetLanguage: z.string().regex(/^[a-z]{2}$/).describe("ISO-639-1 code of the caption language wanted, e.g. en, hi, ta, es."),
+  targetLanguage: z.string().regex(/^[a-z]{2,3}(-[A-Za-z]{4})?(-[A-Z]{2})?$/).describe("BCP-47 code of the caption language wanted, e.g. en, hi, ta, es, fil, zh-Hans, zh-Hant, hi-Latn."),
   script: z.enum(["native", "roman"]).default("native").describe("roman = Latin letters (Hinglish and similar); native = the language's own script."),
   reason: z.string().optional(),
 });

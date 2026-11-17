@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { CAPTION_ANIMATIONS } from "./caption-templates";
-import { CaptionStyleV2Schema } from "./caption-style-v2";
+import { CaptionStyleV2Schema, CaptionOverridesSchema } from "./caption-style-v2";
 import { TemplateAppliedSchema, UserEditedSchema } from "./caption-provenance";
 import { RationalTimeSchema, TimeRangeSchema, FrameRateSchema } from "./time";
 
@@ -348,6 +348,9 @@ export const CaptionSegmentSchema = z.object({
     templateApplied: TemplateAppliedSchema.optional(),
     /** Fields the creator changed by hand; a template change keeps them. */
     userEdited: UserEditedSchema.optional(),
+    /** Catalog template id + its light changes (same keys the phone writes). */
+    captionTemplate: z.string().max(64).optional(),
+    captionOverrides: CaptionOverridesSchema.partial().passthrough().optional(),
   }),
 });
 

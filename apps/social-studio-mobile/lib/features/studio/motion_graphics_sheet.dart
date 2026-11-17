@@ -14,7 +14,7 @@ class MotionGraphicsSheet extends StatefulWidget {
 }
 
 class _MotionGraphicsSheetState extends State<MotionGraphicsSheet> {
-  String _selectedTemplate = 'vox-explainer';
+  String _selectedTemplate = 'explainer-card';
   final _titleController = TextEditingController(text: '3-Second Retention Rule');
   final _subtitleController = TextEditingController(text: 'Why the hook determines algorithm velocity');
   final _metricValueController = TextEditingController(text: '\$100K+');
@@ -23,14 +23,14 @@ class _MotionGraphicsSheetState extends State<MotionGraphicsSheet> {
 
   final List<Map<String, dynamic>> _templates = [
     {
-      'id': 'vox-explainer',
-      'name': 'Vox Explainer',
+      'id': 'explainer-card',
+      'name': 'Explainer Card',
       'icon': Icons.view_headline_rounded,
       'desc': 'High-contrast lower-third with kinetic typography and source tags.',
       'color': const Color(0xFF3B82F6),
     },
     {
-      'id': 'hormozi-counter',
+      'id': 'metric-counter',
       'name': 'Impact Counter',
       'icon': Icons.bolt_rounded,
       'desc': 'Explosive, oversized numerical counter (\$ / % / x) for viral shorts.',
@@ -74,7 +74,7 @@ class _MotionGraphicsSheetState extends State<MotionGraphicsSheet> {
     if (title.isEmpty) return;
 
     final playheadMs = widget.c.playheadMs;
-    final cardText = _selectedTemplate == 'hormozi-counter'
+    final cardText = _selectedTemplate == 'metric-counter'
         ? '${_metricValueController.text.trim()}\n$title'
         : '[${_tagController.text.trim()}] $title\n${_subtitleController.text.trim()}';
 
@@ -173,7 +173,7 @@ class _MotionGraphicsSheetState extends State<MotionGraphicsSheet> {
                             overflow: TextOverflow.ellipsis,
                           ),
                           Text(
-                            t['id'] == 'hormozi-counter' ? 'Big Metric' : 'Kinetic Card',
+                            t['id'] == 'metric-counter' ? 'Big Metric' : 'Kinetic Card',
                             style: TextStyle(fontSize: 10, color: Colors.grey.shade400),
                           ),
                         ],
@@ -185,7 +185,7 @@ class _MotionGraphicsSheetState extends State<MotionGraphicsSheet> {
             ),
             const SizedBox(height: 18),
             // Input fields
-            if (_selectedTemplate == 'hormozi-counter') ...[
+            if (_selectedTemplate == 'metric-counter') ...[
               TextField(
                 controller: _metricValueController,
                 style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),

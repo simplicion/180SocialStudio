@@ -1414,6 +1414,7 @@ export class EditIRCompiler {
         ...(op.position ? { position: op.position } : {}),
         ...(op.background ? { pillBackground: op.background } : {}),
         preset: caption.style.preset,
+        captionTemplate: template.id,
       };
       for (const k of Object.keys(caption.style) as Array<keyof CaptionSegment["style"]>) if (caption.style[k] === undefined) delete caption.style[k];
       for (const w of caption.words) if (w.color && !w.highlight) delete w.color;

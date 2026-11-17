@@ -210,6 +210,28 @@ test("an untouched caption comes back to the phone verbatim (the provenance pass
   assert.deepEqual(out.captions, phone.captions);
 });
 
+test("translateCaptions accepts BCP-47 language codes (zh-Hant, hi-Latn, fil) and refuses junk", () => {
+  for (const code of ["en", "hi", "fil", "zh-Hans", "zh-Hant", "hi-Latn", "pt-BR", "sr-Latn-RS"]) {
+    assert.deepEqual(validateDirectorToolCalls([{ name: "translateCaptions", args: { targetLanguage: code } }]).errors, [], code);
+  }
+  for (const code of ["english", "EN", "zh_Hant", "hi-latin", ""]) {
+    assert.equal(validateDirectorToolCalls([{ name: "translateCaptions", args: { targetLanguage: code } }]).errors.length, 1, code);
+  }
+});
+
+test("the caption style carries the phone's captionTemplate / captionOverrides keys and they round-trip", () => {
+  const base = editIRFromMobile(captioned("SPOTLIGHT_WORD"));
+  const r = compileCalls([{ name: "applyCaptionTemplate", args: { templateId: "GLASS_PILL", overrides: { colors: { active: "#FF0000" }, motionIntensity: 0.5 } } }], base);
+  const st = toMobile(r.updatedEditIR).captions[0].style as any;
+  assert.equal(st.captionTemplate, "GLASS_PILL");
+  assert.deepEqual(st.captionOverrides, { colors: { active: "#FF0000" }, motionIntensity: 0.5 });
+  const back = toMobile(editIRFromMobile(MobileEditIRSchema.parse(toMobile(r.updatedEditIR)))).captions[0].style as any;
+  assert.equal(back.captionTemplate, "GLASS_PILL");
+  assert.deepEqual(back.captionOverrides, st.captionOverrides);
+  // A style the phone wrote with those keys parses.
+  MobileEditIRSchema.parse({ ...toMobile(r.updatedEditIR), captions: [{ ...toMobile(r.updatedEditIR).captions[0], style: { ...st, captionOverrides: { sizePx: 60 } } }] });
+});
+
 test("selection policy: compact catalog + policy text for the planner, and the offline rules", () => {
   const lines = captionCatalogForPrompt();
   assert.equal(lines.length, CAPTION_TEMPLATES.length);

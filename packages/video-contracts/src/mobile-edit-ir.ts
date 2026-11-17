@@ -1,5 +1,5 @@
 import { CAPTION_ANIMATIONS } from "./caption-templates";
-import { CaptionStyleV2Schema } from "./caption-style-v2";
+import { CaptionStyleV2Schema, CaptionOverridesSchema } from "./caption-style-v2";
 import { TemplateAppliedSchema, UserEditedSchema } from "./caption-provenance";
 import { mobileCaptionStyleFromV2 } from "./caption-templates";
 
@@ -230,6 +230,9 @@ export const MobileCaptionStyleSchema = z.object({
   /** Field-level provenance (caption-provenance.ts): what the Director last wrote, and fields the creator changed. */
   templateApplied: TemplateAppliedSchema.optional(),
   userEdited: UserEditedSchema.optional(),
+  /** The catalog template the caption is drawn with, and the light changes on top of it (written by the phone too). */
+  captionTemplate: z.string().max(64).optional(),
+  captionOverrides: CaptionOverridesSchema.partial().passthrough().optional(),
 });
 
 export const MobileCaptionSchema = z.object({
@@ -879,6 +882,8 @@ export function toMobileEditIR(input: MobileProjectionInput): { editIR: MobileEd
           ...v2Extras(cap.style),
           ...(cap.style.templateApplied ? { templateApplied: cap.style.templateApplied } : {}),
           ...(cap.style.userEdited?.length ? { userEdited: cap.style.userEdited } : {}),
+          ...(cap.style.captionTemplate ? { captionTemplate: cap.style.captionTemplate } : {}),
+          ...(cap.style.captionOverrides ? { captionOverrides: cap.style.captionOverrides } : {}),
         },
       } as MobileEditIR["captions"][number] & { dropped?: boolean };
     })
@@ -1194,6 +1199,8 @@ export function editIRFromMobile(m: MobileEditIR, title = "Mobile project"): Edi
           ...(c.style.styleV2 ? { styleV2: c.style.styleV2 } : {}),
           ...(c.style.templateApplied ? { templateApplied: c.style.templateApplied } : {}),
           ...(c.style.userEdited?.length ? { userEdited: c.style.userEdited } : {}),
+          ...(c.style.captionTemplate ? { captionTemplate: c.style.captionTemplate } : {}),
+          ...(c.style.captionOverrides ? { captionOverrides: c.style.captionOverrides } : {}),
         },
       })),
       audioTracks: [

@@ -44,7 +44,7 @@ class _AutoClipperStudioSheetState extends ConsumerState<AutoClipperStudioSheet>
   int _clipCount = 3;
   int _targetDurationSec = 45;
   String _aspectRatio = '9:16';
-  String _subtitleStyle = 'hormozi-yellow';
+  String _subtitleStyle = 'bold-yellow';
   String _musicMood = 'upbeat';
   bool _includeMotionGraphics = true;
 
@@ -672,8 +672,8 @@ class _AutoClipperStudioSheetState extends ConsumerState<AutoClipperStudioSheet>
               underline: const SizedBox.shrink(),
               style: const TextStyle(fontSize: 12, color: Colors.white, fontWeight: FontWeight.w600),
               items: const [
-                DropdownMenuItem(value: 'hormozi-yellow', child: Text('🔥 Punchy Bold Yellow')),
-                DropdownMenuItem(value: 'vox-clean', child: Text('📰 Vox Clean Modern')),
+                DropdownMenuItem(value: 'bold-yellow', child: Text('🔥 Punchy Bold Yellow')),
+                DropdownMenuItem(value: 'clean-modern', child: Text('📰 Clean Modern')),
                 DropdownMenuItem(value: 'minimal', child: Text('✨ Minimalist Glass')),
                 DropdownMenuItem(value: 'none', child: Text('🚫 No Subtitles')),
               ],

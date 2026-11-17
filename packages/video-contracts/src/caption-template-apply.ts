@@ -100,6 +100,12 @@ export function applyTemplateToCaptions(
       if (!prevBg) { delete cap.style.pillPadding; delete cap.style.pillRadius; }
     }
     if (owned.includes("uppercase") && !explicit.case && !tpl.editable.includes("case")) cap.style.uppercase = spec.typography.case === "upper";
+    // The same keys the phone writes: the template id and the light changes on top of it.
+    const accepted: CaptionOverrides = Object.fromEntries(Object.entries(explicit).filter(([k]) => !base.rejected.includes(k as EditableField)));
+    const overrides: CaptionOverrides = { ...accepted, ...mine, ...(accepted.colors || mine.colors ? { colors: { ...(accepted.colors ?? {}), ...(mine.colors ?? {}) } } : {}) };
+    cap.style.captionTemplate = tpl.id;
+    if (Object.keys(overrides).length) cap.style.captionOverrides = overrides;
+    else delete cap.style.captionOverrides;
     for (const k of Object.keys(cap.style) as Array<keyof CaptionStyle>) if (cap.style[k] === undefined) delete cap.style[k];
     for (const w of cap.words) {
       if (w.highlight) w.color = cap.style.highlightColor;
