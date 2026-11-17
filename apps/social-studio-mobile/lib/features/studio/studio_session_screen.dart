@@ -19,6 +19,7 @@ import '../../core/widgets/common.dart';
 import '../../data/models/vault_item.dart';
 import '../library/vault_provider.dart';
 import 'caption_fonts.dart';
+import 'caption_v2_painter.dart';
 import 'clip_audio_fades.dart';
 import 'clip_vignette.dart';
 import 'director_panel.dart';
@@ -2123,8 +2124,57 @@ class _DraggableCaptionState extends State<_DraggableCaption> {
     super.dispose();
   }
 
+  /// v2 captions (`style.styleV2`) are drawn by the same engine as the export (caption_v2_painter.dart), which
+  /// places the block itself (preset, safe zone, face avoidance); one renderer per canvas keeps its layout cache.
+  static final Map<String, CaptionV2Renderer> _v2Renderers = {};
+
+  Widget _buildV2(BuildContext context) {
+    final spec = widget.caption.styleV2!;
+    final faces = widget.controller.ir?.faceBoxes ?? const <FaceSample>[];
+    final key = '${widget.canvasWidth}:${identityHashCode(faces)}';
+    if (_v2Renderers.length > 8) _v2Renderers.clear();
+    final renderer = _v2Renderers.putIfAbsent(
+      key,
+      () => CaptionV2Renderer(fontFor: googleCaptionFont, canvasWidth: widget.canvasWidth, faces: faces),
+    );
+    return LayoutBuilder(
+      builder: (context, box) {
+        final size = Size(box.maxWidth, box.maxHeight);
+        if (!size.width.isFinite || !size.height.isFinite || size.isEmpty) return const SizedBox.shrink();
+        final rect = renderer.blockRect(widget.caption, spec, size);
+        return Stack(
+          clipBehavior: Clip.none,
+          children: [
+            if (!widget.ghost)
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: CustomPaint(
+                    painter: CaptionV2Painter(renderer: renderer, caption: widget.caption, spec: spec, tMs: widget.t.toDouble()),
+                  ),
+                ),
+              ),
+            Positioned.fromRect(
+              rect: rect.inflate(6),
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  widget.controller.selectTrackItem(
+                    widget.caption.id,
+                    widget.caption.kind == 'text' ? TrackKind.text : TrackKind.captions,
+                  );
+                  widget.onTap();
+                },
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (widget.caption.styleV2 != null) return _buildV2(context);
     final st = widget.caption.style;
     final posX = (st['positionX'] as num?)?.toDouble() ?? 0.5;
     final posY = (st['positionY'] as num?)?.toDouble() ?? 0.72;
