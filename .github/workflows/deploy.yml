@@ -13,6 +13,7 @@ concurrency:
 jobs:
   deploy-backend:
     name: Deploy Backend to AWS EC2 (Prince Account)
+    if: false # Server removed from AWS
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
